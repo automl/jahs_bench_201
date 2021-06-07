@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --chdir=/hppfs/work/pn68xi/di82qum/experiments	# Change the current working directory for this script
+#SBATCH --partition=${partition}			# partition (queue)
+#SBATCH --time=00-05:00                                 # time (D-HH:MM)
+#SBATCH --nodes=${nnodes}				# number of nodes
+#SBATCH --ntasks-per-node=11
+#SBATCH --cpus-per-task=1
+#SBATCH --output=%x/logs/${nnodes}nodes_%j.%n.%t.out	# STDOUT-JOBNAME/logs/JOBID.NODEOFFSET.TASKID.out (the folder log has to be created prior to running or this won't work)
+#SBATCH --error=%x/logs/${nnodes}nodes_%j.%n.%t.err	# STDERR-JOBNAME/logs/JOBID.NODEOFFSET.TASKID.err (the folder log has to be created prior to running or this won't work)
+#SBATCH --job-name=scaling_${partition}			# sets the job name. If not specified, the file name will be used as job name
+#SBATCH --account=pn68xi
+#SBATCH --hint=nomultithread
+#SBATCH --ear=off
+# Print some information about the job to STDOUT
+echo "Workingdir: $$PWD";
+echo "Started at $$(date)";
+echo "Running job $$SLURM_JOB_NAME using $$SLURM_JOB_CPUS_PER_NODE cpus per node with given JID $$SLURM_JOB_ID on queue $$SLURM_JOB_PARTITION"; 
+echo "Running $$SLURM_NTASKS tasks."
+
+module load slurm_setup
+module load python/3.6_intel
+
+source activate autopytorch_p37
+
+# Print job/node info from SLURM.
+printf "*******************************************************\n"
+printf "\tLogging SLURM environment variables.\n"
+printf "*******************************************************\n"
+printenv | grep SLURM
+printf "*******************************************************\n\n"
+printf "*******************************************************\n"
+printf "\tLogging OpenMP environment variables.\n"
+printf "*******************************************************\n"
+printenv | grep "MP_"
+printf "*******************************************************\n\n"
+hostname
+export OMP_NUM_THREADS=$$SLURM_CPUS_PER_TASK
+
+# Change OpenML cache location to $$WORK
+export XDG_CONFIG_HOME=$$WORK_pn68xi
+export XDG_CACHE_HOME=$$XDG_CONFIG_HOME/.cache/openml
+
+# Create a shared output_dir for this test job
+base_dir=$$WORK_pn68xi/experiments/$${SLURM_JOB_NAME}/data/$${SLURM_JOBID}
+mkdir -p $$base_dir && cd $$base_dir
+
+# Create per-node output dirs
+srun_config=$${HOME}/scaling_plots/srun_configs/$${SLURM_JOB_NUM_NODES}node
+
+export PYTHONPATH=$$HOME/home_mnt/Auto-PyTorch:$$PYTHONPATH
+srun --multi-prog $$srun_config
+
+# Done
+echo "DONE";
+echo "Finished at $$(date)";

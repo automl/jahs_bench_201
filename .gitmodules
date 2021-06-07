@@ -1,0 +1,3 @@
+[submodule "Auto-PyTorch"]
+	path = Auto-PyTorch
+	url = git@github.com:NeoChaos12/Auto-PyTorch.git
