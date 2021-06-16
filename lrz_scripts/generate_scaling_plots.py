@@ -24,17 +24,19 @@ x = x[order]
 y = np.array(nconfigs)[order]
 
 # Dark Mode
-plt.rcParams.update({"axes.facecolor": "black", "figure.facecolor": "black", "axes.labelcolor": "white",
-                     "axes.titlecolor": "white", "axes.edgecolor": "silver", "text.color": "white",
-                     "xtick.color": "white", "ytick.color": "white", "grid.color": "silver",
-                     "xtick.labelsize": 12, "ytick.labelsize": 12})
-fig, ax = plt.subplots(1, 1)
+# plt.rcParams.update({"axes.facecolor": "black", "figure.facecolor": "black", "axes.labelcolor": "white",
+#                      "axes.titlecolor": "white", "axes.edgecolor": "silver", "text.color": "white",
+#                      "xtick.color": "white", "ytick.color": "white", "grid.color": "silver"})
+
+# Common settings
+plt.rcParams.update({"xtick.labelsize": 12, "ytick.labelsize": 12})
+fig, ax = plt.subplots(1, 1, figsize=(16, 9))
 ax: plt.Axes
 
 ax.plot(x, y, marker="*", markerfacecolor="red", markeredgecolor="red", linewidth=2, markersize=12, linestyle="dashed", color="blue")
-ax.set_xlabel("Number of nodes", size=14)
-ax.set_ylabel("Throughput", size=14)
-ax.set_title("Scaling plot for throughput over all fidelity levels.", size=16)
+ax.set_xlabel("# Nodes", size=14)
+ax.set_ylabel("# Evaluations", size=14)
+ax.set_title("Scaling plot for throughput across number of nodes.", size=16)
 # ax.set_yscale()
 ax.grid()
 # plt.show()
