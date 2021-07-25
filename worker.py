@@ -3,10 +3,11 @@ import numpy as np
 import torch
 
 from hpbandster.core.worker import Worker
-from hpbandster.examples.example_5_keras_worker import KerasWorker
+from hpbandster.examples.commons import MyWorker
 from naslib.search_spaces import NasBench201SearchSpace
 from naslib.utils.utils import get_train_val_loaders
 from naslib.utils import utils
+import naslib.utils.logging as naslib_logging
 
 class ModelTrainer(Worker):
 
@@ -14,7 +15,8 @@ class ModelTrainer(Worker):
         super(ModelTrainer, self).__init__(**kwargs)
         self.search_space = search_space.clone()
         self.random_seed = seed
-        self.job_config = job_config.trainer
+        self.num_epochs = int(job_config.search.epochs)
+        self.job_config = job_config.sampler
         self.data_loaders = get_train_val_loaders(job_config, mode='train')
 
 
@@ -41,8 +43,9 @@ class ModelTrainer(Worker):
                                  weight_decay=self.job_config.weight_decay)
         loss = torch.nn.CrossEntropyLoss()
 
+        naslib_logging.log_first_n(logging.INFO, f"Training config {config} for {self.num_epochs} epochs.", 3)
         train_start_time = time.time()
-        for e in range(config.search.epochs):
+        for e in range(self.num_epochs):
             for step, ((train_inputs, train_labels), (val_inputs, val_labels)) in \
                     enumerate(zip(train_queue, valid_queue)):
                 train_inputs = train_inputs.to(device)
@@ -58,11 +61,11 @@ class ModelTrainer(Worker):
                 logits_val = model(val_inputs)
                 val_loss = loss(logits_val, val_labels)
 
-                # naslib_logging.log_every_n_seconds(
-                #     logging.INFO,
-                #     "Epoch {}-{}, Train loss: {:.5f}, validation loss: {:.5f}".format(e, step, train_loss, val_loss),
-                #     n=5
-                # )
+                naslib_logging.log_every_n_seconds(
+                    logging.INFO,
+                    "Epoch {}-{}, Train loss: {:.5f}, validation loss: {:.5f}".format(e, step, train_loss, val_loss),
+                    n=5
+                )
 
                 metrics.train_loss.update(float(train_loss.detach().cpu()))
                 metrics.val_loss.update(float(val_loss.detach().cpu()))

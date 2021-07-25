@@ -86,5 +86,5 @@ class TabularSampling(Master):
             TabularIteration: the TabularIteration iteration with the corresponding number of configurations
         """
 
-        return (TabularIteration(HPB_iter=iteration, num_configs=self.nsamples, budgets=[0],
+        return (TabularIteration(HPB_iter=iteration, num_configs=[self.nsamples] * self.n_iters, budgets=[1],
                                   config_sampler=self.config_generator.get_config, **iteration_kwargs))
