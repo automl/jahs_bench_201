@@ -1,3 +1,4 @@
+import argparse
 import codecs
 import json
 import logging
@@ -6,97 +7,209 @@ import sys
 import time
 from pathlib import Path
 
-from naslib.search_spaces import (
-    NasBench201SearchSpace,
-)
-
-from naslib.utils.logging import log_every_n_seconds, log_first_n
-from naslib.utils import utils, setup_logger, logging as naslib_logging
-
 import torch
 import numpy as np
-from hpbandster.core import nameserver as hpns
-from hpbandster.core.nameserver import nic_name_to_host
-from hpbandster.core.result import json_result_logger
-from naslib.tabular_sampling import ModelTrainer, RandomConfigGenerator, TabularSampling
+
+from naslib.search_spaces import NASB201HPOSearchSpace
+import naslib.utils.utils as naslib_utils
+import naslib.utils.logging as naslib_logging
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--basedir", type=Path, help="Path to the base directory where all the tasks' output will be "
+                                                "stored. Task-specific sub-directories will be created here if needed.")
+parser.add_argument("--taskid", type=int, help="An offset from 0 for this task within the current node's allocation "
+                                               "of tasks.")
+parser.add_argument("--epochs", type=int, default=25, help="Number of epochs that each sampled architecture should be "
+                                                           "trained for. Default: 25")
+parser.add_argument("--resize", type=int, default=8, help="An integer value (8, 16, 32, ...) to determine the scaling "
+                                                          "of input images. Default: 8")
+parser.add_argument("--global-seed", type=int, default=None,
+                    help="A value for a global seed to be used for all global NumPy and PyTorch random operations. "
+                         "This is different from the fixed seed used for reproducible search space sampling. If not "
+                         "specified, a random source of entropy is used instead.")
+parser.add_argument("--standalone-mode", action="store_true",
+                    help="Switch that enables working in a single-cpu local setup as opposed to the default "
+                         "multi-node cluster setup.")
+parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
+args = parser.parse_args()
+
+basedir = args.basedir
+taskid = args.taskid
+epochs = args.epochs
+resize = args.resize
+global_seed = args.global_seed
+
+if args.standalone_mode:
+    task_idx = taskid
+else:
+    task_idx = int(os.getenv("SLURM_NTASKS_PER_NODE")) * int(os.getenv("SLURM_NODEID")) + taskid
+
+taskdir: Path = basedir / str(task_idx)
+outdir: Path = taskdir / "benchmark_data"
+outdir.mkdir(exist_ok=True, parents=True)
+
+# Randomly generated entropy source, to remain fixed across experiments.
+seed = 79029434164686768057103648623012072794
+# Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
+rng = np.random.RandomState(np.random.Philox(seed=seed, counter=task_idx))
+
+if global_seed is None:
+    global_seed = int(np.random.default_rng().integers(0, 2**32 - 1))
 
 # Read args and config, setup logger
-config = utils.get_config_from_args(config_type='nas_sampling')
+naslib_args = naslib_utils.default_argument_parser().parse_args([
+        # "config_file": "%s/defaults/nas_sampling.yaml" % (naslib_utils.get_project_root()),
+        "seed", str(global_seed),
+        "resize", str(resize),
+        "out_dir", str(taskdir),
+        "search.epochs", str(epochs)
+    ])
 
-# TODO: Introduce two loggers. One for putting together streams from multiple workers and one for writing data.
-logger = setup_logger(config.save + "/log.log")
-#logger.setLevel(logging.INFO)   # default DEBUG is very verbose
+naslib_config = naslib_utils.get_config_from_args(naslib_args, config_type="nas")
 
-utils.log_args(config)
-# Extra params for this script should be specified as optional parameters towards the end under the heading "sampler",
-# e.g. "sampler.process_offset 0"
-
-# process_offset 0 is the master, process_offset > 0 are workers, process_offset = -1 implies a single master which
-# also runs a worker
-jobid = config.sampler.jobid
-proc_offset = config.sampler.process_offset
-
-# Set up search space
-network_depth = config.sampler.network_depth
-network_width = config.sampler.network_width
-
-network_depth_map = {1: 2, 2: 3, 3: 5}
-network_width_map = {1: (8, 8, 16), 2: (8, 16, 32), 3: (16, 32, 64)}
-
-NasBench201SearchSpace.CELL_REPEAT = network_depth_map[network_depth]
-NasBench201SearchSpace.CHANNELS = network_width_map[network_width]
-search_space = NasBench201SearchSpace()
-
-# working_dir = Path(config.save) / str(jobid)
-working_dir = Path(config.save) / "share"
-working_dir.mkdir(parents=True, exist_ok=True)
-logger.info("Base working directory is: %s" % str(working_dir))
-nic_name = 'lo'
-host = nic_name_to_host(nic_name)
-
-def launch_worker(background):
-    # Initialize worker process
-    time.sleep(10)
-    w = ModelTrainer(run_id=jobid, search_space=search_space, seed=config.seed, job_config=config,
-                     host=host)
-    # w = ModelTrainer(search_space=search_space, seed=config.seed, job_config=config, run_id=jobid,
-    #                  nameserver=host, nameserver_port=None)
-    w.load_nameserver_credentials(working_directory=working_dir)
-    w.run(background=background)
-
-if proc_offset > 0:
-    # Pure worker process
-    launch_worker(background=False)
-    sys.exit(0)
+logger = naslib_logging.setup_logger(naslib_config.save + "/log.log")
+if args.debug:
+    logger.setLevel(logging.DEBUG)
+else:
+    logger.setLevel(logging.WARNING)
+# logger.setLevel(logging.INFO)   # default DEBUG is very verbose
+naslib_utils.log_args(naslib_config)
 
 
-# Initialize Master process
-result_logger = json_result_logger(directory=config.save, overwrite=False)
+def train(model, data_loaders, train_config):
+    """
+    Train the given model using the given data loaders and training configuration. Returns a dict containing various metrics.
 
-NS = hpns.NameServer(run_id=jobid, nic_name=nic_name, working_directory=working_dir)
-ns_host, ns_port = NS.start()
+    Parameters
+    ----------
+    model: naslib.search_spaces.Graph
+        A NASLib object obtained by sampling a random architecture on a search space. Ideally, the sampled object should
+        be cloned before being passsed. The model will be parsed to PyTorch before training.
+    data_loaders: Tuple
+        A tuple of objects that correspond to the data loaders generated by naslib.utils.utils.get_train_val_loaders().
+    train_config: naslib.utils.utils.AttrDict
+        An attribute dict containing various configuration parameters for the model training.
+    """
+    start_time = time.time()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model.parse()
+    model = model.to(device)
 
-if proc_offset < 0:
-    # Single master and worker process
-    launch_worker(background=True)
+    errors_dict, metrics = get_metrics(model)
+    train_queue, valid_queue, test_queue, _, _ = data_loaders
 
-config_generator = RandomConfigGenerator(search_space=search_space, job_config=config)
-sampler = TabularSampling(job_config=config, run_id=jobid, config_generator=config_generator, 
-                          nameserver=ns_host, nameserver_port=ns_port, working_directory=working_dir, 
-                          logger=logger, result_logger=result_logger)
+    optim = torch.optim.Adam(model.parameters(), lr=train_config.learning_rate, weight_decay=train_config.weight_decay)
+    loss = torch.nn.CrossEntropyLoss()
 
-_ = sampler.run(n_iterations=config.sampler.n_iters, min_n_workers=1)
+    train_start_time = time.time()
+    for e in range(train_config.epochs):
+        for step, ((train_inputs, train_labels), (val_inputs, val_labels)) in \
+                enumerate(zip(train_queue, valid_queue)):
+            train_inputs = train_inputs.to(device)
+            train_labels = train_labels.to(device)
+            optim.zero_grad()
+            logits_train = model(train_inputs)
+            train_loss = loss(logits_train, train_labels)
+            train_loss.backward()
+            optim.step()
 
-sampler.shutdown(shutdown_workers=True)
-NS.shutdown()
+            val_inputs = val_inputs.to(device)
+            val_labels = val_labels.to(device)
+            logits_val = model(val_inputs)
+            val_loss = loss(logits_val, val_labels)
 
-# logger.info("Start training")
-#
-#
-# if not os.path.exists(config.save):
-#     os.makedirs(config.save)
-#
-# with codecs.open(os.path.join(config.save, 'errors.json'), 'w', encoding='utf-8') as file:
-#     json.dump(errors_dict, file, separators=(',', ':'), indent=4)
-#
-# logger.info("Exiting.")
+            naslib_logging.log_every_n_seconds(
+                logging.DEBUG,
+                "Epoch {}-{}, Train loss: {:.5f}, validation loss: {:.5f}".format(e, step, train_loss, val_loss),
+                n=15,
+                name=logger.name
+            )
+
+            metrics.train_loss.update(float(train_loss.detach().cpu()))
+            metrics.val_loss.update(float(val_loss.detach().cpu()))
+            update_accuracies(metrics, logits_train, train_labels, "train")
+            update_accuracies(metrics, logits_val, val_labels, "val")
+
+        errors_dict.train_acc.append(metrics.train_acc.avg)
+        errors_dict.train_loss.append(metrics.train_loss.avg)
+        errors_dict.val_acc.append(metrics.val_acc.avg)
+        errors_dict.val_loss.append(metrics.val_loss.avg)
+
+    train_end_time = time.time()
+
+    for (test_inputs, test_labels) in test_queue:
+        test_inputs = test_inputs.to(device)
+        test_labels = test_labels.to(device)
+        logits_test = model(test_inputs)
+        test_loss = loss(logits_test, test_labels)
+        metrics.test_loss.update(float(test_loss.detach().cpu()))
+        update_accuracies(metrics, logits_test, test_labels, "test")
+
+    end_time = time.time()
+
+    errors_dict.test_acc = metrics.test_acc.avg
+    errors_dict.test_loss = metrics.test_loss.avg
+    errors_dict.runtime = end_time - start_time
+    errors_dict.train_time = train_end_time - train_start_time
+
+    return errors_dict
+
+
+def get_metrics(model):
+    errors_dict = naslib_utils.AttrDict(
+        {'train_acc': [],
+         'train_loss': [],
+         'val_acc': [],
+         'val_loss': [],
+         'test_acc': None,
+         'test_loss': None,
+         'runtime': None,
+         'train_time': None,
+         'model_size_MB': naslib_utils.count_parameters_in_MB(model)}
+    )
+
+    metrics = naslib_utils.AttrDict({
+        'train_acc': naslib_utils.AverageMeter(),
+        'train_loss': naslib_utils.AverageMeter(),
+        'val_acc': naslib_utils.AverageMeter(),
+        'val_loss': naslib_utils.AverageMeter(),
+        'test_acc': naslib_utils.AverageMeter(),
+        'test_loss': naslib_utils.AverageMeter(),
+    })
+
+    return errors_dict, metrics
+
+
+def update_accuracies(metrics, logits, target, split):
+    """Update the accuracy counters"""
+    logits = logits.clone().detach().cpu()
+    target = target.clone().detach().cpu()
+    acc, _ = naslib_utils.accuracy(logits, target, topk=(1, 5))
+    n = logits.size(0)
+
+    if split == 'train':
+        metrics.train_acc.update(acc.data.item(), n)
+    elif split == 'val':
+        metrics.val_acc.update(acc.data.item(), n)
+    elif split == 'test':
+        metrics.test_acc.update(acc.data.item(), n)
+    else:
+        raise ValueError("Unknown split: {}. Expected either 'train' or 'val'")
+
+
+search_space = NASB201HPOSearchSpace()
+data_loaders = naslib_utils.get_train_val_loaders(naslib_config, mode='train')
+
+n_archs = 0
+while True:
+    naslib_logging.log_every_n_seconds(logging.DEBUG, f"Sampling architecture #{n_archs}.", 15, name=logger.name)
+    model: NASB201HPOSearchSpace = search_space.clone()
+    model.sample_random_architecture(rng=rng)
+    res = train(model=model, data_loaders=data_loaders, train_config=naslib_config.search)
+    res["config"] = model.config.get_dictionary()
+    naslib_logging.log_every_n_seconds(logging.DEBUG, "Finished training architecture.", 15, name=logger.name)
+    n_archs += 1
+    with open(outdir / f"{n_archs}.json", "w") as fp:
+        json.dump(res, fp, indent=4)
+
