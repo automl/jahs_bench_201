@@ -16,14 +16,15 @@ import naslib.utils.logging as naslib_logging
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--basedir", type=Path, help="Path to the base directory where all the tasks' output will be "
-                                                "stored. Task-specific sub-directories will be created here if needed.")
-parser.add_argument("--taskid", type=int, help="An offset from 0 for this task within the current node's allocation "
-                                               "of tasks.")
-parser.add_argument("--epochs", type=int, default=25, help="Number of epochs that each sampled architecture should be "
-                                                           "trained for. Default: 25")
-parser.add_argument("--resize", type=int, default=8, help="An integer value (8, 16, 32, ...) to determine the scaling "
-                                                          "of input images. Default: 8")
+parser.add_argument("--basedir", type=Path, default=Path().cwd(),
+                    help="Path to the base directory where all the tasks' output will be stored. Task-specific "
+                         "sub-directories will be created here if needed.")
+parser.add_argument("--taskid", type=int,
+                    help="An offset from 0 for this task within the current node's allocation of tasks.")
+parser.add_argument("--epochs", type=int, default=25,
+                    help="Number of epochs that each sampled architecture should be trained for. Default: 25")
+parser.add_argument("--resize", type=int, default=8,
+                    help="An integer value (8, 16, 32, ...) to determine the scaling of input images. Default: 8")
 parser.add_argument("--global-seed", type=int, default=None,
                     help="A value for a global seed to be used for all global NumPy and PyTorch random operations. "
                          "This is different from the fixed seed used for reproducible search space sampling. If not "
@@ -39,9 +40,6 @@ taskid = args.taskid
 epochs = args.epochs
 resize = args.resize
 global_seed = args.global_seed
-
-# if not args.standalone_mode:
-#     taskid = int(os.getenv("SLURM_NTASKS_PER_NODE")) * int(os.getenv("SLURM_NODEID")) + taskid
 
 taskdir: Path = basedir / str(taskid)
 outdir: Path = taskdir / "benchmark_data"
@@ -204,7 +202,10 @@ while True:
     naslib_logging.log_every_n_seconds(logging.DEBUG, f"Sampling architecture #{n_archs}.", 15, name=logger.name)
     model: NASB201HPOSearchSpace = search_space.clone()
     model.sample_random_architecture(rng=rng)
-    res = train(model=model, data_loaders=data_loaders, train_config=naslib_config.search)
+    try:
+        res = train(model=model, data_loaders=data_loaders, train_config=naslib_config.search)
+    except Exception as e:
+        res = {"exception": str(e)}
     res["config"] = model.config.get_dictionary()
     naslib_logging.log_every_n_seconds(logging.DEBUG, "Finished training architecture.", 15, name=logger.name)
     n_archs += 1
