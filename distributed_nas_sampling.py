@@ -29,7 +29,7 @@ parser.add_argument("--global-seed", type=int, default=None,
                          "This is different from the fixed seed used for reproducible search space sampling. If not "
                          "specified, a random source of entropy is used instead.")
 parser.add_argument("--standalone-mode", action="store_true",
-                    help="Switch that enables working in a single-cpu local setup as opposed to the default "
+                    help="Switch that enables working in a single-task local setup as opposed to the default "
                          "multi-node cluster setup.")
 parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
 args = parser.parse_args()
@@ -40,19 +40,17 @@ epochs = args.epochs
 resize = args.resize
 global_seed = args.global_seed
 
-if args.standalone_mode:
-    task_idx = taskid
-else:
-    task_idx = int(os.getenv("SLURM_NTASKS_PER_NODE")) * int(os.getenv("SLURM_NODEID")) + taskid
+# if not args.standalone_mode:
+#     taskid = int(os.getenv("SLURM_NTASKS_PER_NODE")) * int(os.getenv("SLURM_NODEID")) + taskid
 
-taskdir: Path = basedir / str(task_idx)
+taskdir: Path = basedir / str(taskid)
 outdir: Path = taskdir / "benchmark_data"
 outdir.mkdir(exist_ok=True, parents=True)
 
 # Randomly generated entropy source, to remain fixed across experiments.
 seed = 79029434164686768057103648623012072794
 # Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
-rng = np.random.RandomState(np.random.Philox(seed=seed, counter=task_idx))
+rng = np.random.RandomState(np.random.Philox(seed=seed, counter=taskid))
 
 if global_seed is None:
     global_seed = int(np.random.default_rng().integers(0, 2**32 - 1))
