@@ -14,6 +14,7 @@ from naslib.search_spaces import NASB201HPOSearchSpace
 import naslib.utils.utils as naslib_utils
 import naslib.utils.logging as naslib_logging
 
+init_time = time.time()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--basedir", type=Path, default=Path().cwd(),
@@ -195,7 +196,25 @@ def update_accuracies(metrics, logits, target, split):
 
 
 search_space = NASB201HPOSearchSpace()
+
+data_loaders_start_wctime = time.time()
+data_loaders_start_ptime = time.process_time()
+
 data_loaders = naslib_utils.get_train_val_loaders(naslib_config, mode='train')
+
+data_loaders_end_wctime = time.time()
+data_loaders_end_ptime = time.process_time()
+
+init_duration = data_loaders_start_wctime - init_time
+data_loaders_wc_duration = data_loaders_end_wctime - data_loaders_start_wctime
+data_loaders_proc_duration = data_loaders_end_ptime - data_loaders_start_ptime
+
+with open(outdir / "iostats.json", "w") as fp:
+    json.dump(dict(
+        init_duration=init_duration,
+        wc_duration=data_loaders_wc_duration,
+        proc_duration=data_loaders_proc_duration),
+        fp, indent=4)
 
 n_archs = 0
 while True:
