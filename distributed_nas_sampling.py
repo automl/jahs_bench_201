@@ -209,12 +209,14 @@ init_duration = data_loaders_start_wctime - init_time
 data_loaders_wc_duration = data_loaders_end_wctime - data_loaders_start_wctime
 data_loaders_proc_duration = data_loaders_end_ptime - data_loaders_start_ptime
 
-with open(outdir / "iostats.json", "w") as fp:
+with open(outdir / "meta.json", "w") as fp:
     json.dump(dict(
         init_duration=init_duration,
         wc_duration=data_loaders_wc_duration,
-        proc_duration=data_loaders_proc_duration),
-        fp, indent=4)
+        proc_duration=data_loaders_proc_duration,
+        resize=resize,
+        epochs=epochs
+    ), fp, indent=4)
 
 n_archs = 0
 while True:
