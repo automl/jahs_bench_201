@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from typing import Union, Dict, Sequence, Iterable
 
-fidelity_params=("N", "W")
+fidelity_params=("epochs", "resize", "N", "W")
+# fidelity_params=("N", "W")
 
 # Common settings
 plt.rcParams.update({"xtick.labelsize": 14, "ytick.labelsize": 14, "axes.labelsize": 16, "axes.titlesize": 16})
@@ -109,9 +110,9 @@ def analyze_single_job(basedir, save_tables=False, save_plots=False):
         print(f"Fidelity-wise average model training time per epoch:\n"
               f"{mean_train_times.to_frame().unstack(fidelity_params[-1])}")
 
-    fig, ax = plt.subplots(1, 1, figsize=(16, 9)) if save_plots else plt.subplots(1, 1)
-    fig: plt.Figure
-    ax: plt.Axes
+    # fig, ax = plt.subplots(1, 1, figsize=(16, 9)) if save_plots else plt.subplots(1, 1)
+    # fig: plt.Figure
+    # ax: plt.Axes
 
 
 
