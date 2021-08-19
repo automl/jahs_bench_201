@@ -57,8 +57,8 @@ if global_seed is None:
 # Read args and config, setup logger
 naslib_args = naslib_utils.default_argument_parser().parse_args([
         # "config_file": "%s/defaults/nas_sampling.yaml" % (naslib_utils.get_project_root()),
-        "seed", str(global_seed),
-        "resize", str(resize),
+        f"--seed={str(global_seed)}",
+        f"--resize={str(resize)}",
         "out_dir", str(taskdir),
         "search.epochs", str(epochs)
     ])
