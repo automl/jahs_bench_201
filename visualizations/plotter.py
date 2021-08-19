@@ -78,9 +78,9 @@ def create_figure(nrows: int, ncols: int, legend_size: int, pos: str = "auto") -
         cell_height * nrows, cell_width * ncols, [cell_height] * nrows, [cell_width] * ncols)
 
     # Padding for the various grid objects.
-    wspace = 0.02 * draw_area_width
-    hspace = 0.02 * draw_area_height
-    legend_padding = legend_fontsize * pt_to_inch * 1.2
+    wspace = 0.02
+    hspace = 0.02
+    legend_padding = legend_fontsize * pt_to_inch * 1.4
 
     plt.rcParams["figure.figsize"] = (draw_area_width + legend_padding, draw_area_height + legend_padding)
     fig: plt.Figure = plt.figure(constrained_layout=True, frameon=True)
@@ -138,49 +138,6 @@ def draw_hist_groups(ax: plt.Axes, data: pd.Series, compare_indices: Sequence[st
     ax.yaxis.set_ticklabels(yticks[1])
     ax.invert_yaxis()
 
-    # group_size = len(processors)
-    # for c, col_data in enumerate(data):
-    #     for r, ((ypos, times, (stds, mins, maxs), types), channels) in enumerate(zip(col_data, channel_size_groups)):
-    #         ax = axs[r][c]
-    #         if graph_type == "mean-std":
-    #             ax.barh(ypos, times, height=0.9, align="center", xerr=stds, color=list(map(map_label_to_color, types)),
-    #                     edgecolor="k")
-    #         elif graph_type == "min-max":
-    #             widths = np.array(maxs) - np.array(mins)
-    #             ax.barh(ypos, width=widths, left=mins, height=0.9, align="center",
-    #                     color=list(map(map_label_to_color, types)), edgecolor="k")
-    #         else:
-    #             raise ValueError(f"Unknown graph type '{graph_type}'. Must be one of 'mean-std' or 'min-max'.")
-    #
-    #         # Decorate X-Axis
-    #         ax.xaxis.set_minor_locator(MultipleLocator(100))
-
-    #
-    #         # Decorate shared Y-axis
-    #         if c == 0:
-    #             yticks = [sum(ypos[i:i + group_size]) / group_size for i in range(0, len(ypos), group_size)]
-    #
-    #             ax.set_yticks(yticks)
-    #             y_major_labels = [s.replace("cell_repeat_", " ") for s in cell_repeats]
-    #             ax.set_yticklabels(y_major_labels, minor=False, size=14, va="center")
-    #
-    #         if c == ncols - 1:
-    #             alt_ax: plt.Axes = ax.twinx()
-    #             alt_ax.set_ylabel(channel_size_label_map[channels])
-    #             alt_ax.yaxis.set_ticks([])
-    #
-    #         ax.invert_yaxis()
-    #
-    #         if r == nrows // 2 and c == 0:
-    #             ax.set_ylabel("# Cell repetitions")
-    #
-    #         # Decorate shared X-axis
-    #         if r == nrows - 1 and c == ncols // 2:
-    #             ax.set_xlabel("Average training time (seconds)")
-    #
-    #         if r == 0:
-    #             ax.set_title(image_size_label_map[image_sizes[c]])
-
 
 def _mean_std_plot(ax: plt.Axes, data: pd.Series, across: str, xaxis_level: str, color_generator: Iterator,
                    known_colors: dict, calculate_stats: bool = True):
@@ -195,16 +152,13 @@ def _mean_std_plot(ax: plt.Axes, data: pd.Series, across: str, xaxis_level: str,
               f"X-Axis.")
 
     labels = data.index.unique(level=across)
-    groups = data.groupby([across, xaxis_level])
     if calculate_stats:
+        groups = data.groupby([across, xaxis_level])
         mean_data: pd.Series = groups.mean()
         std_data: pd.Series = groups.std()
     else:
-        mean_data = groups.loc[:, "mean"]
-        std_data = groups.loc[:, "std"]
-
-    min_val, max_val = np.log10(mean_data.min() + 10 ** -6), np.log10(mean_data.max())
-    range = max_val - min_val
+        mean_data = data.loc[:, "mean"]
+        std_data = data.loc[:, "std"]
 
     for ctr, label in enumerate(labels):
         subset_means: pd.Series = mean_data.xs(label, level=across).sort_index(axis=0)
@@ -216,6 +170,8 @@ def _mean_std_plot(ax: plt.Axes, data: pd.Series, across: str, xaxis_level: str,
         ax.plot(xs, means, c=colour, label=label, linewidth=linewidth)
         ax.fill_between(xs, means - std, means + std, alpha=0.2, color=colour)
     if log_y:
+        min_val, max_val = np.log10(mean_data.min() + 10 ** -6), np.log10(mean_data.max())
+        range = max_val - min_val
         ax.set_yscale('log')
         mtick.LogFormatter()
         formatter = mtick.LogFormatterMathtext(labelOnlyBase=False, minor_thresholds=(2 * range, 0.5 * range))
@@ -306,11 +262,11 @@ def mean_std(data: pd.DataFrame, indices: List[str], xaxis_level: str, suptitle:
 
             # Top row only
             if ridx == 0:
-                ax.set_title(clabel, fontdict=dict(fontsize=label_fontsize))
+                ax.set_title(f"{indices[1]}={clabel}", fontdict=dict(fontsize=label_fontsize))
 
             # Left-most column only
             if cidx == 0:
-                ax.set_ylabel(rlabel, labelpad=10, fontdict=dict(fontsize=label_fontsize))
+                ax.set_ylabel(f"{indices[2]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
 
             # This ensures that we don't miss any labels because different subplots had different subsets of labels.
             h, l = ax.get_legend_handles_labels()
@@ -327,29 +283,25 @@ def mean_std(data: pd.DataFrame, indices: List[str], xaxis_level: str, suptitle:
     fig.set_constrained_layout_pads(w_pad=1.1 * label_fontsize * pt_to_inch, h_pad=1.1 * label_fontsize * pt_to_inch)
     fig.set_constrained_layout(True)
     if suptitle:
-        fig.suptitle(suptitle, ha='center', va='top')
+        fig.suptitle(suptitle, ha='center', va='top', fontsize=label_fontsize + 10)
 
     return fig
 
 
-def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None,
-             calculate_stats: bool = True, legend_pos: str = "auto", xlabel: str = "") -> plt.Figure:
+def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None, legend_pos: str = "auto",
+                xlabel: str = "") -> plt.Figure:
     """
-    Create a visualization that displays the mean and 1-std envelope of the given data, possibly comparing across up to
-    three individual dimensions.
+    Create a visualization that displays a grid of grouped histograms, such that each cell in the grid contains a
+    single plot consisting of multiple groups of horizontal bars.
     :param data: pandas.DataFrame
         A DataFrame object containing all the data to be visualized with the appropriate index.
     :param indices: A list of strings
-        Upto three strings denoting the names of a pandas Multi-Level Index across which comparisons are to be
-        visualized. The first name is used to generate comparisons within the same plot, the second name for
-        comparisons across columns and the third for comparisons across rows.
+        Upto four strings denoting the names of a pandas Multi-Level Index across which comparisons are to be
+        visualized. The first name is used to generate multiple bars in the same group, the second name for
+        generating groups of bars, the third for comparisons across grid columns and the fourth for comparisons across
+        rows.
     :param suptitle: string
         Used to attach a title for the visualization as a whole.
-    :param xaxis_level: string
-        A string that specifies the level of the index which is used to obtain values along the x-axis of the plots.
-    :param calculate_stats: bool
-        If 'calculate_stats' is True, the function calculates mean and std values on the fly. If it is False, the
-        function expects the input data to have two columns, "mean" and "std" containing the respective values.
     :param legend_pos: str
         The position of the legend w.r.t. the grid. Possible values: "auto", "bottom", "right". Default: "auto".
     :return: None
@@ -380,7 +332,6 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None,
     fig, gs, legend_ax_loc, legend_kwargs = create_figure(nrows=nrows, ncols=ncols, legend_size=legend_size,
                                                           pos=legend_pos)
 
-    legend = None
     for ridx, rlabel in enumerate(row_labels):
         for cidx, clabel in enumerate(col_labels):
             ax: plt.Axes = fig.add_subplot(gs[ridx, cidx])
@@ -391,7 +342,7 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None,
                 pass
             else:
                 draw_hist_groups(ax=ax, data=view, compare_indices=indices[:2], color_generator=colors,
-                               known_colors=labels_to_colors, calculate_stats=calculate_stats)
+                                 known_colors=labels_to_colors)
 
             # Decorate X-Axis
             ax.xaxis.grid(True, which="major", linewidth="1.5")
@@ -399,7 +350,7 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None,
 
             # Bottom row only
             if ridx == nrows - 1:
-                ax.set_xlabel(f"{indices[1]}, {xlabel}", labelpad=10., loc='left')
+                ax.set_xlabel(f"{xlabel}", labelpad=10., loc='right')
             else:
                 ax.set_xlabel("")
 
@@ -408,8 +359,15 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None,
                 ax.set_title(f"{indices[2]}={clabel}", fontdict=dict(fontsize=label_fontsize))
 
             # Left-most column only
+            # TODO: Confirm if both ylabels are working properly
             if cidx == 0:
-                ax.set_ylabel(f"{indices[3]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
+                ax.set_ylabel(indices[1], fontdict=dict(fontsize=label_fontsize))
+
+            # Right-most column only
+            if cidx == ncols - 1:
+                alt_ax: plt.Axes = ax.twinx()
+                alt_ax.set_ylabel(f"{indices[3]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
+                alt_ax.yaxis.set_ticks([])
 
     legend_ax: plt.Axes = fig.add_subplot(gs[legend_ax_loc])
     legend_labels = [f"{indices[0]}={k}" for k in labels_to_colors.keys()]
@@ -420,6 +378,6 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None,
     fig.set_constrained_layout_pads(w_pad=1.1 * label_fontsize * pt_to_inch, h_pad=1.1 * label_fontsize * pt_to_inch)
     fig.set_constrained_layout(True)
     if suptitle:
-        fig.suptitle(suptitle, ha='center', va='top')
+        fig.suptitle(suptitle, ha='center', va='top', fontsize=label_fontsize + 10)
 
     return fig
