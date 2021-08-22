@@ -64,6 +64,7 @@ naslib_args = naslib_utils.default_argument_parser().parse_args([
     ])
 
 naslib_config = naslib_utils.get_config_from_args(naslib_args, config_type="nas")
+naslib_utils.set_seed(naslib_config.seed)
 
 logger = naslib_logging.setup_logger(naslib_config.save + "/log.log")
 if args.debug:
@@ -72,6 +73,30 @@ else:
     logger.setLevel(logging.WARNING)
 # logger.setLevel(logging.INFO)   # default DEBUG is very verbose
 naslib_utils.log_args(naslib_config)
+
+def init_adam(model):
+    config = model.config
+    lr, weight_decay = config["learning_rate"], config["weight_decay"]
+    optim = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    return optim
+
+def init_adamw(model):
+    config = model.config
+    lr, weight_decay = config["learning_rate"], config["weight_decay"]
+    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    return optim
+
+def init_sgd(model):
+    config = model.config
+    lr, momentum, weight_decay = config["learning_rate"], config["momentum"], config["weight_decay"]
+    optim = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True)
+    return optim
+
+optimizer_constructor = {
+    "Adam": init_adam,
+    "AdamW": init_adamw,
+    "SGD": init_sgd,
+}
 
 
 def train(model, data_loaders, train_config):
@@ -90,13 +115,15 @@ def train(model, data_loaders, train_config):
     """
     start_time = time.time()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    logger.debug(f"Training model with config: {model.config}")
     model.parse()
     model = model.to(device)
 
     errors_dict, metrics = get_metrics(model)
     train_queue, valid_queue, test_queue, _, _ = data_loaders
 
-    optim = torch.optim.Adam(model.parameters(), lr=train_config.learning_rate, weight_decay=train_config.weight_decay)
+    optim = optimizer_constructor[model.config["optimizer"]](model)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=train_config.epochs, eta_min=0.)
     loss = torch.nn.CrossEntropyLoss()
 
     train_start_time = time.time()
@@ -119,14 +146,15 @@ def train(model, data_loaders, train_config):
             naslib_logging.log_every_n_seconds(
                 logging.DEBUG,
                 "Epoch {}-{}, Train loss: {:.5f}, validation loss: {:.5f}".format(e, step, train_loss, val_loss),
-                n=15,
-                name=logger.name
+                n=15, name=logger.name
             )
 
             metrics.train_loss.update(float(train_loss.detach().cpu()))
             metrics.val_loss.update(float(val_loss.detach().cpu()))
             update_accuracies(metrics, logits_train, train_labels, "train")
             update_accuracies(metrics, logits_val, val_labels, "val")
+
+        scheduler.step()
 
         errors_dict.train_acc.append(metrics.train_acc.avg)
         errors_dict.train_loss.append(metrics.train_loss.avg)
