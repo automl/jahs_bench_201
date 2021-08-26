@@ -19,12 +19,10 @@ from naslib.search_spaces import NASB201HPOSearchSpace
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
-from naslib.tabular_sampling.custom_nasb201_code import CosineAnnealingLR, CrossEntropyLabelSmooth
+from naslib.tabular_sampling.custom_nasb201_code import CosineAnnealingLR
 
 # Randomly generated entropy source, to remain fixed across experiments.
 seed = 79029434164686768057103648623012072794
-# Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
-rng = np.random.RandomState(np.random.Philox(seed=seed, counter=taskid))
 
 def argument_parser():
     parser = argparse.ArgumentParser()
@@ -95,7 +93,7 @@ def _get_common_metrics(extra_metrics: Optional[List[str]] = None) -> AttrDict:
 
 def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.optim.Optimizer,
                scheduler: naslib.tabular_sampling.custom_nasb201_code.CosineAnnealingLR,
-               mode: str, device: str, epoch_metrics: Dict[str, List], use_grad_clipping: bool = True,
+               mode: str, device: str, epoch_metrics: Dict[str, List], debug: bool = False, use_grad_clipping: bool = True,
                summary_writer: torch.utils.tensorboard.SummaryWriter = None, name: Optional[str] = None, logger = None):
 
     # Logging setup
@@ -128,7 +126,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
     metrics = _get_common_metrics(extra_metrics=extra_metrics)
 
-    if args.debug:
+    if debug:
         losses = []
         accs = []
         grad_norms = []
@@ -139,13 +137,14 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
     ## Iterate over mini-batches
     diverged = False
     data_load_start_time = time.time()
+    nsteps = len(dataloader)
     for step, (inputs, labels) in enumerate(dataloader):
         metric_weight = inputs.size(0)
         start_time = time.time()
         metrics.data_load_duration.update(start_time - data_load_start_time, metric_weight)
 
         if train_model:
-            scheduler.update(None, step)
+            scheduler.update(None, 1. * step / nsteps)
             optimizer.zero_grad()
 
         if transfer_devices:
@@ -173,32 +172,32 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
         ## Bookkeeping
         metrics.duration.update(end_time - start_time, metric_weight)
-        metrics.loss.update(loss.detach().cpu())
-        acc = naslib_utils.accuracy(logits.detach().cpu(), labels.detach().cpu(), topk=(1,))
+        metrics.loss.update(loss.detach().cpu(), metric_weight)
+        acc = naslib_utils.accuracy(logits.detach().cpu(), labels.detach().cpu(), topk=(1,))[0]
         metrics.acc.update(acc.data.item(), metric_weight)
 
         ## Debugging, logging and clean-up
         naslib_logging.log_every_n_seconds(
             logging.DEBUG,
-            f"[Minibatch {step}] {name_str}Mode: {mode} Avg. Loss: {epoch_loss.avg:.5f}, Avg. Accuracy: {epoch_acc.avg:.5f}, "
-            f"Avg. Time per step: {step_duration}",
+            f"[Minibatch {step + 1}/{nsteps}] {name_str}Mode: {mode} Avg. Loss: {metrics.loss.avg:.5f}, "
+            f"Avg. Accuracy: {metrics.acc.avg:.5f}, Avg. Time per step: {metrics.duration.avg}",
             n=30, name=logger.name
         )
 
-        if args.debug:
+        if debug:
             losses.append(loss.detach().cpu())
             accs.append(acc.data.item())
             grad_norms.append(torch.norm(
                 torch.stack([torch.norm(p.grad.detach(), 2).to(device) for p in model.parameters()]),
                 2).detach().cpu())
-            lrs.append(scheduler.get_lr())
+            lrs.append(scheduler.get_lr()[0]) # Assume that there is only one parameter group
 
         if torch.isnan(loss):
             logger.debug(f"Encountered NAN loss. Predictions: {logits}\n\nExpected labels: {labels}\n\nLoss: {loss}")
             diverged = True
 
         if diverged:
-            if args.debug:
+            if debug:
                 divergent_metrics = {
                     "Minibatch Losses": losses,
                     "Minibatch Accuracies": accs,
@@ -209,7 +208,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
                     summary_writer.add_scalars(
                         "divergent_epoch_metrics", {k: v[i] for k, v in divergent_metrics.items()}, i)
                 summary_writer.flush()
-            break
+            return 0, True
 
         data_load_start_time = time.time()
 
@@ -218,10 +217,10 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
         epoch_metrics[key].append(value.avg)
         n = max([n, value.cnt]) # value.cnt is expected to be constant
 
-    return n, diverged
+    return n, False
 
 
-def train(model, data_loaders, train_config, logger):
+def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipping=True):
     """
     Train the given model using the given data loaders and training configuration. Returns a dict containing various metrics.
 
@@ -249,9 +248,10 @@ def train(model, data_loaders, train_config, logger):
     train_queue, valid_queue, test_queue, _, _ = data_loaders
 
     extra_metrics = ["data_transfer_duration"] if device != "cpu" else []
-    train_metrics = {k: [] for k in _get_common_metrics(extra_metrics=extra_metrics + ["backprop_duration"]).keys()}
-    valid_metrics = {k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()}
-    test_metrics = {k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()}
+    train_metrics = AttrDict(
+        {k: [] for k in _get_common_metrics(extra_metrics=extra_metrics + ["backprop_duration"]).keys()})
+    valid_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
+    test_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
 
     optim = optimizer_constructor[model.config["optimizer"]](model)
     logger.debug(f"Initialized optimizer: {optim.__class__.__name__}")
@@ -260,7 +260,7 @@ def train(model, data_loaders, train_config, logger):
                                   eta_min=0.)
     loss_fn = torch.nn.CrossEntropyLoss()
 
-    if args.debug:
+    if debug:
         summary_writer = SummaryWriter(model_tensorboard_dir)
         model.eval()
         inp_size = naslib_config.search.batch_size, 3, naslib_config.resize or 32, naslib_config.resize or 32
@@ -277,13 +277,13 @@ def train(model, data_loaders, train_config, logger):
         epoch_metrics = train_metrics
         n, diverged = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim,
                                  scheduler=scheduler, mode="train", device=device, epoch_metrics=epoch_metrics,
-                                 use_grad_clipping=args.use_grad_clipping, summary_writer=summary_writer,
-                                 name="Training", logger=logger)
-        train_size = max([train_size, diverged])
+                                 use_grad_clipping=use_grad_clipping, summary_writer=summary_writer,
+                                 name="Training", logger=logger, debug=debug)
         if diverged:
             break
-        latency.update(train_metrics.forward_duration[-1], train_size)
-        train_duration.update(train_metrics.duration[-1]) # We don't need to set a weight to this
+        train_size = max([train_size, n])
+        # latency.update(train_metrics.forward_duration[-1], train_size)
+        train_duration.update(train_metrics.duration[-1]) # We don't need to assign a weight to this value
 
         ## Handle validation set
         dataloader = valid_queue
@@ -291,8 +291,8 @@ def train(model, data_loaders, train_config, logger):
         with torch.no_grad():
             n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
                               mode="eval", device=device, epoch_metrics=epoch_metrics,
-                              use_grad_clipping=args.use_grad_clipping, summary_writer=summary_writer,
-                              name="Validation", logger=logger)
+                              use_grad_clipping=use_grad_clipping, summary_writer=summary_writer,
+                              name="Validation", logger=logger, debug=debug)
         valid_size = max([valid_size, n])
         latency.update(valid_metrics.forward_duration[-1], valid_size)
         eval_duration.update(valid_metrics.duration[-1], valid_size) # This DOES require a weight - it mixes validation
@@ -304,27 +304,27 @@ def train(model, data_loaders, train_config, logger):
         with torch.no_grad():
             n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
                               mode="eval", device=device, epoch_metrics=epoch_metrics,
-                              use_grad_clipping=args.use_grad_clipping, summary_writer=summary_writer, name="Test",
-                              logger=logger)
+                              use_grad_clipping=use_grad_clipping, summary_writer=summary_writer, name="Test",
+                              logger=logger, debug=debug)
         test_size = max([test_size, n])
-        latency.update(test_metrics.forward_duration, test_size)
+        latency.update(test_metrics.forward_duration[-1], test_size)
         eval_duration.update(test_metrics.duration[-1], test_size)
+
+        ## Logging
+        naslib_logging.log_every_n_seconds(
+            logging.DEBUG,
+            f"[Epoch {e + 1}/{train_config.epochs}] Avg. Train Loss: {train_metrics.loss[-1]:.5f}, "
+            f"Avg. Valid Loss: {valid_metrics.loss[-1]}Avg. Test Loss: {test_metrics.loss[-1]}\n"
+            f"Avg. Train Acc: {train_metrics.acc[-1]:.5f}, Avg. Valid Acc: {valid_metrics.acc[-1]}, "
+            f"Avg. Test Acc: {test_metrics.acc[-1]}\n"
+            f"Time Elapsed: {time.time() - start_time}",
+            15,
+            name=logger.name
+        )
 
     end_time = time.time()
 
-    # Prepare metrics
-    raw_metrics = AttrDict()
-    for k1, metrics in zip(["train", "valid", "test"], [train_metrics, valid_metrics, test_metrics]):
-        for k2, data in metrics.items():
-            raw_metrics[(k1, k2)] = data
-
-    job_metrics = AttrDict()
-    job_metrics.latency = latency.avg
-    job_metrics.avg_train_duration = train_duration.avg
-    job_metrics.avg_eval_duration = eval_duration.avg
-    job_metrics.runtime = end_time - start_time
-
-    if args.debug:
+    if debug:
         tb_metrics = AttrDict(
             train_loss=train_metrics.loss,
             train_acc=train_metrics.acc,
@@ -333,10 +333,29 @@ def train(model, data_loaders, train_config, logger):
             test_loss=test_metrics.loss,
             test_acc=test_metrics.acc,
         )
-        for i in range(len(errors_dict.train_loss)):
-            summary_writer.add_scalars("metrics", {k: v[i] for k, v in tb_metrics.items()})
+        # If training diverged, the last epoch was not completed and should be looked at in detail instead.
+        num_epochs = e - 1 if diverged else e
+        if num_epochs >= 0:
+            for i in range(num_epochs):
+                summary_writer.add_scalars("metrics", {k: v[i] for k, v in tb_metrics.items()})
+
         summary_writer.flush()
         summary_writer.close()
+
+    # Prepare metrics
+    raw_metrics = AttrDict()
+    for k1, metrics in zip(["train", "valid", "test"], [train_metrics, valid_metrics, test_metrics]):
+        for k2, data in metrics.items():
+            raw_metrics[(k1, k2)] = data
+
+    if diverged:
+        raise RuntimeError("Model training has diverged.")
+
+    job_metrics = AttrDict()
+    job_metrics.latency = latency.avg
+    job_metrics.avg_train_duration = train_duration.avg
+    job_metrics.avg_eval_duration = eval_duration.avg
+    job_metrics.runtime = end_time - start_time
 
     return raw_metrics, job_metrics
 
@@ -360,6 +379,9 @@ if __name__ == "__main__":
     resize = args.resize
     global_seed = args.global_seed
     optimizer_choice = args.optimizer
+
+    # Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
+    rng = np.random.RandomState(np.random.Philox(seed=seed, counter=taskid))
 
     # The top100 configs from the original NASBench-201 dataset, sorted from worst to best as per evaluation accuracy
     nb201_data: pd.DataFrame = pd.read_pickle(args.nb201_data)
@@ -398,7 +420,7 @@ if __name__ == "__main__":
         model_tensorboard_dir = None  # To be initialized later
         logger.setLevel(logging.DEBUG)
     else:
-        logger.setLevel(logging.WARNING)
+        logger.setLevel(logging.INFO)
     naslib_utils.log_args(naslib_config)
 
     search_space = NASB201HPOSearchSpace()
@@ -438,28 +460,29 @@ if __name__ == "__main__":
         config["momentum"] = 0.9
 
     while True:
-        naslib_logging.log_every_n_seconds(logging.DEBUG, f"Sampling architecture #{n_archs + 1}.", 15,
-                                           name=logger.name)
         model: NASB201HPOSearchSpace = search_space.clone()
         sample_architecture(config, candidates, rng)
         model.config = ConfigSpace.Configuration(model.config_space, config)
         model.clear()
         model._construct_graph()
         model_config = model.config.get_dictionary()
+        naslib_logging.log_every_n_seconds(logging.INFO, f"Sampled new architecture: {model_config}", 15,
+                                           name=logger.name)
 
         if args.debug:
             model_tensorboard_dir = tensorboard_logdir / str(n_archs)
 
         try:
-            raw_metrics, job_metrics = train(model=model, data_loaders=data_loaders, train_config=naslib_config.search)
+            raw_metrics, job_metrics = train(model=model, data_loaders=data_loaders, train_config=naslib_config.search,
+                                             logger=logger, debug=args.debug, use_grad_clipping=args.use_grad_clipping)
         except Exception as e:
-            naslib_logging.log_every_n_seconds(logging.DEBUG, "Architecture Training failed.", 15, name=logger.name)
+            naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
             job_metrics = {"exception": str(e)}
             if args.debug:
                 raise e
         else:
             ## Clean-up after nominal program execution
-            naslib_logging.log_every_n_seconds(logging.DEBUG, "Finished training architecture.", 15, name=logger.name)
+            naslib_logging.log_every_n_seconds(logging.INFO, "Finished training architecture.", 15, name=logger.name)
             del(model) # Release memory
             metric_df = pd.DataFrame()
             for k, v in raw_metrics.items():
@@ -469,7 +492,13 @@ if __name__ == "__main__":
                 metric_df[("config", k)] = v
 
             metric_df.assign(**job_metrics)
-            pd.to_pickle(outdir / f"{n_archs + 1}.pkl") # Don't compress yet
+            metric_df.index = metric_df.index.set_names(["Epoch"]) + 1
+            metric_df.to_pickle(outdir / f"{n_archs + 1}.pkl") # Don't compress yet
+
+            job_metrics["final_train_acc"] = metric_df.loc[metric_df.index.max()][("train", "acc")]
+            job_metrics["final_val_acc"] = metric_df.loc[metric_df.index.max()][("val", "acc")]
+            job_metrics["final_test_acc"] = metric_df.loc[metric_df.index.max()][("test", "acc")]
+
             del(metric_df) # Release memory
         finally:
             job_metrics["config"] = model_config
