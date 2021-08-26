@@ -178,6 +178,11 @@ def train(model, data_loaders, train_config):
     errors_dict.runtime = end_time - start_time
     errors_dict.train_time = train_end_time - train_start_time
 
+    metrics.train_acc.reset()
+    metrics.train_loss.reset()
+    metrics.val_acc.reset()
+    metrics.val_loss.reset()
+
     return errors_dict
 
 
