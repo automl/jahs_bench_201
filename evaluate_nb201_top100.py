@@ -13,9 +13,10 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
+import naslib.tabular_sampling.custom_nasb201_code
 from naslib.search_spaces import NASB201HPOSearchSpace
 import naslib.utils.utils as naslib_utils
-from naslib.utils.utils import AverageMeter
+from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
 from naslib.tabular_sampling.custom_nasb201_code import CosineAnnealingLR, CrossEntropyLabelSmooth
 
@@ -155,7 +156,10 @@ def _test_proc(model, loss_fn, test_queue, device, metrics, errors_dict):
     errors_dict.test_data_load_time.append(metrics.test_data_load_time.avg)
 
 
-def _main_proc(model, dataloader, optimizer, scheduler, mode, device, epoch_metrics, use_grad_clipping=True):
+def _main_proc(model, dataloader, optimizer: torch.optim.Optimizer,
+               scheduler: naslib.tabular_sampling.custom_nasb201_code.CosineAnnealingLR,
+               mode: str, device: str, epoch_metrics: AttrDict, use_grad_clipping: bool = True,
+               summary_writer: torch.utils.tensorboard.SummaryWriter = None):
     if mode == "train":
         model.train()
     elif mode == "eval":
@@ -174,17 +178,26 @@ def _main_proc(model, dataloader, optimizer, scheduler, mode, device, epoch_metr
     if train_model:
         backprop_duration = AverageMeter()
 
+    if args.debug:
+        losses = []
+        accs = []
+        grad_norms = []
+        lrs = []
+        assert isinstance(summary_writer, torch.utils.tensorboard.SummaryWriter), \
+            "When using debug mode, a tensorboard summary writer object must be passed."
+
+    step_duration = AverageMeter()
     forward_duration = AverageMeter()
     data_load_duration = AverageMeter()
-    step_duration = AverageMeter()
-    losses = AverageMeter()
-    accuracies = AverageMeter()
+    epoch_loss = AverageMeter()
+    epoch_acc = AverageMeter()
 
     ## Iterate over mini-batches
     data_load_start_time= time.time()
     for step, (inputs, labels) in enumerate(dataloader):
-        start_time, duration = time.time(), AverageMeter()
-        data_load_duration.update(start_time - data_load_start_time)
+        metric_weight = inputs.size(0)
+        start_time = time.time()
+        data_load_duration.update(start_time - data_load_start_time, metric_weight)
         scheduler.update(None, step)
 
         if train_model:
@@ -193,13 +206,13 @@ def _main_proc(model, dataloader, optimizer, scheduler, mode, device, epoch_metr
         if transfer_devices:
             inputs = inputs.to(device)
             labels = labels.to(device)
-            data_transfer_time.update(time.time() - start_time)
+            data_transfer_time.update(time.time() - start_time, metric_weight)
 
         ## Forward Pass
         forward_start_time = time.time()
         logits = model(inputs)
         loss = loss(logits, labels)
-        forward_duration.update(time.time() - forward_start_time)
+        forward_duration.update(time.time() - forward_start_time, metric_weight)
 
         ## Backward Pass
         if train_model:
@@ -209,17 +222,62 @@ def _main_proc(model, dataloader, optimizer, scheduler, mode, device, epoch_metr
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
             optimizer.step()
             end_time = time.time()
-            backprop_duration.update(end_time - backprop_start_time)
+            backprop_duration.update(end_time - backprop_start_time, metric_weight)
         else:
             end_time = time.time()
 
         ## Bookkeeping
-        step_duration.update(end_time - start_time)
-        losses.update(loss.detach().cpu())
+        step_duration.update(end_time - start_time, metric_weight)
+        epoch_loss.update(loss.detach().cpu())
         acc = naslib_utils.accuracy(logits.detach().cpu(), labels.detach().cpu(), topk=(1,))
-        accuracies.update(acc.data.item())
+        epoch_acc.update(acc.data.item(), metric_weight)
 
+        ## Debugging and logging
+        naslib_logging.log_every_n_seconds(
+            logging.DEBUG,
+            f"[Minibatch {step}] Mode: {mode} Avg. Loss: {epoch_loss.avg:.5f}, Avg. Accuracy: {epoch_acc.avg:.5f}, "
+            f"Avg. Time per step: {step_duration}",
+            n=30, name=logger.name
+        )
 
+        if args.debug:
+            losses.append(loss.detach().cpu())
+            accs.append(acc.data.item())
+            grad_norms.append(torch.norm(
+                torch.stack([torch.norm(p.grad.detach(), 2).to(device) for p in model.parameters()]),
+                2).detach().cpu())
+            lrs.append(scheduler.get_lr())
+
+        if torch.isnan(loss):
+            logger.debug(f"Encountered NAN loss. Predictions: {logits}\n\nExpected labels: {labels}\n\nLoss: {loss}")
+            diverged = True
+
+        if diverged:
+            if args.debug:
+                divergent_metrics = {
+                    "Minibatch Losses": losses,
+                    "Minibatch Accuracies": accs,
+                    "Minibatch LRs": lrs,
+                    "Minibatch Gradient Norms": grad_norms
+                }
+                for i in range(step):
+                    summary_writer.add_scalars(
+                        "divergent_epoch_metrics", {k: v[i] for k, v in divergent_metrics.items()}, i)
+                summary_writer.flush()
+            break
+
+        data_load_start_time = time.time()
+
+    epoch_metrics.duration.update(step_duration.avg)
+    epoch_metrics.forward_duration.update(forward_duration.avg)
+    epoch_metrics.data_load_duration.update(data_load_duration.avg)
+    epoch_metrics.losses.update(epoch_loss.avg)
+    epoch_metrics.accuracies.update(epoch_acc.avg)
+
+    if train_model:
+        epoch_metrics.backprop_duration.update(backprop_duration.avg)
+
+    return diverged
 
 
 
@@ -253,7 +311,6 @@ def train(model, data_loaders, train_config):
     scheduler = CosineAnnealingLR(optim, warmup_epochs=0, epochs=train_config.epochs, T_max=train_config.epochs,
                                   eta_min=0.)
     loss = torch.nn.CrossEntropyLoss()
-    # loss = CrossEntropyLabelSmooth()
 
     if args.debug:
         summary_writer = SummaryWriter(model_tensorboard_dir)
