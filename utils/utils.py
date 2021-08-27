@@ -40,8 +40,8 @@ def load_splits(path: Path):
 
 def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True, resize: int = 0):
     datapath = naslib_utils.get_project_root() / "data"
-    train_data, test_data, xshape, class_num = get_datasets(dataset, datapath, cutout=cutout)
-    valid_loader = torch.utils.data.DataLoader(
+    train_data, test_data, xshape, class_num = get_datasets(dataset, datapath, cutout=cutout, resize=resize)
+    test_loader = torch.utils.data.DataLoader(
         test_data,
         batch_size=batch_size,
         shuffle=False,
@@ -50,7 +50,8 @@ def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True
     )
     train_transform = train_data.transform
     test_transform = test_data.transform
-    ValLoaders = {"test": valid_loader}
+
+    ValLoaders = {"test": test_loader}
     if split:
         ## Split original training data into a training and a validation set, use test data as a test set
         assert dataset == "cifar10"
@@ -87,13 +88,9 @@ def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True
         )
         ValLoaders["train"] = train_loader
 
-    if resize:
-        train_transform.transforms.insert(2, transforms.Resize(resize))
-        test_transform.transforms.insert(0, transforms.Resize(resize))
-
     return ValLoaders, train_transform, test_transform
 
-def get_datasets(name, root, cutout):
+def get_datasets(name, root, cutout, resize):
 
     if name == "cifar10":
         mean = [x / 255 for x in [125.3, 123.0, 113.9]]
@@ -111,17 +108,14 @@ def get_datasets(name, root, cutout):
 
     # Data Argumentation
     if name == "cifar10" or name == "cifar100":
-        lists = [
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, padding=4),
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std),
-        ]
+        lists = [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, padding=4),] + \
+                ([transforms.Resize(resize)] if resize else []) + \
+                [transforms.ToTensor(), transforms.Normalize(mean, std),]
         if cutout > 0:
             lists += [CUTOUT(cutout)]
         train_transform = transforms.Compose(lists)
         test_transform = transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize(mean, std)]
+            ([transforms.Resize(resize)] if resize else []) + [transforms.ToTensor(), transforms.Normalize(mean, std)]
         )
         xshape = (1, 3, 32, 32)
     # elif name.startswith("ImageNet16"):

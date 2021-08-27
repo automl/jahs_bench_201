@@ -406,7 +406,6 @@ if __name__ == "__main__":
     naslib_args += [
         # "config_file": "%s/defaults/nas_sampling.yaml" % (naslib_utils.get_project_root()),
         f"--seed={str(global_seed)}",
-        f"--resize={str(resize)}",
         "out_dir", str(taskdir),
         "search.epochs", str(epochs),
         "search.train_portion", str(0.5),
@@ -433,7 +432,7 @@ if __name__ == "__main__":
 
 
     data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=naslib_config.search.batch_size,
-                                          cutout=naslib_config.search.cutout, split=args.split)
+                                               cutout=naslib_config.search.cutout, split=args.split, resize=resize)
     validate = "valid" in data_loaders
 
     data_loaders_end_wctime = time.time()
