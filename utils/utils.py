@@ -1,11 +1,11 @@
 import logging
-import os, sys, torch
 from pathlib import Path
+import json
+import torch
 import numpy as np
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 from copy import deepcopy
-from PIL import Image
 from naslib.utils import utils as naslib_utils, logging as naslib_logging
 from naslib.utils.utils import AttrDict
 from naslib.utils.utils import Cutout
@@ -33,12 +33,12 @@ def load_splits(path: Path):
     # Reading data back
     with open(path, "r") as f:
         data = json.load(f)
-    splits = {k: int(v[1]) for k, v in data.items()}
+    splits = {k: np.array(v[1], dtype=int) for k, v in data.items()}
     del(data)
     return AttrDict(splits)
 
 
-def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True):
+def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True, resize: int = 0):
     datapath = naslib_utils.get_project_root() / "data"
     train_data, test_data, xshape, class_num = get_datasets(dataset, datapath, cutout=cutout)
     valid_loader = torch.utils.data.DataLoader(
@@ -54,7 +54,7 @@ def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True
     if split:
         ## Split original training data into a training and a validation set, use test data as a test set
         assert dataset == "cifar10"
-        split_info = load_splits(path=data / "cifar-split.json")
+        split_info = load_splits(path=datapath / "cifar-split.json")
         assert len(train_data) == len(split_info.train) + len(split_info.valid), \
             f"invalid length : {len(train_data)} vs {len(split_info.train)} + {len(split_info.valid)}"
         valid_data = deepcopy(train_data)
@@ -86,6 +86,11 @@ def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True
             pin_memory=True,
         )
         ValLoaders["train"] = train_loader
+
+    if resize:
+        train_transform.transforms.insert(2, transforms.Resize(resize))
+        test_transform.transforms.insert(0, transforms.Resize(resize))
+
     return ValLoaders, train_transform, test_transform
 
 def get_datasets(name, root, cutout):

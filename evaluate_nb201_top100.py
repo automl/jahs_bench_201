@@ -352,7 +352,7 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
             raw_metrics[(k1, k2)] = data
 
     if diverged:
-        raise RuntimeError("Model training has diverged.")
+        raise RuntimeError(f"Model training has diverged after {e} epochs.")
 
     job_metrics = AttrDict()
     job_metrics.latency = latency.avg
