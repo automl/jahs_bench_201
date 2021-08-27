@@ -11,7 +11,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-from naslib.search_spaces import NASB201HPOSearchSpace
+from naslib.search_spaces import NASB201HPOSearchSpace, NasBench201SearchSpace
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
@@ -49,23 +49,22 @@ def argument_parser():
     parser.add_argument("--use_grad_clipping", action="store_true", help="Enable gradient clipping for SGD.")
     parser.add_argument("--split", action="store_true", help="Split training dataset into training and validation "
                                                              "sets.")
+    parser.add_argument("--use_original_space", action="store_true", help="Use NASLib's original NASBench-201 search "
+                                                                          "space implementation.")
     return parser
 
 
-def init_adam(model):
-    config = model.config
+def init_adam(model, config):
     lr, weight_decay = config["learning_rate"], config["weight_decay"]
     optim = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     return optim
 
-def init_adamw(model):
-    config = model.config
+def init_adamw(model, config):
     lr, weight_decay = config["learning_rate"], config["weight_decay"]
     optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     return optim
 
-def init_sgd(model):
-    config = model.config
+def init_sgd(model, config):
     lr, momentum, weight_decay = config["learning_rate"], config["momentum"], config["weight_decay"]
     optim = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True)
     return optim
@@ -170,7 +169,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
         ## Bookkeeping
         metrics.duration.update(end_time - start_time, metric_weight)
-        metrics.loss.update(loss.detach().cpu(), metric_weight)
+        metrics.loss.update(loss.detach().cpu().data.item(), metric_weight)
         acc = naslib_utils.accuracy(logits.detach().cpu(), labels.detach().cpu(), topk=(1,))[0]
         metrics.acc.update(acc.data.item(), metric_weight)
 
@@ -218,7 +217,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
     return n, False
 
 
-def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipping=True, validate=False):
+def train(model, model_config, data_loaders, train_config, logger, debug=False, use_grad_clipping=True, validate=False):
     """
     Train the given model using the given data loaders and training configuration. Returns a dict containing various metrics.
 
@@ -238,7 +237,7 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     transfer_devices = device != "cpu"
-    logger.debug(f"Training model with config: {model.config} on device {device}")
+    logger.debug(f"Training model with config: {model_config} on device {device}")
     model.parse()
     model = model.to(device)
 
@@ -254,7 +253,7 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
     valid_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
     test_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
 
-    optim = optimizer_constructor[model.config["optimizer"]](model)
+    optim = optimizer_constructor[model_config["optimizer"]](model, model_config)
     logger.debug(f"Initialized optimizer: {optim.__class__.__name__}")
 
     scheduler = CosineAnnealingLR(optim, warmup_epochs=0, epochs=train_config.epochs, T_max=train_config.epochs,
@@ -425,7 +424,7 @@ if __name__ == "__main__":
         logger.setLevel(logging.INFO)
     naslib_utils.log_args(naslib_config)
 
-    search_space = NASB201HPOSearchSpace()
+    search_space = NasBench201SearchSpace() if args.use_original_space else NASB201HPOSearchSpace()
 
     data_loaders_start_wctime = time.time()
     data_loaders_start_ptime = time.process_time()
@@ -467,20 +466,29 @@ if __name__ == "__main__":
     while True:
         model: NASB201HPOSearchSpace = search_space.clone()
         sample_architecture(config, candidates, rng)
-        model.config = ConfigSpace.Configuration(model.config_space, config)
-        model.clear()
-        model._construct_graph()
-        model_config = model.config.get_dictionary()
-        naslib_logging.log_every_n_seconds(logging.INFO, f"Sampled new architecture: {model_config}", 15,
-                                           name=logger.name)
+        if args.use_original_space:
+            model.set_op_indices([config[f"Op{i}"] for i in range(1, 7)])
+            model.compile()
+            model_config = config
+        else:
+            model.config = ConfigSpace.Configuration(model.config_space, config)
+            model.clear()
+            model._construct_graph()
+            model_config = model.config.get_dictionary()
+        naslib_logging.log_every_n_seconds(
+            logging.INFO,
+            f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}",
+            15,
+            name=logger.name
+        )
 
         if args.debug:
             model_tensorboard_dir = tensorboard_logdir / str(n_archs)
 
         try:
-            raw_metrics, job_metrics = train(model=model, data_loaders=data_loaders, train_config=naslib_config.search,
-                                             logger=logger, debug=args.debug, use_grad_clipping=args.use_grad_clipping,
-                                             validate=validate)
+            raw_metrics, job_metrics = train(model=model, model_config=model_config, data_loaders=data_loaders,
+                                             train_config=naslib_config.search, logger=logger, debug=args.debug,
+                                             use_grad_clipping=args.use_grad_clipping, validate=validate)
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
             job_metrics = {"exception": str(e)}
