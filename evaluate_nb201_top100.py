@@ -1,9 +1,6 @@
 import argparse
-import codecs
 import json
 import logging
-import os
-import sys
 import time
 from pathlib import Path
 from typing import Optional, Iterable, Callable, Dict, List
@@ -14,12 +11,12 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-import naslib.tabular_sampling.custom_nasb201_code
 from naslib.search_spaces import NASB201HPOSearchSpace
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
-from naslib.tabular_sampling.custom_nasb201_code import CosineAnnealingLR
+from naslib.tabular_sampling.utils import utils
+from naslib.tabular_sampling.utils.custom_nasb201_code import CosineAnnealingLR
 
 # Randomly generated entropy source, to remain fixed across experiments.
 seed = 79029434164686768057103648623012072794
@@ -49,8 +46,9 @@ def argument_parser():
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
     parser.add_argument("--optimizer", type=str, choices=["Adam", "AdamW", "SGD"], default="SGD",
                         help="Which optimizer to use for training the models.")
-
     parser.add_argument("--use_grad_clipping", action="store_true", help="Enable gradient clipping for SGD.")
+    parser.add_argument("--split", action="store_true", help="Split training dataset into training and validation "
+                                                             "sets.")
     return parser
 
 
@@ -92,7 +90,7 @@ def _get_common_metrics(extra_metrics: Optional[List[str]] = None) -> AttrDict:
 
 
 def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.optim.Optimizer,
-               scheduler: naslib.tabular_sampling.custom_nasb201_code.CosineAnnealingLR,
+               scheduler: naslib.tabular_sampling.utils.custom_nasb201_code.CosineAnnealingLR,
                mode: str, device: str, epoch_metrics: Dict[str, List], debug: bool = False, use_grad_clipping: bool = True,
                summary_writer: torch.utils.tensorboard.SummaryWriter = None, name: Optional[str] = None, logger = None):
 
@@ -220,7 +218,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
     return n, False
 
 
-def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipping=True):
+def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipping=True, validate=False):
     """
     Train the given model using the given data loaders and training configuration. Returns a dict containing various metrics.
 
@@ -245,7 +243,10 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
     model = model.to(device)
 
     # errors_dict, metrics = get_metrics(model)
-    train_queue, valid_queue, test_queue, _, _ = data_loaders
+    train_queue = data_loaders["train"]
+    test_queue = data_loaders["test"]
+    if validate:
+        valid_queue = data_loaders["valid"]
 
     extra_metrics = ["data_transfer_duration"] if device != "cpu" else []
     train_metrics = AttrDict(
@@ -262,8 +263,8 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
 
     if debug:
         summary_writer = SummaryWriter(model_tensorboard_dir)
-        model.eval()
         inp_size = naslib_config.search.batch_size, 3, naslib_config.resize or 32, naslib_config.resize or 32
+        model.eval()
         with torch.no_grad():
             summary_writer.add_graph(model, torch.tensor(np.random.random(inp_size).astype(np.float32)).to(device))
     else:
@@ -285,38 +286,39 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
         # latency.update(train_metrics.forward_duration[-1], train_size)
         train_duration.update(train_metrics.duration[-1]) # We don't need to assign a weight to this value
 
-        ## Handle validation set
-        dataloader = valid_queue
-        epoch_metrics = valid_metrics
-        with torch.no_grad():
-            n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
-                              mode="eval", device=device, epoch_metrics=epoch_metrics,
-                              use_grad_clipping=use_grad_clipping, summary_writer=summary_writer,
-                              name="Validation", logger=logger, debug=debug)
-        valid_size = max([valid_size, n])
-        latency.update(valid_metrics.forward_duration[-1], valid_size)
-        eval_duration.update(valid_metrics.duration[-1], valid_size) # This DOES require a weight - it mixes validation
-        #                                                              and test sets
+        if validate:
+            ## Handle validation set
+            dataloader = valid_queue
+            epoch_metrics = valid_metrics
+            with torch.no_grad():
+                n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
+                                  mode="eval", device=device, epoch_metrics=epoch_metrics,
+                                  use_grad_clipping=use_grad_clipping, summary_writer=summary_writer,
+                                  name="Validation", logger=logger, debug=debug)
+            valid_size = max([valid_size, n])
+            latency.update(valid_metrics.forward_duration[-1], valid_size)
+            eval_duration.update(valid_metrics.duration[-1], valid_size) # This DOES require a weight - it mixes validation
+            #                                                              and test sets
 
-        ## Handle test set
-        dataloader = test_queue
-        epoch_metrics = test_metrics
-        with torch.no_grad():
-            n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
-                              mode="eval", device=device, epoch_metrics=epoch_metrics,
-                              use_grad_clipping=use_grad_clipping, summary_writer=summary_writer, name="Test",
-                              logger=logger, debug=debug)
-        test_size = max([test_size, n])
-        latency.update(test_metrics.forward_duration[-1], test_size)
-        eval_duration.update(test_metrics.duration[-1], test_size)
+            ## Handle test set
+            dataloader = test_queue
+            epoch_metrics = test_metrics
+            with torch.no_grad():
+                n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
+                                  mode="eval", device=device, epoch_metrics=epoch_metrics,
+                                  use_grad_clipping=use_grad_clipping, summary_writer=summary_writer, name="Test",
+                                  logger=logger, debug=debug)
+            test_size = max([test_size, n])
+            latency.update(test_metrics.forward_duration[-1], test_size)
+            eval_duration.update(test_metrics.duration[-1], test_size)
 
         ## Logging
         naslib_logging.log_every_n_seconds(
             logging.DEBUG,
-            f"[Epoch {e + 1}/{train_config.epochs}] Avg. Train Loss: {train_metrics.loss[-1]:.5f}, "
-            f"Avg. Valid Loss: {valid_metrics.loss[-1]}Avg. Test Loss: {test_metrics.loss[-1]}\n"
-            f"Avg. Train Acc: {train_metrics.acc[-1]:.5f}, Avg. Valid Acc: {valid_metrics.acc[-1]}, "
-            f"Avg. Test Acc: {test_metrics.acc[-1]}\n"
+            f"[Epoch {e + 1}/{train_config.epochs}] " +
+            f"Avg. Train Loss: {train_metrics.loss[-1]:.5f}, Avg. Train Acc: {train_metrics.acc[-1]:.5f},\n" +
+            (f"Avg. Valid Loss: {valid_metrics.loss[-1]}, Avg. Valid Acc: {valid_metrics.acc[-1]},\n" if validate else "") +
+            f"Avg. Test Loss: {test_metrics.loss[-1]}\, Avg. Test Acc: {test_metrics.acc[-1]}\n" +
             f"Time Elapsed: {time.time() - start_time}",
             15,
             name=logger.name
@@ -328,10 +330,9 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
         tb_metrics = AttrDict(
             train_loss=train_metrics.loss,
             train_acc=train_metrics.acc,
-            valid_loss=valid_metrics.loss,
-            valid_acc=valid_metrics.acc,
             test_loss=test_metrics.loss,
             test_acc=test_metrics.acc,
+            **(dict(valid_loss=valid_metrics.loss, valid_acc=valid_metrics.acc,) if validate else {})
         )
         # If training diverged, the last epoch was not completed and should be looked at in detail instead.
         num_epochs = e - 1 if diverged else e
@@ -344,7 +345,9 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
 
     # Prepare metrics
     raw_metrics = AttrDict()
-    for k1, metrics in zip(["train", "valid", "test"], [train_metrics, valid_metrics, test_metrics]):
+    record_metrics = [train_metrics, valid_metrics, test_metrics] if validate else [train_metrics, test_metrics]
+    metric_types = ["train", "valid", "test"] if validate else ["train", "test"]
+    for k1, metrics in zip(metric_types, record_metrics):
         for k2, data in metrics.items():
             raw_metrics[(k1, k2)] = data
 
@@ -428,7 +431,10 @@ if __name__ == "__main__":
     data_loaders_start_wctime = time.time()
     data_loaders_start_ptime = time.process_time()
 
-    data_loaders = naslib_utils.get_train_val_loaders(naslib_config, mode='train')
+
+    data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=naslib_config.search.batch_size,
+                                          cutout=naslib_config.search.cutout, split=args.split)
+    validate = "valid" in data_loaders
 
     data_loaders_end_wctime = time.time()
     data_loaders_end_ptime = time.process_time()
@@ -474,7 +480,8 @@ if __name__ == "__main__":
 
         try:
             raw_metrics, job_metrics = train(model=model, data_loaders=data_loaders, train_config=naslib_config.search,
-                                             logger=logger, debug=args.debug, use_grad_clipping=args.use_grad_clipping)
+                                             logger=logger, debug=args.debug, use_grad_clipping=args.use_grad_clipping,
+                                             validate=validate)
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
             job_metrics = {"exception": str(e)}
@@ -495,9 +502,11 @@ if __name__ == "__main__":
             metric_df.index = metric_df.index.set_names(["Epoch"]) + 1
             metric_df.to_pickle(outdir / f"{n_archs + 1}.pkl") # Don't compress yet
 
-            job_metrics["final_train_acc"] = metric_df.loc[metric_df.index.max()][("train", "acc")]
-            job_metrics["final_val_acc"] = metric_df.loc[metric_df.index.max()][("val", "acc")]
-            job_metrics["final_test_acc"] = metric_df.loc[metric_df.index.max()][("test", "acc")]
+            max_idx = metric_df.index.max()
+            job_metrics["final_train_acc"] = metric_df[("train", "acc")][max_idx]
+            if validate:
+                job_metrics["final_val_acc"] = metric_df[("valid", "acc")][max_idx]
+            job_metrics["final_test_acc"] = metric_df[("test", "acc")][max_idx]
 
             del(metric_df) # Release memory
         finally:
