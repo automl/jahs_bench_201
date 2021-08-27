@@ -90,8 +90,8 @@ def _get_common_metrics(extra_metrics: Optional[List[str]] = None) -> AttrDict:
 
 
 def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.optim.Optimizer,
-               scheduler: naslib.tabular_sampling.utils.custom_nasb201_code.CosineAnnealingLR,
-               mode: str, device: str, epoch_metrics: Dict[str, List], debug: bool = False, use_grad_clipping: bool = True,
+               scheduler: CosineAnnealingLR, mode: str, device: str, epoch_metrics: Dict[str, List],
+               debug: bool = False, use_grad_clipping: bool = True,
                summary_writer: torch.utils.tensorboard.SummaryWriter = None, name: Optional[str] = None, logger = None):
 
     # Logging setup
@@ -297,20 +297,20 @@ def train(model, data_loaders, train_config, logger, debug=False, use_grad_clipp
                                   name="Validation", logger=logger, debug=debug)
             valid_size = max([valid_size, n])
             latency.update(valid_metrics.forward_duration[-1], valid_size)
-            eval_duration.update(valid_metrics.duration[-1], valid_size) # This DOES require a weight - it mixes validation
-            #                                                              and test sets
+            eval_duration.update(valid_metrics.duration[-1], valid_size)
+            # Note: eval_duration DOES require a weight - it mixes validation and test sets if validate=True
 
-            ## Handle test set
-            dataloader = test_queue
-            epoch_metrics = test_metrics
-            with torch.no_grad():
-                n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
-                                  mode="eval", device=device, epoch_metrics=epoch_metrics,
-                                  use_grad_clipping=use_grad_clipping, summary_writer=summary_writer, name="Test",
-                                  logger=logger, debug=debug)
-            test_size = max([test_size, n])
-            latency.update(test_metrics.forward_duration[-1], test_size)
-            eval_duration.update(test_metrics.duration[-1], test_size)
+        ## Handle test set
+        dataloader = test_queue
+        epoch_metrics = test_metrics
+        with torch.no_grad():
+            n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
+                              mode="eval", device=device, epoch_metrics=epoch_metrics,
+                              use_grad_clipping=use_grad_clipping, summary_writer=summary_writer, name="Test",
+                              logger=logger, debug=debug)
+        test_size = max([test_size, n])
+        latency.update(test_metrics.forward_duration[-1], test_size)
+        eval_duration.update(test_metrics.duration[-1], test_size)
 
         ## Logging
         naslib_logging.log_every_n_seconds(
