@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import json
+import enum
 import torch
 import numpy as np
 import torchvision.datasets as dset
@@ -26,6 +27,34 @@ Dataset2Class = {
     # "ImageNet16-200": 200,
 }
 
+
+def _init_adam(model, config):
+    lr, weight_decay = config["learning_rate"], config["weight_decay"]
+    optim = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    return optim
+
+def _init_adamw(model, config):
+    lr, weight_decay = config["learning_rate"], config["weight_decay"]
+    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+    return optim
+
+def _init_sgd(model, config):
+    lr, momentum, weight_decay = config["learning_rate"], config["momentum"], config["weight_decay"]
+    optim = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True)
+    return optim
+
+
+@enum.unique
+class optimizers(enum.Enum):
+    def __init__(self, constructor):
+        self.constructor = constructor
+
+    def construct(self, *args, **kwargs):
+        return self.constructor(*args, **kwargs)
+
+    SGD = _init_sgd,
+    Adam = _init_adam,
+    AdamW = _init_adamw,
 
 
 def load_splits(path: Path):
@@ -112,7 +141,7 @@ def get_datasets(name, root, cutout, resize):
                 ([transforms.Resize(resize)] if resize else []) + \
                 [transforms.ToTensor(), transforms.Normalize(mean, std),]
         if cutout > 0:
-            lists += [CUTOUT(cutout)]
+            lists += [Cutout(cutout)]
         train_transform = transforms.Compose(lists)
         test_transform = transforms.Compose(
             ([transforms.Resize(resize)] if resize else []) + [transforms.ToTensor(), transforms.Normalize(mean, std)]
