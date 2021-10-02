@@ -45,9 +45,10 @@ def create_figure(nrows: int, ncols: int, legend_size: int, pos: str = "auto") -
         Tuple[plt.Figure, plt.GridSpec, Tuple[int, slice], dict]:
     """ Creates a Figure and accompanying GridSpec that conforms to the desired geometry, as specified by 'nrows' and
     'ncols'. The position and size of the legend must also be determined in advance since the legend is expected to
-    occupy an axes of its own. If position is "auto", the position of the legend on the figure is determined
+    occupy an axes of its own. If position is "auto" (default), the position of the legend on the figure is determined
     automatically depending on the number of rows and columns in the grid. Otherwise, the values "bottom" or "right"
-    can be specified. """
+    can be specified. This must be set to None if no legend is required, in which case the value of legend_size is
+    ignored. """
 
     if pos == "auto":
         pos = "bottom" if ncols >= nrows else "right"
@@ -71,6 +72,14 @@ def create_figure(nrows: int, ncols: int, legend_size: int, pos: str = "auto") -
 
         legend_kwargs = dict(loc='center', ncol=1, fontsize=legend_fontsize)
         legend_ax_loc = slice(None), -1
+    elif pos == None:
+        # No separate legend axis is required
+        def adjust_gridspec(height, width, height_ratios, width_ratios) -> \
+                Tuple[float, float, Sequence[float], Sequence[float]]:
+            return nrows, ncols, height, width, height_ratios, width_ratios
+
+        legend_kwargs = None
+        legend_ax_loc = None
     else:
         raise RuntimeError("Unrecognized legend position %s" % pos)
 
@@ -140,7 +149,7 @@ def draw_hist_groups(ax: plt.Axes, data: pd.Series, compare_indices: Sequence[st
 
 
 def _mean_std_plot(ax: plt.Axes, data: pd.Series, across: str, xaxis_level: str, color_generator: Iterator,
-                   known_colors: dict, calculate_stats: bool = True):
+                   known_colors: dict, calculate_stats: bool = True, outlines = True):
     """ Plots a Mean-Variance metric data visualization on the given Axes object comparing all indices defined by the
         name 'across' in the Series 'data' within the same plot. Remember that the Series index must contain at
         least 2 levels, one of which has to be 'across' and the other 'xaxis_level'. The remaining level(s) will be
@@ -157,8 +166,8 @@ def _mean_std_plot(ax: plt.Axes, data: pd.Series, across: str, xaxis_level: str,
         mean_data: pd.Series = groups.mean()
         std_data: pd.Series = groups.std()
     else:
-        mean_data = data.loc[:, "mean"]
-        std_data = data.loc[:, "std"]
+        mean_data = data["mean"]
+        std_data = data["std"]
 
     for ctr, label in enumerate(labels):
         subset_means: pd.Series = mean_data.xs(label, level=across).sort_index(axis=0)
@@ -169,6 +178,9 @@ def _mean_std_plot(ax: plt.Axes, data: pd.Series, across: str, xaxis_level: str,
         colour = map_label_to_color(label, known_colors, color_generator)
         ax.plot(xs, means, c=colour, label=label, linewidth=linewidth)
         ax.fill_between(xs, means - std, means + std, alpha=0.2, color=colour)
+        if outlines:
+            ax.plot(xs, means - std, c=colour, alpha=0.6, linewidth=int(linewidth / 2))
+            ax.plot(xs, means + std, c=colour, alpha=0.6, linewidth=int(linewidth / 2))
     if log_y:
         min_val, max_val = np.log10(mean_data.min() + 10 ** -6), np.log10(mean_data.max())
         range = max_val - min_val
@@ -380,4 +392,107 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None, le
     if suptitle:
         fig.suptitle(suptitle, ha='center', va='top', fontsize=label_fontsize + 10)
 
+    return fig
+
+
+# TODO: Finish implementation
+def time_series_stats_plot():
+    fig, gs, legend_ax_loc, legend_kwargs = plotter.create_figure(2, 3, 6, pos="auto")
+    legend = None
+    for col, metric_type in enumerate(metric_type_map.keys()):
+        if metric not in df[metric_type].columns:
+            continue
+        scale_data = metric_enable_scaling[metric]
+        series_data: pd.Series = df[metric_type][metric]
+        smoothed_series = series_data.groupby(lambda x: (x[0], (((x[1] - 1) // xaxis_smoothing_factor) + 1) *
+                                                         xaxis_smoothing_factor)).agg("mean")
+        smoothed_series.index = pd.MultiIndex.from_tuples(smoothed_series.index, names=["config_idx", xaxis_level])
+        base = smoothed_series.where(smoothed_series.index.get_level_values(xaxis_level) == xaxis_smoothing_factor).ffill()
+        if scale_data:
+            scaled_series = smoothed_series / base
+            epoch_stats = scaled_series.groupby(xaxis_level).describe()
+        else:
+            epoch_stats = series_data.groupby(xaxis_level).describe()
+
+        ax: plt.Axes = fig.add_subplot(gs[0, col])
+        ax.set_title(metric_type_map[metric_type], fontsize=plotter.label_fontsize + 5)
+
+        plotter._mean_std_plot(ax=ax, data=epoch_stats.assign(id="Mean").set_index("id", append=True), across="id",
+                               xaxis_level=xaxis_level, color_generator=iter(plt.cm.Set2.colors), known_colors={}, calculate_stats=False)
+        ax.set_xlabel(xaxis_level, fontsize=plotter.label_fontsize)
+        if col == 0:
+            h, l = ax.get_legend_handles_labels()
+            legend = h, l
+
+        ax: plt.Axes = fig.add_subplot(gs[1, col])
+        colors = iter(plt.cm.Set2.colors)
+        ax.plot(epoch_stats.index, epoch_stats["min"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="Min")
+        ax.plot(epoch_stats.index, epoch_stats["25%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="q=0.25")
+        ax.plot(epoch_stats.index, epoch_stats["50%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="q=0.50")
+        ax.plot(epoch_stats.index, epoch_stats["75%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="q=0.75")
+        ax.plot(epoch_stats.index, epoch_stats["max"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="Max")
+        # ax.set_yscale("log")
+        ax.set_xlabel(xaxis_level, fontsize=plotter.label_fontsize)
+        ax.grid(True, which='both', linewidth=0.5, c='k')
+        if col == 0:
+            ax.set_ylabel(f"{metric_map[metric]}{' (Scaled) ' if scale_data else ''}", fontsize=plotter.label_fontsize)
+            h, l = ax.get_legend_handles_labels()
+            legend = legend[0] + h, legend[1] + l
+        # ax.legend(fontsize=plotter.legend_fontsize)
+        # ax.set_ylim(0.5, 1.5)
+
+    legend_ax: plt.Axes = fig.add_subplot(gs[legend_ax_loc])
+    handles, labels = legend
+    _ = legend_ax.legend(handles, labels, **legend_kwargs)
+    legend_ax.set_axis_off()
+
+    fig.suptitle(f"Scaling analysis - {metric_map[metric]} across {df.index.unique(xaxis_level).size} Epochs for "
+                 f"{df.index.unique('config_idx').size} Configurations.", fontsize=plotter.label_fontsize + 10)
+    fig.align_labels(fig.axes)
+
+
+# TODO: Polish and standardize
+def plot_spearman_rank_correlation(rho: pd.DataFrame, pval: pd.DataFrame,
+                                   exclude_row_vals: Union[None, Sequence[Any]]=None,
+                                   exclude_col_vals: Union[None, Sequence[Any]]=None):
+    if exclude_row_vals:
+        rho = rho.loc[rho.index.difference(exclude_row_vals)]
+        pval = pval.loc[rho.index.difference(exclude_row_vals)]
+
+    if exclude_col_vals:
+        rho = rho[rho.index.difference(exclude_col_vals)]
+        pval = pval[rho.index.difference(exclude_col_vals)]
+
+    rows = rho.index
+    columns = rho.columns
+
+    # Ensure there are no mix-ups in order
+    rho = rho.loc[rows, columns]
+    pval = pval.loc[rows, columns]
+
+    nrows = len(rows)
+    ncols = len(columns)
+
+    fig, axs = plt.subplots(2, 1, figsize=(16, 9))
+    fig: plt.Figure
+    for ax, (data, bounds) in zip(axs, [(rho.values, (-1., 1.)), (pval.values, (0., 1.))]):
+        ax: plt.Axes
+        mesh = ax.pcolormesh(data, vmin=bounds[0], vmax=bounds[1])
+        fig.colorbar(mesh, ax=ax)
+        ax.set_xticks(np.arange(ncols) + 0.5)
+        ax.set_xticklabels(columns, rotation=45 if columns.dtype in [pd.StringDtype, pd.CategoricalDtype] else 0)
+        ax.set_yticks(np.arange(nrows) + 0.5)
+        ax.set_yticklabels(rows)
+        assert np.isnan(data).any().any() == False, "Found NaNs"
+
+        colorbar_midpoint = sum(bounds) / 2
+
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1]):
+                ax.text(j + 0.5, i + 0.5, "%.4f" % data[i, j],
+                        fontdict={"ha": "center", "va": "center", "fontsize": 12,
+                                  "color": "black" if data[i, j] >= colorbar_midpoint else "white"})
+
+    axs[0].set_title("Spearman's Rank Correlation Comparison.")
+    axs[1].set_title("p-Values of the respective correlations.")
     return fig
