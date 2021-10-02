@@ -436,8 +436,10 @@ if __name__ == "__main__":
 
     search_space = NASB201HPOSearchSpace()
     opts = args.opts
-    if opts is None: # The default NB201 settings
+    if not opts: # The default NB201 settings
         opts = [
+            "N", "5",
+            "W", "3",
             "optimizer", "SGD",
             "learning_rate", "0.5",
             "momentum", 0.9,
@@ -478,7 +480,7 @@ if __name__ == "__main__":
     start_idx = int(args.taskid) * archs_per_task
     end_idx = start_idx + archs_per_task
 
-    for n_archs, (config_idx, model_str) in enumerate(portfolio[start_idx, end_idx]):
+    for n_archs, (config_idx, model_str) in enumerate(portfolio[start_idx:end_idx]):
         model: NASB201HPOSearchSpace = search_space.clone()
         conversions.convert_nb201_str_to_naslib_obj(model_str, model)
         assert conversions.convert_naslib_to_str(model) == model_str, \
