@@ -11,7 +11,8 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-from naslib.search_spaces import NASB201HPOSearchSpace, NasBench201SearchSpace
+from naslib.search_spaces import NASB201HPOSearchSpace
+from naslib.search_spaces.nasb201_hpo import conversions
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
@@ -19,61 +20,73 @@ from naslib.tabular_sampling.utils import utils
 from naslib.tabular_sampling.utils.custom_nasb201_code import CosineAnnealingLR
 
 # Randomly generated entropy source, to remain fixed across experiments.
-seed = 79029434164686768057103648623012072794
+# seed = 79029434164686768057103648623012072794
+fixed_global_seeds = [
+    777, 888, 999, # Original NB201 seeds
+    4272282386, 3433654957,  293989228 # Randomly generated seeds
+]
 
 def argument_parser():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser("Given a portfolio of architectures from the original NASBench-201 benchmark, use "
+                                     "the current training pipeline and NASLib implementation to train the "
+                                     "architectures for verification.")
     parser.add_argument("--basedir", type=Path, default=Path().cwd(),
                         help="Path to the base directory where all the tasks' output will be stored. Task-specific "
                              "sub-directories will be created here if needed.")
-    parser.add_argument("--nb201_data", type=Path, default=Path().cwd() / "nasb201_full_pandas.pkl.gz",
-                        help="Path to a pickled pandas DataFrame, containing the relevant data from NASBench-201 as a "
-                             "pandas DataFrame.")
     parser.add_argument("--taskid", type=int,
-                        help="An offset from 0 for this task within the current node's allocation of tasks.")
+                        help="An offset from 0 for this task within the current node's allocation of tasks. For this "
+                             "script, this corresponds to the 0-index offset for which architecture from the portfolio "
+                             "is to be trained.")
+    parser.add_argument("--num_archs", type=int, default=1,
+                        help="Number of architectures from the portfolio to be trained. When this is set to more than "
+                             "1, the portfolio is read as a 2D array in row-major form with num_archs serving as the "
+                             "length of each row and all architectures in the row corresponding to the index taskid "
+                             "are evaluated by this script.")
     parser.add_argument("--epochs", type=int, default=25,
                         help="Number of epochs that each sampled architecture should be trained for. Default: 25")
     parser.add_argument("--resize", type=int, default=0,
                         help="An integer value (8, 16, 32, ...) to determine the scaling of input images. Default: 0 - "
                              "don't use resize.")
-    parser.add_argument("--global-seed", type=int, default=None,
-                        help="A value for a global seed to be used for all global NumPy and PyTorch random operations. "
-                             "This is different from the fixed seed used for reproducible search space sampling. If not "
-                             "specified, a random source of entropy is used instead.")
+    parser.add_argument("--global-seed", type=int, default=0,
+                        help=f"A value for a global seed to be used for all global NumPy and PyTorch random "
+                             f"operations. This is different from the fixed seed used for reproducible search space "
+                             f"sampling. This is only the 0-index offset for which of the {len(fixed_global_seeds)} "
+                             f"known, fixed global seeds is to be used. Default: 0")
     parser.add_argument("--standalone-mode", action="store_true",
                         help="Switch that enables working in a single-task local setup as opposed to the default "
                              "multi-node cluster setup.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
-    parser.add_argument("--optimizer", type=str, choices=["Adam", "AdamW", "SGD"], default="SGD",
-                        help="Which optimizer to use for training the models.")
     parser.add_argument("--use_grad_clipping", action="store_true", help="Enable gradient clipping for SGD.")
     parser.add_argument("--split", action="store_true", help="Split training dataset into training and validation "
                                                              "sets.")
-    parser.add_argument("--use_original_space", action="store_true", help="Use NASLib's original NASBench-201 search "
-                                                                          "space implementation.")
+    parser.add_argument("--batch_size", type=int, default=256, help="Number of samples per mini-batch.")
+    parser.add_argument("--warmup_epochs", type=int, default=0.,
+                        help="When set to a positive integer, this many epochs are used to warm-start the training. "
+                             "WARNING: Overrides the original NB201 settings, only use it for testing purposes.")
+    parser.add_argument('--portfolio', type=Path, help='The full path to the portfolio JSON file.')
+    parser.add_argument("opts", nargs=argparse.REMAINDER, default=None,
+                        help="A variable number of optional keyword arguments provided as 2-tuples, each potentially "
+                             "corresponding to a hyper-parameter in the search space. If a match is found, that "
+                             "hyper-parameter is excluded from the search space and fixed to the given value instead. "
+                             "If not specified, for this script, the search space is automatically fixed to the "
+                             "parameters used by the original NASBench-201 experiments.")
     return parser
 
 
-def init_adam(model, config):
-    lr, weight_decay = config["learning_rate"], config["weight_decay"]
-    optim = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    return optim
+def construct_model_optimizer(model: NASB201HPOSearchSpace, train_config: AttrDict):
+    optim_type = utils.optimizers.__members__[model.config["optimizer"]]
+    optimizer = optim_type.construct(model, model.config)
+    if optim_type == utils.optimizers.SGD:
+        # Potentially stabilize SGD with Warm-up
+        scheduler = CosineAnnealingLR(optimizer, warmup_epochs=train_config.warmup_epochs, epochs=train_config.epochs,
+                                      T_max=train_config.epochs, eta_min=0.)
+    else:
+        # No need to use warmup epochs for Adam and AdamW
+        scheduler = CosineAnnealingLR(optimizer, warmup_epochs=0, epochs=train_config.epochs,
+                                      T_max=train_config.epochs, eta_min=0.)
+    loss_fn = torch.nn.CrossEntropyLoss()
 
-def init_adamw(model, config):
-    lr, weight_decay = config["learning_rate"], config["weight_decay"]
-    optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    return optim
-
-def init_sgd(model, config):
-    lr, momentum, weight_decay = config["learning_rate"], config["momentum"], config["weight_decay"]
-    optim = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True)
-    return optim
-
-optimizer_constructor = {
-    "Adam": init_adam,
-    "AdamW": init_adamw,
-    "SGD": init_sgd,
-}
+    return optimizer, scheduler, loss_fn
 
 
 def _get_common_metrics(extra_metrics: Optional[List[str]] = None) -> AttrDict:
@@ -106,7 +119,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
         raise ValueError(f"Unrecognized mode '{mode}'.")
 
     ## Setup control flags
-    transfer_devices = device != "cpu"
+    transfer_devices = device.type != "cpu"
     train_model = mode == "train"
 
     ## Setup metrics
@@ -211,13 +224,13 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
     n = 0 # Number of individual data points processed
     for key, value in metrics.items():
-        epoch_metrics[key].append(value.avg)
+        epoch_metrics[key].append(value.avg) # Metrics are recorded as averages per data-point for each epoch
         n = max([n, value.cnt]) # value.cnt is expected to be constant
 
     return n, False
 
 
-def train(model, model_config, data_loaders, train_config, logger, debug=False, use_grad_clipping=True, validate=False):
+def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, logger, validate=False):
     """
     Train the given model using the given data loaders and training configuration. Returns a dict containing various metrics.
 
@@ -232,37 +245,34 @@ def train(model, model_config, data_loaders, train_config, logger, debug=False, 
         An attribute dict containing various configuration parameters for the model training.
     """
 
+    debug = train_config.debug
     start_time, latency = time.time(), AverageMeter()
     train_duration, eval_duration = AverageMeter(), AverageMeter() # Useful for internal diagnostics only
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    transfer_devices = device != "cpu"
-    logger.debug(f"Training model with config: {model_config} on device {device}")
+    logger.debug(f"Training model with config: {model.config} on device {device}")
     model.parse()
-    model = model.to(device)
+    transfer_devices = device.type != "cpu"
+    if transfer_devices:
+        model = model.to(device)
 
-    # errors_dict, metrics = get_metrics(model)
     train_queue = data_loaders["train"]
     test_queue = data_loaders["test"]
     if validate:
         valid_queue = data_loaders["valid"]
 
-    extra_metrics = ["data_transfer_duration"] if device != "cpu" else []
+    extra_metrics = ["data_transfer_duration"] if transfer_devices else []
     train_metrics = AttrDict(
         {k: [] for k in _get_common_metrics(extra_metrics=extra_metrics + ["backprop_duration"]).keys()})
     valid_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
     test_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
 
-    optim = optimizer_constructor[model_config["optimizer"]](model, model_config)
-    logger.debug(f"Initialized optimizer: {optim.__class__.__name__}")
-
-    scheduler = CosineAnnealingLR(optim, warmup_epochs=0, epochs=train_config.epochs, T_max=train_config.epochs,
-                                  eta_min=0.)
-    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer, scheduler, loss_fn = construct_model_optimizer(model, train_config)
+    logger.debug(f"Initialized optimizer: {optimizer.__class__.__name__}")
 
     if debug:
         summary_writer = SummaryWriter(model_tensorboard_dir)
-        inp_size = naslib_config.search.batch_size, 3, naslib_config.resize or 32, naslib_config.resize or 32
+        inp_size = train_config.batch_size, 3, train_config.resize or 32, train_config.resize or 32
         model.eval()
         with torch.no_grad():
             summary_writer.add_graph(model, torch.tensor(np.random.random(inp_size).astype(np.float32)).to(device))
@@ -275,14 +285,13 @@ def train(model, model_config, data_loaders, train_config, logger, debug=False, 
         ## Handle training set
         dataloader = train_queue
         epoch_metrics = train_metrics
-        n, diverged = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim,
+        n, diverged = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optimizer,
                                  scheduler=scheduler, mode="train", device=device, epoch_metrics=epoch_metrics,
-                                 use_grad_clipping=use_grad_clipping, summary_writer=summary_writer,
+                                 use_grad_clipping=train_config.use_grad_clipping, summary_writer=summary_writer,
                                  name="Training", logger=logger, debug=debug)
         if diverged:
             break
         train_size = max([train_size, n])
-        # latency.update(train_metrics.forward_duration[-1], train_size)
         train_duration.update(train_metrics.duration[-1]) # We don't need to assign a weight to this value
 
         if validate:
@@ -290,9 +299,9 @@ def train(model, model_config, data_loaders, train_config, logger, debug=False, 
             dataloader = valid_queue
             epoch_metrics = valid_metrics
             with torch.no_grad():
-                n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
-                                  mode="eval", device=device, epoch_metrics=epoch_metrics,
-                                  use_grad_clipping=use_grad_clipping, summary_writer=summary_writer,
+                n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optimizer,
+                                  scheduler=scheduler, mode="eval", device=device, epoch_metrics=epoch_metrics,
+                                  use_grad_clipping=train_config.use_grad_clipping, summary_writer=summary_writer,
                                   name="Validation", logger=logger, debug=debug)
             valid_size = max([valid_size, n])
             latency.update(valid_metrics.forward_duration[-1], valid_size)
@@ -303,10 +312,10 @@ def train(model, model_config, data_loaders, train_config, logger, debug=False, 
         dataloader = test_queue
         epoch_metrics = test_metrics
         with torch.no_grad():
-            n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optim, scheduler=scheduler,
-                              mode="eval", device=device, epoch_metrics=epoch_metrics,
-                              use_grad_clipping=use_grad_clipping, summary_writer=summary_writer, name="Test",
-                              logger=logger, debug=debug)
+            n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optimizer,
+                              scheduler=scheduler, mode="eval", device=device, epoch_metrics=epoch_metrics,
+                              use_grad_clipping=train_config.use_grad_clipping, summary_writer=summary_writer,
+                              name="Test", logger=logger, debug=debug)
         test_size = max([test_size, n])
         latency.update(test_metrics.forward_duration[-1], test_size)
         eval_duration.update(test_metrics.duration[-1], test_size)
@@ -369,6 +378,34 @@ def sample_architecture(config, candidates, rng):
     return config
 
 
+def adapt_search_space(original_space: NASB201HPOSearchSpace, opts):
+    if opts is None:
+        return
+    config_space = original_space.config_space
+    known_params = {p.name: p for p in config_space.get_hyperparameters()}
+
+    def param_interpretor(param, value):
+        known_config_space_value_types = {
+            ConfigSpace.UniformIntegerHyperparameter: int,
+            ConfigSpace.UniformFloatHyperparameter: float,
+            ConfigSpace.CategoricalHyperparameter: lambda x: type(param.choices[0])(x),
+            ConfigSpace.OrdinalHyperparameter: lambda x: type(param.sequence[0])(x),
+        }
+        return known_config_space_value_types[type(param)](value)
+
+    i = iter(opts)
+    for arg, val in zip(i, i):
+        if arg in known_params:
+            old_param = known_params[arg]
+            known_params[arg] = ConfigSpace.Constant(arg, param_interpretor(old_param, val),
+                                                     meta=dict(old_param.meta, **dict(constant_overwrite=True)))
+    new_config_space = ConfigSpace.ConfigurationSpace(f"{config_space.name}_custom")
+    new_config_space.add_hyperparameters(known_params.values())
+
+    original_space.config_space = new_config_space
+    logger.info(f"Modified original search space's hyperparameter config space using constant values. "
+                 f"New config space: \n{original_space.config_space}")
+
 if __name__ == "__main__":
 
     init_time = time.time()
@@ -376,62 +413,49 @@ if __name__ == "__main__":
     ## Parse CLI
     args = argument_parser().parse_args()
     basedir = args.basedir
-    taskid = args.taskid
-    epochs = args.epochs
-    resize = args.resize
-    global_seed = args.global_seed
-    optimizer_choice = args.optimizer
+    global_seed = fixed_global_seeds[args.global_seed]
 
-    # Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
-    rng = np.random.RandomState(np.random.Philox(seed=seed, counter=taskid))
-
-    # The top100 configs from the original NASBench-201 dataset, sorted from worst to best as per evaluation accuracy
-    nb201_data: pd.DataFrame = pd.read_pickle(args.nb201_data)
-    candidates = nb201_data.index.tolist()
-
-    taskdir: Path = basedir / str(taskid)
+    taskdir: Path = basedir / str(args.taskid)
     outdir: Path = taskdir / "benchmark_data"
     outdir.mkdir(exist_ok=True, parents=True)
 
-    if global_seed is None:
-        global_seed = int(np.random.default_rng().integers(0, 2 ** 32 - 1))
+    naslib_utils.set_seed(global_seed)
 
-    # Read args and config, setup logger
-    if torch.cuda.is_available():
-        naslib_args = [f"--gpu={torch.cuda.device_count() - 1}"]
-    else:
-        naslib_args = []
+    logger = naslib_logging.setup_logger(str(taskdir.resolve() / "log.log"))
+    with open(taskdir / "training_config.json", "w") as fp:
+        json.dump(vars(args), fp, default=str)
 
-    naslib_args += [
-        # "config_file": "%s/defaults/nas_sampling.yaml" % (naslib_utils.get_project_root()),
-        f"--seed={str(global_seed)}",
-        "out_dir", str(taskdir),
-        "search.epochs", str(epochs),
-        "search.train_portion", str(0.5),
-        "search.batch_size", str(256),
-    ]
-    naslib_args = naslib_utils.default_argument_parser().parse_args(naslib_args)
-
-    naslib_config = naslib_utils.get_config_from_args(naslib_args, config_type="nas")
-    naslib_utils.set_seed(naslib_config.seed)
-
-    logger = naslib_logging.setup_logger(naslib_config.save + "/log.log")
     if args.debug:
-        tensorboard_logdir = Path(naslib_config.save) / "tensorboard_logs"
+        tensorboard_logdir = taskdir / "tensorboard_logs"
         model_tensorboard_dir = None  # To be initialized later
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.INFO)
-    naslib_utils.log_args(naslib_config)
 
-    search_space = NasBench201SearchSpace() if args.use_original_space else NASB201HPOSearchSpace()
+    naslib_utils.log_args(vars(args))
+
+    search_space = NASB201HPOSearchSpace()
+    opts = args.opts
+    if opts is None: # The default NB201 settings
+        opts = [
+            "optimizer", "SGD",
+            "learning_rate", "0.5",
+            "momentum", 0.9,
+            "weight_decay", "0.0005"
+        ]
+
+    adapt_search_space(search_space, opts)
+
+    with open(args.portfolio) as fp:
+        portfolio = json.load(fp)
+
+    assert isinstance(portfolio, list), "Portfolio does not conform to the expected format."
 
     data_loaders_start_wctime = time.time()
     data_loaders_start_ptime = time.process_time()
 
-
-    data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=naslib_config.search.batch_size,
-                                               cutout=naslib_config.search.cutout, split=args.split, resize=resize)
+    data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
+                                               split=args.split, resize=args.resize)
     validate = "valid" in data_loaders
 
     data_loaders_end_wctime = time.time()
@@ -446,35 +470,20 @@ if __name__ == "__main__":
             init_duration=init_duration,
             wc_duration=data_loaders_wc_duration,
             proc_duration=data_loaders_proc_duration,
-            resize=resize,
-            epochs=epochs
+            resize=args.resize,
+            epochs=args.epochs
         ), fp, indent=4)
 
-    n_archs = 0
+    archs_per_task = int(args.num_archs)
+    start_idx = int(args.taskid) * archs_per_task
+    end_idx = start_idx + archs_per_task
 
-    config = {
-        "N": 5,
-        "W": 3,
-        "optimizer": optimizer_choice,
-        "learning_rate": 0.1,
-        "weight_decay": 5e-4,
-    }
-
-    if optimizer_choice == "SGD":
-        config["momentum"] = 0.9
-
-    while True:
+    for n_archs, (config_idx, model_str) in enumerate(portfolio[start_idx, end_idx]):
         model: NASB201HPOSearchSpace = search_space.clone()
-        sample_architecture(config, candidates, rng)
-        if args.use_original_space:
-            model.set_op_indices([config[f"Op{i}"] for i in range(1, 7)])
-            model.compile()
-            model_config = config
-        else:
-            model.config = ConfigSpace.Configuration(model.config_space, config)
-            model.clear()
-            model._construct_graph()
-            model_config = model.config.get_dictionary()
+        conversions.convert_nb201_str_to_naslib_obj(model_str, model)
+        assert conversions.convert_naslib_to_str(model) == model_str, \
+            "Could not verify integrity of conversion from NB201 architecture string to NASLib model."
+        model_config = model.config.get_dictionary()
         naslib_logging.log_every_n_seconds(
             logging.INFO,
             f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}",
@@ -483,12 +492,11 @@ if __name__ == "__main__":
         )
 
         if args.debug:
-            model_tensorboard_dir = tensorboard_logdir / str(n_archs)
+            model_tensorboard_dir = tensorboard_logdir / str(config_idx)
 
         try:
-            raw_metrics, job_metrics = train(model=model, model_config=model_config, data_loaders=data_loaders,
-                                             train_config=naslib_config.search, logger=logger, debug=args.debug,
-                                             use_grad_clipping=args.use_grad_clipping, validate=validate)
+            raw_metrics, job_metrics = train(model=model, data_loaders=data_loaders, train_config=AttrDict(vars(args)),
+                                             logger=logger, validate=validate)
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
             job_metrics = {"exception": str(e)}
@@ -507,7 +515,7 @@ if __name__ == "__main__":
 
             metric_df.assign(**job_metrics)
             metric_df.index = metric_df.index.set_names(["Epoch"]) + 1
-            metric_df.to_pickle(outdir / f"{n_archs + 1}.pkl") # Don't compress yet
+            metric_df.to_pickle(outdir / f"{config_idx}.pkl") # Don't compress yet
 
             max_idx = metric_df.index.max()
             job_metrics["final_train_acc"] = metric_df[("train", "acc")][max_idx]
@@ -518,6 +526,5 @@ if __name__ == "__main__":
             del(metric_df) # Release memory
         finally:
             job_metrics["config"] = model_config
-            n_archs += 1
-            with open(outdir / f"{n_archs}.json", "w") as fp:
+            with open(outdir / f"{config_idx}.json", "w") as fp:
                 json.dump(job_metrics, fp, indent=4)
