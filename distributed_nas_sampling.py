@@ -50,6 +50,10 @@ def argument_parser():
     #                          "Settings this to 0. disables cutout (default). [DISABLED]")
     parser.add_argument("--warmup_epochs", type=int, default=0.,
                         help="When set to a positive integer, this many epochs are used to warm-start the training.")
+    parser.add_argument("opts", nargs=argparse.REMAINDER, default=None,
+                        help="A variable number of optional keyword arguments provided as 2-tuples, each potentially "
+                             "corresponding to a hyper-parameter in the search space. If a match is found, that "
+                             "hyper-parameter is excluded from the search space and fixed to the given value instead.")
     return parser
 
 
@@ -99,7 +103,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
         raise ValueError(f"Unrecognized mode '{mode}'.")
 
     ## Setup control flags
-    transfer_devices = device != "cpu"
+    transfer_devices = device.type != "cpu"
     train_model = mode == "train"
 
     ## Setup metrics
@@ -204,7 +208,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
     n = 0 # Number of individual data points processed
     for key, value in metrics.items():
-        epoch_metrics[key].append(value.avg)
+        epoch_metrics[key].append(value.avg) # Metrics are recorded as averages per data-point for each epoch
         n = max([n, value.cnt]) # value.cnt is expected to be constant
 
     return n, False
@@ -232,7 +236,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.debug(f"Training model with config: {model.config} on device {device}")
     model.parse()
-    transfer_devices = device != "cpu"
+    transfer_devices = device.type != "cpu"
     if transfer_devices:
         model = model.to(device)
 
@@ -358,6 +362,34 @@ def sample_architecture(config, candidates, rng):
     return config
 
 
+def adapt_search_space(original_space: NASB201HPOSearchSpace, opts):
+    if opts is None:
+        return
+    config_space = original_space.config_space
+    known_params = {p.name: p for p in config_space.get_hyperparameters()}
+
+    def param_interpretor(param, value):
+        known_config_space_value_types = {
+            ConfigSpace.UniformIntegerHyperparameter: int,
+            ConfigSpace.UniformFloatHyperparameter: float,
+            ConfigSpace.CategoricalHyperparameter: lambda x: type(param.choices[0])(x),
+            ConfigSpace.OrdinalHyperparameter: lambda x: type(param.sequence[0])(x),
+        }
+        return known_config_space_value_types[type(param)](value)
+
+    i = iter(opts)
+    for arg, val in zip(i, i):
+        if arg in known_params:
+            old_param = known_params[arg]
+            known_params[arg] = ConfigSpace.Constant(arg, param_interpretor(old_param, val),
+                                                     meta=dict(old_param.meta, **dict(constant_overwrite=True)))
+    new_config_space = ConfigSpace.ConfigurationSpace(f"{config_space.name}_custom")
+    new_config_space.add_hyperparameters(known_params.values())
+
+    original_space.config_space = new_config_space
+    logger.info(f"Modified original search space's hyperparameter config space using constant values. "
+                 f"New config space: \n{original_space.config_space}")
+
 if __name__ == "__main__":
 
     init_time = time.time()
@@ -393,6 +425,8 @@ if __name__ == "__main__":
     naslib_utils.log_args(vars(args))
 
     search_space = NASB201HPOSearchSpace()
+    adapt_search_space(search_space, args.opts)
+
     data_loaders_start_wctime = time.time()
     data_loaders_start_ptime = time.process_time()
 
