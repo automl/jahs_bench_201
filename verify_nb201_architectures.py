@@ -124,16 +124,10 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
     ## Setup metrics
     extra_metrics = []
-    # metrics = _get_common_metrics()
-
     if transfer_devices:
         extra_metrics.append("data_transfer_duration")
-        # metrics["data_transfer_time"] = AverageMeter()
-
     if train_model:
         extra_metrics.append("backprop_duration")
-        # metrics["backprop_duration"] = AverageMeter()
-
     metrics = _get_common_metrics(extra_metrics=extra_metrics)
 
     if debug:
@@ -282,6 +276,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
     train_size = valid_size = test_size = 0
 
     for e in range(train_config.epochs):
+        scheduler.update(e, 0.0)
         ## Handle training set
         dataloader = train_queue
         epoch_metrics = train_metrics
