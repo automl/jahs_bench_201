@@ -30,11 +30,14 @@ def argument_parser():
                              "sub-directories will be created here if needed.")
     parser.add_argument("--taskid", type=int,
                         help="An offset from 0 for this task within the current node's allocation of tasks.")
+    parser.add_argument("--taskid_base", type=int, default=0,
+                        help="An additional offset from 0 to manually shift all task IDs further, useful when sampling "
+                             "is intended to continue adding more data beyond a previous job's data.")
     parser.add_argument("--epochs", type=int, default=25,
                         help="Number of epochs that each sampled architecture should be trained for. Default: 25")
-    parser.add_argument("--resize", type=int, default=0,
-                        help="An integer value (8, 16, 32, ...) to determine the scaling of input images. Default: 0 - "
-                             "don't use resize.")
+    # parser.add_argument("--resize", type=int, default=0,
+    #                     help="An integer value (8, 16, 32, ...) to determine the scaling of input images. Default: 0 - "
+    #                          "don't use resize.")
     parser.add_argument("--global_seed", type=int, default=None,
                         help="A value for a global seed to be used for all global NumPy and PyTorch random operations. "
                              "This is different from the fixed seed used for reproducible search space sampling. If not "
@@ -44,8 +47,8 @@ def argument_parser():
                              "multi-node cluster setup.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
     parser.add_argument("--use_grad_clipping", action="store_true", help="Enable gradient clipping for SGD.")
-    parser.add_argument("--split", action="store_true", help="Split training dataset into training and validation "
-                                                             "sets.")
+    parser.add_argument("--split", action="store_true",
+                        help="Split training dataset into training and validation sets.")
     parser.add_argument("--batch_size", type=int, default=256, help="Number of samples per mini-batch.")
     # parser.add_argument("--cutout", type=float, default=0.,
     #                     help="Cutout probability for applying stochastic cutout to training data during pre-processing. "
@@ -59,6 +62,16 @@ def argument_parser():
     parser.add_argument("--nsamples", type=int, default=100,
                         help="Only used when --generate_sampling_profile is given. Sets the number of samples to be "
                              "drawn from the search space.")
+    parser.add_argument("--disable_checkpointing", action="store_true",
+                        help="When given, checkpointing of model training is disabled. By default, model training is "
+                             "checkpointed either every X seconds or Y epochs, whichever occurs first. Check "
+                             "--checkpoint_interval_seconds and --checkpoint_interval_epochs.")
+    parser.add_argument("--checkpoint_interval_seconds", type=int, default=1800,
+                        help="The time interval between subsequent model training checkpoints, in seconds. Default: "
+                             "30 minutes i.e. 1800 seconds.")
+    parser.add_argument("--checkpoint_interval_epochs", type=int, default=20,
+                        help="The interval between subsequent model training checkpoints, in epochs. Default: "
+                             "20 epochs.")
     parser.add_argument("opts", nargs=argparse.REMAINDER, default=None,
                         help="A variable number of optional keyword arguments provided as 2-tuples, each potentially "
                              "corresponding to a hyper-parameter in the search space. If a match is found, that "
@@ -263,9 +276,22 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
     optimizer, scheduler, loss_fn = construct_model_optimizer(model, train_config)
     logger.debug(f"Initialized optimizer: {optimizer.__class__.__name__}")
 
+    ## Initialize checkpoint function, load existing checkpoints
+    old_chkpt_runtime = 0.
+    old_chkpt_epochs = -1
+    if not train_config.disable_checkpointing:
+        checkpoint = utils.Checkpointer(
+            model=model, optimizer=optimizer, scheduler=scheduler,
+            interval_seconds=train_config.checkpoint_interval_seconds,
+            interval_epochs=train_config.checkpoint_interval_epochs, outdir=train_config.outdir,
+            taskid=train_config.taskid, model_idx=train_config.model_idx, logger=logger, map_location=device)
+        old_chkpt_runtime = checkpoint.runtime
+        old_chkpt_epochs = checkpoint.elapsed_epochs
+        # TODO: Handle case when checkpoint.elapsed_epochs = train_config.epochs - 1 i.e. training had finished
+
     if debug:
         summary_writer = SummaryWriter(model_tensorboard_dir)
-        inp_size = train_config.batch_size, 3, train_config.resize or 32, train_config.resize or 32
+        inp_size = train_config.batch_size, 3, model.config["resolution"], model.config["resolution"] or 32
         model.eval()
         with torch.no_grad():
             summary_writer.add_graph(model, torch.tensor(np.random.random(inp_size).astype(np.float32)).to(device))
@@ -274,7 +300,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
 
     train_size = valid_size = test_size = 0
 
-    for e in range(train_config.epochs):
+    for e in range(old_chkpt_epochs + 1, train_config.epochs):
         ## Handle training set
         dataloader = train_queue
         epoch_metrics = train_metrics
@@ -319,11 +345,19 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
             f"[Epoch {e + 1}/{train_config.epochs}] " +
             f"Avg. Train Loss: {train_metrics.loss[-1]:.5f}, Avg. Train Acc: {train_metrics.acc[-1]:.5f},\n" +
             (f"Avg. Valid Loss: {valid_metrics.loss[-1]}, Avg. Valid Acc: {valid_metrics.acc[-1]},\n" if validate else "") +
-            f"Avg. Test Loss: {test_metrics.loss[-1]}\, Avg. Test Acc: {test_metrics.acc[-1]}\n" +
+            f"Avg. Test Loss: {test_metrics.loss[-1]}, Avg. Test Acc: {test_metrics.acc[-1]}\n" +
             f"Time Elapsed: {time.time() - start_time}",
             15,
             name=logger.name
         )
+
+        ## Checkpointing
+        if not train_config.disable_checkpointing:
+            checkpoint(
+                # Add a one-time offset to the runtime in case an old checkpoint was loaded
+                runtime=time.time() - start_time + old_chkpt_runtime,
+                elapsed_epochs=e,
+                force_checkpoint= e == train_config.epochs - 1)
 
     end_time = time.time()
 
@@ -359,7 +393,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
     job_metrics.latency = latency.avg
     job_metrics.avg_train_duration = train_duration.avg
     job_metrics.avg_eval_duration = eval_duration.avg
-    job_metrics.runtime = end_time - start_time
+    job_metrics.runtime = end_time - start_time + old_chkpt_runtime
 
     return raw_metrics, job_metrics
 
@@ -399,6 +433,7 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, opts):
     logger.info(f"Modified original search space's hyperparameter config space using constant values. "
                  f"New config space: \n{original_space.config_space}")
 
+
 if __name__ == "__main__":
 
     init_time = time.time()
@@ -409,9 +444,10 @@ if __name__ == "__main__":
     global_seed = args.global_seed
 
     # Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
-    rng = np.random.RandomState(np.random.Philox(seed=seed, counter=args.taskid))
+    real_taskid = args.taskid_base + args.taskid
+    rng = np.random.RandomState(np.random.Philox(seed=seed, counter=real_taskid))
 
-    taskdir: Path = basedir / str(args.taskid)
+    taskdir: Path = basedir / str(real_taskid)
     outdir: Path = taskdir / "benchmark_data"
     outdir.mkdir(exist_ok=True, parents=True)
 
@@ -511,8 +547,11 @@ if __name__ == "__main__":
             data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
                                                        split=args.split, resize=model_config.get("resolution", 0))
             validate = "valid" in data_loaders
-            raw_metrics, job_metrics = train(model=model, data_loaders=data_loaders, train_config=AttrDict(vars(args)),
-                                             logger=logger, validate=validate)
+            raw_metrics, job_metrics = train(
+                model=model, data_loaders=data_loaders,
+                train_config=AttrDict(vars(args) | {"taskid": real_taskid, "model_idx": n_archs, "outdir": outdir}),
+                logger=logger, validate=validate
+            )
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
             job_metrics = {"exception": str(e)}

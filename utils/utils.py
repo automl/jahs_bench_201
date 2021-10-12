@@ -1,8 +1,9 @@
 import logging
+import time
 from pathlib import Path
 import json
 import enum
-from typing import Dict, Union, Any, Optional
+from typing import Dict, Union, Any, Optional, Tuple
 import ConfigSpace
 import torch
 import numpy as np
@@ -10,25 +11,9 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 from copy import deepcopy
 from naslib.utils import utils as naslib_utils, logging as naslib_logging
-from naslib.utils.utils import AttrDict
-from naslib.utils.utils import Cutout
-
-"""
-Adapted in large part from the original NASBench-201 code repository at 
-https://github.com/D-X-Y/AutoDL-Projects/tree/bc4c4692589e8ee7d6bab02603e69f8e5bd05edc
-"""
-
-Dataset2Class = {
-    "cifar10": 10,
-    "cifar100": 100,
-    # "imagenet-1k-s": 1000,
-    # "imagenet-1k": 1000,
-    # "ImageNet16": 1000,
-    # "ImageNet16-150": 150,
-    # "ImageNet16-120": 120,
-    # "ImageNet16-200": 200,
-}
-
+from naslib.utils.utils import AttrDict, Cutout
+from naslib.search_spaces.core.graph import Graph
+from .custom_nasb201_code import CosineAnnealingLR
 
 def _query_config(config: Union[ConfigSpace.Configuration, Dict], param: str, default: Optional[Any] = None) -> Any:
     """ Query the given 'config' object for the parameter named 'param'. If the parameter is not found, returns default
@@ -69,6 +54,106 @@ class optimizers(enum.Enum):
     SGD = _init_sgd,
     Adam = _init_adam,
     AdamW = _init_adamw,
+
+
+class Checkpointer(object):
+    """ Essentially a stateful-function factory for checkpointing model training at discrete intervals of time and
+    epochs. Initialized with references to all necessary objects and data for checkpointing and called by specifying
+    the elapsed runtime and number of epochs. However, it can also be used to load existing checkpoints. """
+
+    def __init__(self, model: Graph, optimizer: torch.optim.Optimizer, scheduler: CosineAnnealingLR,
+                 interval_seconds: int, interval_epochs: int, outdir: Path, taskid: int, model_idx: int, logger=None,
+                 map_location=None):
+        self.model = model
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.interval_seconds = interval_seconds
+        self.interval_epochs = interval_epochs
+        self.outdir = outdir
+        self.taskid = taskid
+        self.model_idx = model_idx
+        self.runtime = 0.
+        self.elapsed_epochs = -1
+        self.logger = logger
+        assert outdir.exists() and outdir.is_dir(), \
+            f"The Checkpointer does not assume responsibility for creating the relevant directory tree for the " \
+            f"output file. This must be done before passing in the directory. Specified directory does not exist or " \
+            f"is not a directory: {outdir}"
+        naslib_logging.log_first_n(
+            logging.DEBUG,
+            f"Successfully initialized checkpointer for taskid {taskid}, model index {model_idx}.",
+            3,
+            name=logger.name
+        )
+        self._load_latest(map_location)
+
+
+    @property
+    def output_file_basename(self):
+        return f"{self.taskid}_{self.model_idx}"
+
+
+    def __call__(self, runtime: float, elapsed_epochs: int, force_checkpoint: bool = False):
+        if (runtime - self.runtime) >= self.interval_seconds \
+            or (elapsed_epochs - self.elapsed_epochs) >= self.interval_epochs or force_checkpoint:
+            output_file = self.outdir / f"{self.output_file_basename}_{runtime}.pt"
+            torch.save(
+                {
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "scheduler_state_dict": self.scheduler.state_dict(),
+                    "epochs": elapsed_epochs,
+                },
+                output_file
+            )
+            self.runtime = runtime
+            self.elapsed_epochs = elapsed_epochs
+            self.logger.debug(f"Checkpointed model training at f{str(output_file)}")
+
+    def _load_latest(self, map_location: Optional[Any] = None):
+        """ Attempts to load a previously saved checkpoint in order to resume model training. If a checkpoint is
+        successfully loaded, the model, optimizer and scheduler state dictionaries are appropriately loaded and the
+        relevant values of runtime and elapsed_epochs are updated, else, the state dictionaries and other object
+        attributes are left untouched. """
+
+        def extract_runtime(f: Path) -> float:
+            return float(f.stem.split("_")[2])
+
+        latest = max(
+            self.outdir.rglob(f"{self.output_file_basename}_*.pt"),
+            key=lambda f: extract_runtime(f),
+            default=None
+        )
+
+        if latest is None:
+            self.logger.info(f"No valid checkpoints for taskid {self.taskid}, model index {self.model_idx} found.")
+            return
+
+        state_dicts = torch.load(latest, map_location=map_location)
+        self.model.load_state_dict(state_dicts["model_state_dict"])
+        self.optimizer.load_state_dict(state_dicts["optimizer_state_dict"])
+        self.scheduler.load_state_dict(state_dicts["scheduler_state_dict"])
+        self.elapsed_epochs = state_dicts["epochs"]
+        self.runtime = extract_runtime(latest)
+        self.logger.info(f"Loaded existing checkpoint from {str(latest)}")
+
+
+
+"""
+Adapted in large part from the original NASBench-201 code repository at 
+https://github.com/D-X-Y/AutoDL-Projects/tree/bc4c4692589e8ee7d6bab02603e69f8e5bd05edc
+"""
+
+Dataset2Class = {
+    "cifar10": 10,
+    "cifar100": 100,
+    # "imagenet-1k-s": 1000,
+    # "imagenet-1k": 1000,
+    # "ImageNet16": 1000,
+    # "ImageNet16-150": 150,
+    # "ImageNet16-120": 120,
+    # "ImageNet16-200": 200,
+}
 
 
 def load_splits(path: Path):
