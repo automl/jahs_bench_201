@@ -5,6 +5,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional, Iterable, Callable, Dict, List
+from itertools import repeat
 
 import ConfigSpace
 import pandas as pd
@@ -34,7 +35,7 @@ def argument_parser():
     parser.add_argument("--resize", type=int, default=0,
                         help="An integer value (8, 16, 32, ...) to determine the scaling of input images. Default: 0 - "
                              "don't use resize.")
-    parser.add_argument("--global-seed", type=int, default=None,
+    parser.add_argument("--global_seed", type=int, default=None,
                         help="A value for a global seed to be used for all global NumPy and PyTorch random operations. "
                              "This is different from the fixed seed used for reproducible search space sampling. If not "
                              "specified, a random source of entropy is used instead.")
@@ -415,9 +416,15 @@ if __name__ == "__main__":
     outdir.mkdir(exist_ok=True, parents=True)
 
     if global_seed is None:
-        global_seed = int(np.random.default_rng().integers(0, 2 ** 32 - 1))
+        def seeds():
+            while True:
+                yield rng.randint(0, 2 ** 32 - 1)
 
-    naslib_utils.set_seed(global_seed)
+        global_seed = seeds()
+    else:
+        global_seed = repeat(global_seed)
+
+    # naslib_utils.set_seed(global_seed)
 
     logger = naslib_logging.setup_logger(str(taskdir.resolve() / "log.log"))
     with open(taskdir / "training_config.json", "w") as fp:
@@ -476,6 +483,8 @@ if __name__ == "__main__":
         model: NASB201HPOSearchSpace = search_space.clone()
         model.sample_random_architecture(rng=rng)
         model_config = model.config.get_dictionary()
+        n_archs += 1
+
         naslib_logging.log_every_n_seconds(
             logging.INFO,
             f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}",
@@ -487,8 +496,7 @@ if __name__ == "__main__":
             model_tensorboard_dir = tensorboard_logdir / str(n_archs)
 
         if args.generate_sampling_profile:
-            n_archs += 1
-            sampled_configs.append(model_config)
+            sampled_configs.append({"config": model_config, "global_seed": next(global_seed)})
             time.sleep(1)
 
             if n_archs >= args.nsamples:
@@ -498,8 +506,8 @@ if __name__ == "__main__":
                 continue
 
         try:
-            n_archs += 1
-
+            curr_global_seed = next(global_seed)
+            naslib_utils.set_seed(curr_global_seed)
             data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
                                                        split=args.split, resize=model_config.get("resolution", 0))
             validate = "valid" in data_loaders
@@ -534,5 +542,6 @@ if __name__ == "__main__":
             del(metric_df) # Release memory
         finally:
             job_metrics["config"] = model_config
+            job_metrics["global_seed"] = curr_global_seed
             with open(outdir / f"{n_archs}.json", "w") as fp:
                 json.dump(job_metrics, fp, indent=4)
