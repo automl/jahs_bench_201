@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 import json
 import enum
+from typing import Dict, Union, Any, Optional
+import ConfigSpace
 import torch
 import numpy as np
 import torchvision.datasets as dset
@@ -28,18 +30,30 @@ Dataset2Class = {
 }
 
 
-def _init_adam(model, config):
-    lr, weight_decay = config["learning_rate"], config["weight_decay"]
+def _query_config(config: Union[ConfigSpace.Configuration, Dict], param: str, default: Optional[Any] = None) -> Any:
+    """ Query the given 'config' object for the parameter named 'param'. If the parameter is not found, returns default
+    if given else None. This is necessary entirely because, as of the writing of this code, the 'default' argument of
+     ConfigSpace.Configuration.get(), ConfigSpace v. 0.4.19, does not work as intended. """
+
+    config = config.get_dictionary() if isinstance(config, ConfigSpace.Configuration) else config
+    return config.get(param, default)
+
+
+def _init_adam(model, config: Union[ConfigSpace.Configuration, Dict]):
+    lr, weight_decay = _query_config(config, "learning_rate"), _query_config(config, "weight_decay")
     optim = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     return optim
 
-def _init_adamw(model, config):
-    lr, weight_decay = config["learning_rate"], config["weight_decay"]
+
+def _init_adamw(model, config: Union[ConfigSpace.Configuration, Dict]):
+    lr, weight_decay = _query_config(config, "learning_rate"), _query_config(config, "weight_decay")
     optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     return optim
 
-def _init_sgd(model, config):
-    lr, momentum, weight_decay = config["learning_rate"], config["momentum"], config["weight_decay"]
+
+def _init_sgd(model, config: Union[ConfigSpace.Configuration, Dict]):
+    lr, momentum, weight_decay = _query_config(config, "learning_rate"), _query_config(config, "momentum", 0.9), \
+                                 _query_config(config, "weight_decay")
     optim = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True)
     return optim
 
@@ -118,6 +132,7 @@ def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True
         ValLoaders["train"] = train_loader
 
     return ValLoaders, train_transform, test_transform
+
 
 def get_datasets(name, root, cutout, resize):
 
@@ -252,7 +267,7 @@ def get_datasets(name, root, cutout, resize):
     #     test_data = ImageNet16(root, False, test_transform, 200)
     #     assert len(train_data) == 254775 and len(test_data) == 10000
     else:
-        raise TypeError("Unknow dataset : {:}".format(name))
+        raise TypeError("Unknown dataset : {:}".format(name))
 
     class_num = Dataset2Class[name]
     return train_data, test_data, xshape, class_num

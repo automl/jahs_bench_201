@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import sys
 import time
 from pathlib import Path
 from typing import Optional, Iterable, Callable, Dict, List
@@ -50,6 +51,13 @@ def argument_parser():
     #                          "Settings this to 0. disables cutout (default). [DISABLED]")
     parser.add_argument("--warmup_epochs", type=int, default=0.,
                         help="When set to a positive integer, this many epochs are used to warm-start the training.")
+    parser.add_argument("--generate_sampling_profile", action="store_true",
+                        help="When given, does not actually train the sampled models. Instead, only samples are "
+                             "repeatedly drawn at 1s intervals and saved in order to build a profile of expected "
+                             "samples.")
+    parser.add_argument("--nsamples", type=int, default=100,
+                        help="Only used when --generate_sampling_profile is given. Sets the number of samples to be "
+                             "drawn from the search space.")
     parser.add_argument("opts", nargs=argparse.REMAINDER, default=None,
                         help="A variable number of optional keyword arguments provided as 2-tuples, each potentially "
                              "corresponding to a hyper-parameter in the search space. If a match is found, that "
@@ -427,30 +435,42 @@ if __name__ == "__main__":
     search_space = NASB201HPOSearchSpace()
     adapt_search_space(search_space, args.opts)
 
-    data_loaders_start_wctime = time.time()
-    data_loaders_start_ptime = time.process_time()
-
-    data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
-                                               split=args.split, resize=args.resize)
-    validate = "valid" in data_loaders
-
-    data_loaders_end_wctime = time.time()
-    data_loaders_end_ptime = time.process_time()
-
-    init_duration = data_loaders_start_wctime - init_time
-    data_loaders_wc_duration = data_loaders_end_wctime - data_loaders_start_wctime
-    data_loaders_proc_duration = data_loaders_end_ptime - data_loaders_start_ptime
-
-    with open(outdir / "meta.json", "w") as fp:
-        json.dump(dict(
-            init_duration=init_duration,
-            wc_duration=data_loaders_wc_duration,
-            proc_duration=data_loaders_proc_duration,
-            resize=args.resize,
-            epochs=args.epochs
-        ), fp, indent=4)
+    # TODO: Verify if removing this is fine
+    # data_loaders_start_wctime = time.time()
+    # data_loaders_start_ptime = time.process_time()
+    #
+    # data_loaders_end_wctime = time.time()
+    # data_loaders_end_ptime = time.process_time()
+    #
+    # init_duration = data_loaders_start_wctime - init_time
+    # data_loaders_wc_duration = data_loaders_end_wctime - data_loaders_start_wctime
+    # data_loaders_proc_duration = data_loaders_end_ptime - data_loaders_start_ptime
+    #
+    # with open(outdir / "meta.json", "w") as fp:
+    #     json.dump(dict(
+    #         init_duration=init_duration,
+    #         wc_duration=data_loaders_wc_duration,
+    #         proc_duration=data_loaders_proc_duration,
+    #         resize=args.resize,
+    #         epochs=args.epochs
+    #     ), fp, indent=4)
 
     n_archs = 0
+
+    if args.generate_sampling_profile:
+        from signal import signal, SIGINT
+
+        sampled_configs = []
+
+        def write_sampling_profile():
+            with open(outdir / "sample_profile.json", "w") as fp:
+                json.dump(sampled_configs, fp)
+
+        def handle_sigint_while_sampling(signal_received, frame):
+            write_sampling_profile()
+            sys.exit(0)
+
+        signal(SIGINT, handle_sigint_while_sampling)
 
     while True:
         model: NASB201HPOSearchSpace = search_space.clone()
@@ -466,8 +486,23 @@ if __name__ == "__main__":
         if args.debug:
             model_tensorboard_dir = tensorboard_logdir / str(n_archs)
 
+        if args.generate_sampling_profile:
+            n_archs += 1
+            sampled_configs.append(model_config)
+            time.sleep(1)
+
+            if n_archs >= args.nsamples:
+                write_sampling_profile()
+                break
+            else:
+                continue
+
         try:
             n_archs += 1
+
+            data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
+                                                       split=args.split, resize=model_config.get("resolution", 0))
+            validate = "valid" in data_loaders
             raw_metrics, job_metrics = train(model=model, data_loaders=data_loaders, train_config=AttrDict(vars(args)),
                                              logger=logger, validate=validate)
         except Exception as e:
