@@ -455,16 +455,14 @@ def time_series_stats_plot():
 def plot_spearman_rank_correlation(rho: pd.DataFrame, pval: pd.DataFrame,
                                    exclude_row_vals: Union[None, Sequence[Any]]=None,
                                    exclude_col_vals: Union[None, Sequence[Any]]=None):
-    if exclude_row_vals:
-        rho = rho.loc[rho.index.difference(exclude_row_vals)]
-        pval = pval.loc[rho.index.difference(exclude_row_vals)]
-
-    if exclude_col_vals:
-        rho = rho[rho.index.difference(exclude_col_vals)]
-        pval = pval[rho.index.difference(exclude_col_vals)]
-
     rows = rho.index
     columns = rho.columns
+
+    if exclude_row_vals is not None:
+        rows = rows.difference(exclude_row_vals)
+
+    if exclude_col_vals is not None:
+        columns = columns.difference(exclude_col_vals)
 
     # Ensure there are no mix-ups in order
     rho = rho.loc[rows, columns]
