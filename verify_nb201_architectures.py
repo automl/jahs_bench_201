@@ -47,7 +47,7 @@ def argument_parser():
     parser.add_argument("--resize", type=int, default=0,
                         help="An integer value (8, 16, 32, ...) to determine the scaling of input images. Default: 0 - "
                              "don't use resize.")
-    parser.add_argument("--global-seed", type=int, default=0,
+    parser.add_argument("--global_seed", type=int, default=0,
                         help=f"A value for a global seed to be used for all global NumPy and PyTorch random "
                              f"operations. This is different from the fixed seed used for reproducible search space "
                              f"sampling. This is only the 0-index offset for which of the {len(fixed_global_seeds)} "
@@ -167,7 +167,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
             backprop_start_time = time.time()
             loss.backward()
             if use_grad_clipping:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0, norm_type=2)
             optimizer.step()
             end_time = time.time()
             metrics.backprop_duration.update(end_time - backprop_start_time, metric_weight)
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     basedir = args.basedir
     global_seed = fixed_global_seeds[args.global_seed]
 
-    taskdir: Path = basedir / str(args.taskid)
+    taskdir: Path = basedir / str(args.taskid) / str(global_seed)
     outdir: Path = taskdir / "benchmark_data"
     outdir.mkdir(exist_ok=True, parents=True)
 
