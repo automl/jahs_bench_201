@@ -328,11 +328,13 @@ class MetricLogger(object):
 
     @classmethod
     def _handle_task_metric_df(cls, df: pd.DataFrame) -> dict:
-        metric_dict = AttrDict({
-            "model_idx": df["model_idx"].values.reshape(-1).tolist(),
-            "model_config": list(df["model_config"].transpose().to_dict().values()),
-            "global_seed": df["global_seed"].values.reshape(-1).tolist(),
-        })
+        # Handle model configs specially since it's the only column index that uses a MultiIndex and needs to be
+        # converted to a list of dicts format.
+        model_configs = list(df["model_config"].transpose().to_dict().values())
+        # The following is necessary to undo the automatic conversion of nested dicts to MultiIndex columns.
+        other_cols = df.columns.unique(0).difference(["model_config"])
+        metric_dict = cls._df_to_nested_dict(df[other_cols].droplevel(1, axis=1))
+        metric_dict["model_config"] = model_configs
 
         return metric_dict
 

@@ -41,6 +41,7 @@ from naslib.search_spaces import NASB201HPOSearchSpace
 from naslib.tabular_sampling.utils import utils
 from naslib.tabular_sampling.utils.custom_nasb201_code import CosineAnnealingLR
 from naslib.utils.utils import AverageMeter, AttrDict
+from naslib.tabular_sampling.utils.count_flops import get_model_flops
 
 # Randomly generated entropy source, to remain fixed across experiments.
 seed = 79029434164686768057103648623012072794
@@ -241,7 +242,8 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
 
 def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, dir_tree: utils.DirectoryTree,
-          logger: logging.Logger, validate=False):
+          logger: logging.Logger, validate=False, transfer_devices: bool = False,
+          device: [torch.DeviceObjType, str] = "cpu"):
     """
     Train the given model using the given data loaders and training configuration. Returns a dict containing
     various metrics.
@@ -260,16 +262,11 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
     debug = train_config.debug
     start_time = time.time()
     latency = AverageMeter()
+
+    # Initialization calls to psutil
     _ = psutil.cpu_percent()
     _ = psutil.virtual_memory()
     _ = psutil.swap_memory()
-
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    logger.debug(f"Training model with config: {model.config} on device {device}")
-    model.parse()
-    transfer_devices = device.type != "cpu"
-    if transfer_devices:
-        model = model.to(device)
 
     train_queue = data_loaders["train"]
     test_queue = data_loaders["test"]
@@ -476,7 +473,9 @@ if __name__ == "__main__":
     task_metrics = AttrDict({
         "model_idx": [],
         "model_config": [],
-        "global_seed": []
+        "global_seed": [],
+        "size_MB": [],
+        "FLOPS": [],
     })
     task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
                                             set_type=utils.MetricLogger.MetricSet.task, logger=logger)
@@ -514,6 +513,15 @@ if __name__ == "__main__":
     for model_idx, (model, model_config, curr_global_seed) in enumerate(sampler(), start=1):
         logger.info(f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}")
 
+        ## Model initialization
+        model.parse()
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        logger.debug(f"Training model {model_idx} on device {str(device)}")
+        transfer_devices = device.type != "cpu"
+        if transfer_devices:
+            model = model.to(device)
+
+        ## Handle task-level metrics
         if model_idx <= n_known_samples:
             # This particular model has already been sampled once. Verify config and seed.
             assert task_metrics.global_seed[model_idx - 1] == curr_global_seed, \
@@ -527,6 +535,13 @@ if __name__ == "__main__":
             task_metrics.model_idx.append(model_idx)
             task_metrics.model_config.append(model_config)
             task_metrics.global_seed.append(curr_global_seed)
+            task_metrics.size_MB.append(naslib_utils.count_parameters_in_MB(model))
+            task_metrics.FLOPS.append(get_model_flops(
+                model=model,
+                input_shape=(train_config.batch_size, 3, model_config["resolution"], model_config["resolution"]),
+                transfer_devices=transfer_devices,
+                device=device
+            ))
             task_metric_logger.log(elapsed_runtime=model_idx, force=True)
 
         if args.debug:
@@ -540,6 +555,7 @@ if __name__ == "__main__":
             else:
                 continue
 
+        ## Actual model training and evaluation
         try:
             naslib_utils.set_seed(curr_global_seed)
             data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
@@ -549,7 +565,8 @@ if __name__ == "__main__":
             train(
                 model=model, data_loaders=data_loaders,
                 train_config=train_config, dir_tree=dir_tree,
-                logger=logger, validate=validate
+                logger=logger, validate=validate,
+                transfer_devices=transfer_devices, device=device
             )
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
@@ -568,6 +585,8 @@ if __name__ == "__main__":
 
             del model  # Release memory
             dir_tree.model_idx = None  # Ensure that previously written data cannot be overwritten
+
+    ## Clean up memory before terminating task
     del task_metrics
     del task_metric_logger
     del dir_tree
