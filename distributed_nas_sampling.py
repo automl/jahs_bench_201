@@ -1,27 +1,50 @@
+"""
+Main script for sampling from a specified joint NAS+HPO search space, training and evaluating the sampled
+configurations and recording the metrics when run on a server. Intended for use with a SLURM script such that one job
+launches multiple parallel python processes (tasks), each running any specified number of logical CPUs. Each task then
+evaluates a number of configurations (models). The data is generated and stored using the following directory structure
+template:
+<base_dir>    <-- Possibly a job-level directory
+|    |--> <task_idx>/
+|    |    |--> metrics/
+|    |    |    |--> <task-level metrics, if any>
+|    |    |--> models /
+|    |    |--> <model_idx>/
+|    |    |    |--> metrics/
+|    |    |    |    |--> <model-level metrics, if any>
+|    |    |    |--> checkpoints/
+|    |    |    |    |--> <model checkpoints, if any>
+
+The PRNGs are setup in such a way that, for the hard-coded, fixed seed value, the same task, as identified by an
+integer task_id, will generate the same sequence of samples from any given search space as well as the same sequence of
+global seeds for numpy/torch/random.
+
+"""
+
 import argparse
 import json
 import logging
-import sys
 import time
+from itertools import repeat
 from pathlib import Path
 from typing import Optional, Iterable, Callable, Dict, List
-from itertools import repeat
 
 import ConfigSpace
-import pandas as pd
+import numpy as np
+import psutil
 import torch
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
 
-from naslib.search_spaces import NASB201HPOSearchSpace
-import naslib.utils.utils as naslib_utils
-from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
+import naslib.utils.utils as naslib_utils
+from naslib.search_spaces import NASB201HPOSearchSpace
 from naslib.tabular_sampling.utils import utils
 from naslib.tabular_sampling.utils.custom_nasb201_code import CosineAnnealingLR
+from naslib.utils.utils import AverageMeter, AttrDict
 
 # Randomly generated entropy source, to remain fixed across experiments.
 seed = 79029434164686768057103648623012072794
+
 
 def argument_parser():
     parser = argparse.ArgumentParser()
@@ -95,23 +118,10 @@ def construct_model_optimizer(model: NASB201HPOSearchSpace, train_config: AttrDi
     return optimizer, scheduler, loss_fn
 
 
-def _get_common_metrics(extra_metrics: Optional[List[str]] = None) -> AttrDict:
-    metrics = AttrDict(
-        duration = AverageMeter(),
-        forward_duration = AverageMeter(),
-        data_load_duration = AverageMeter(),
-        loss = AverageMeter(),
-        acc = AverageMeter(),
-        **({m: AverageMeter() for m in extra_metrics} if extra_metrics else {})
-    )
-    return metrics
-
-
 def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.optim.Optimizer,
                scheduler: CosineAnnealingLR, mode: str, device: str, epoch_metrics: Dict[str, List],
                debug: bool = False, use_grad_clipping: bool = True,
-               summary_writer: torch.utils.tensorboard.SummaryWriter = None, name: Optional[str] = None, logger = None):
-
+               summary_writer: torch.utils.tensorboard.SummaryWriter = None, name: Optional[str] = None, logger=None):
     # Logging setup
     name_str = f"Dataset: {name} " if name else ""
     if not logger:
@@ -140,7 +150,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
         extra_metrics.append("backprop_duration")
         # metrics["backprop_duration"] = AverageMeter()
 
-    metrics = _get_common_metrics(extra_metrics=extra_metrics)
+    metrics = utils.get_common_metrics(extra_metrics=extra_metrics)
 
     if debug:
         losses = []
@@ -206,7 +216,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
             grad_norms.append(torch.norm(
                 torch.stack([torch.norm(p.grad.detach(), 2).to(device) for p in model.parameters()]),
                 2).detach().cpu())
-            lrs.append(scheduler.get_lr()[0]) # Assume that there is only one parameter group
+            lrs.append(scheduler.get_lr()[0])  # Assume that there is only one parameter group
 
         if torch.isnan(loss):
             logger.debug(f"Encountered NAN loss. Predictions: {logits}\n\nExpected labels: {labels}\n\nLoss: {loss}")
@@ -228,15 +238,16 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
         data_load_start_time = time.time()
 
-    n = 0 # Number of individual data points processed
+    n = 0  # Number of individual data points processed
     for key, value in metrics.items():
-        epoch_metrics[key].append(value.avg) # Metrics are recorded as averages per data-point for each epoch
-        n = max([n, value.cnt]) # value.cnt is expected to be constant
+        epoch_metrics[key].append(value.avg)  # Metrics are recorded as averages per data-point for each epoch
+        n = max([n, value.cnt])  # value.cnt is expected to be constant
 
     return n, False
 
 
-def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, logger, validate=False):
+def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, dir_tree: utils.DirectoryTree,
+          logger: logging.Logger, validate=False):
     """
     Train the given model using the given data loaders and training configuration. Returns a dict containing various metrics.
 
@@ -252,8 +263,11 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
     """
 
     debug = train_config.debug
-    start_time, latency = time.time(), AverageMeter()
-    train_duration, eval_duration = AverageMeter(), AverageMeter() # Useful for internal diagnostics only
+    start_time = time.time()
+    latency = AverageMeter()
+    _ = psutil.cpu_percent()
+    _ = psutil.virtual_memory()
+    _ = psutil.swap_memory()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logger.debug(f"Training model with config: {model.config} on device {device}")
@@ -268,26 +282,34 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
         valid_queue = data_loaders["valid"]
 
     extra_metrics = ["data_transfer_duration"] if transfer_devices else []
-    train_metrics = AttrDict(
-        {k: [] for k in _get_common_metrics(extra_metrics=extra_metrics + ["backprop_duration"]).keys()})
-    valid_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
-    test_metrics = AttrDict({k: [] for k in _get_common_metrics(extra_metrics=extra_metrics).keys()})
+    model_metrics = AttrDict({
+        "train": utils.get_common_metrics(extra_metrics=extra_metrics + ["backprop_duration"], template=list),
+        "valid": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
+        "test": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
+        "diagnostic": AttrDict({k: list() for k in ["latency", "runtime", "cpu_percent", "memory_ram", "memory_swap"]}),
+    })
 
     optimizer, scheduler, loss_fn = construct_model_optimizer(model, train_config)
     logger.debug(f"Initialized optimizer: {optimizer.__class__.__name__}")
 
-    ## Initialize checkpoint function, load existing checkpoints
+    ## Initialize checkpoint function and metric logger, load existing checkpoints and metrics
     old_chkpt_runtime = 0.
     old_chkpt_epochs = -1
     if not train_config.disable_checkpointing:
         checkpoint = utils.Checkpointer(
             model=model, optimizer=optimizer, scheduler=scheduler,
             interval_seconds=train_config.checkpoint_interval_seconds,
-            interval_epochs=train_config.checkpoint_interval_epochs, outdir=train_config.outdir,
-            taskid=train_config.taskid, model_idx=train_config.model_idx, logger=logger, map_location=device)
+            interval_epochs=train_config.checkpoint_interval_epochs, dir_tree=dir_tree,
+            logger=logger, map_location=device)
         old_chkpt_runtime = checkpoint.runtime
         old_chkpt_epochs = checkpoint.elapsed_epochs
         # TODO: Handle case when checkpoint.elapsed_epochs = train_config.epochs - 1 i.e. training had finished
+
+    model_metrics_logger = utils.MetricLogger(
+        dir_tree=dir_tree, metrics=model_metrics,
+        log_interval=None if train_config.disable_checkpointing else train_config.checkpoint_interval_seconds,
+        set_type=utils.MetricLogger.MetricSet.model, logger=logger
+    )
 
     if debug:
         summary_writer = SummaryWriter(model_tensorboard_dir)
@@ -300,10 +322,12 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
 
     train_size = valid_size = test_size = 0
 
+    diverged = False
+
     for e in range(old_chkpt_epochs + 1, train_config.epochs):
         ## Handle training set
         dataloader = train_queue
-        epoch_metrics = train_metrics
+        epoch_metrics = model_metrics.train
         n, diverged = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optimizer,
                                  scheduler=scheduler, mode="train", device=device, epoch_metrics=epoch_metrics,
                                  use_grad_clipping=train_config.use_grad_clipping, summary_writer=summary_writer,
@@ -311,66 +335,74 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
         if diverged:
             break
         train_size = max([train_size, n])
-        train_duration.update(train_metrics.duration[-1]) # We don't need to assign a weight to this value
 
+        ## Handle validation set, if needed
         if validate:
-            ## Handle validation set
             dataloader = valid_queue
-            epoch_metrics = valid_metrics
+            epoch_metrics = model_metrics.valid
             with torch.no_grad():
                 n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optimizer,
                                   scheduler=scheduler, mode="eval", device=device, epoch_metrics=epoch_metrics,
                                   use_grad_clipping=train_config.use_grad_clipping, summary_writer=summary_writer,
                                   name="Validation", logger=logger, debug=debug)
             valid_size = max([valid_size, n])
-            latency.update(valid_metrics.forward_duration[-1], valid_size)
-            eval_duration.update(valid_metrics.duration[-1], valid_size)
+            latency.update(model_metrics.valid.forward_duration[-1], valid_size)
             # Note: eval_duration DOES require a weight - it mixes validation and test sets if validate=True
 
         ## Handle test set
         dataloader = test_queue
-        epoch_metrics = test_metrics
+        epoch_metrics = model_metrics.test
         with torch.no_grad():
             n, _ = _main_proc(model=model, dataloader=dataloader, loss_fn=loss_fn, optimizer=optimizer,
                               scheduler=scheduler, mode="eval", device=device, epoch_metrics=epoch_metrics,
                               use_grad_clipping=train_config.use_grad_clipping, summary_writer=summary_writer,
                               name="Test", logger=logger, debug=debug)
         test_size = max([test_size, n])
-        latency.update(test_metrics.forward_duration[-1], test_size)
-        eval_duration.update(test_metrics.duration[-1], test_size)
+        latency.update(model_metrics.test.forward_duration[-1], test_size)
 
         ## Logging
         naslib_logging.log_every_n_seconds(
             logging.DEBUG,
             f"[Epoch {e + 1}/{train_config.epochs}] " +
-            f"Avg. Train Loss: {train_metrics.loss[-1]:.5f}, Avg. Train Acc: {train_metrics.acc[-1]:.5f},\n" +
-            (f"Avg. Valid Loss: {valid_metrics.loss[-1]}, Avg. Valid Acc: {valid_metrics.acc[-1]},\n" if validate else "") +
-            f"Avg. Test Loss: {test_metrics.loss[-1]}, Avg. Test Acc: {test_metrics.acc[-1]}\n" +
+            f"Avg. Train Loss: {model_metrics.train.loss[-1]:.5f}, " +
+            f"Avg. Train Acc: {model_metrics.train.acc[-1]:.5f},\n" +
+            (f"Avg. Valid Loss: {model_metrics.valid.loss[-1]:.5f}, " +
+             f"Avg. Valid Acc: {model_metrics.valid.acc[-1]:.5f},\n" if validate else "") +
+            f"Avg. Test Loss: {model_metrics.test.loss[-1]:.5f}, " +
+            f"Avg. Test Acc: {model_metrics.test.acc[-1]:.5f}\n" +
             f"Time Elapsed: {time.time() - start_time}",
             15,
             name=logger.name
         )
 
         ## Checkpointing
+        # Add a one-time offset to the runtime in case an old checkpoint was loaded
+        effective_elapsed_runtime = time.time() - start_time + old_chkpt_runtime
+        last_epoch = e == train_config.epochs - 1
         if not train_config.disable_checkpointing:
             checkpoint(
-                # Add a one-time offset to the runtime in case an old checkpoint was loaded
-                runtime=time.time() - start_time + old_chkpt_runtime,
+                runtime=effective_elapsed_runtime,
                 elapsed_epochs=e,
-                force_checkpoint= e == train_config.epochs - 1)
+                force_checkpoint=last_epoch
+            )
 
-    end_time = time.time()
+        model_metrics.diagnostic.latency.append(latency.avg)
+        model_metrics.diagnostic.runtime.append(effective_elapsed_runtime)
+        model_metrics.diagnostic.cpu_percent.append(psutil.cpu_percent())
+        model_metrics.diagnostic.memory_ram.append(psutil.virtual_memory().available)
+        model_metrics.diagnostic.memory_swap.append(psutil.swap_memory().free)
+        model_metrics_logger.log(elapsed_runtime=effective_elapsed_runtime, force=last_epoch)
 
     if debug:
         tb_metrics = AttrDict(
-            train_loss=train_metrics.loss,
-            train_acc=train_metrics.acc,
-            test_loss=test_metrics.loss,
-            test_acc=test_metrics.acc,
-            **(dict(valid_loss=valid_metrics.loss, valid_acc=valid_metrics.acc,) if validate else {})
+            train_loss=model_metrics.train.loss,
+            train_acc=model_metrics.train.acc,
+            test_loss=model_metrics.test.loss,
+            test_acc=model_metrics.test.acc,
+            **(dict(valid_loss=model_metrics.valid.loss, valid_acc=model_metrics.valid.acc, ) if validate else {})
         )
         # If training diverged, the last epoch was not completed and should be looked at in detail instead.
-        num_epochs = e - 1 if diverged else e
+        num_epochs = train_config.epochs if not diverged else e - 1
         if num_epochs >= 0:
             for i in range(num_epochs):
                 summary_writer.add_scalars("metrics", {k: v[i] for k, v in tb_metrics.items()})
@@ -378,24 +410,14 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, lo
         summary_writer.flush()
         summary_writer.close()
 
-    # Prepare metrics
-    raw_metrics = AttrDict()
-    record_metrics = [train_metrics, valid_metrics, test_metrics] if validate else [train_metrics, test_metrics]
-    metric_types = ["train", "valid", "test"] if validate else ["train", "test"]
-    for k1, metrics in zip(metric_types, record_metrics):
-        for k2, data in metrics.items():
-            raw_metrics[(k1, k2)] = data
-
     if diverged:
         raise RuntimeError(f"Model training has diverged after {e} epochs.")
 
-    job_metrics = AttrDict()
-    job_metrics.latency = latency.avg
-    job_metrics.avg_train_duration = train_duration.avg
-    job_metrics.avg_eval_duration = eval_duration.avg
-    job_metrics.runtime = end_time - start_time + old_chkpt_runtime
+    if not train_config.disable_checkpointing:
+        del (checkpoint)
+    del (model_metrics_logger)
 
-    return raw_metrics, job_metrics
+    return model_metrics
 
 
 def sample_architecture(config, candidates, rng):
@@ -431,12 +453,10 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, opts):
 
     original_space.config_space = new_config_space
     logger.info(f"Modified original search space's hyperparameter config space using constant values. "
-                 f"New config space: \n{original_space.config_space}")
+                f"New config space: \n{original_space.config_space}")
 
 
 if __name__ == "__main__":
-
-    init_time = time.time()
 
     ## Parse CLI
     args = argument_parser().parse_args()
@@ -447,9 +467,7 @@ if __name__ == "__main__":
     real_taskid = args.taskid_base + args.taskid
     rng = np.random.RandomState(np.random.Philox(seed=seed, counter=real_taskid))
 
-    taskdir: Path = basedir / str(real_taskid)
-    outdir: Path = taskdir / "benchmark_data"
-    outdir.mkdir(exist_ok=True, parents=True)
+    dir_tree = utils.DirectoryTree(basedir=basedir, taskid=real_taskid)
 
     if global_seed is None:
         def seeds():
@@ -460,14 +478,21 @@ if __name__ == "__main__":
     else:
         global_seed = repeat(global_seed)
 
-    # naslib_utils.set_seed(global_seed)
+    logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
+    task_metrics = AttrDict({
+        "model_idx": [],
+        "model_config": [],
+        "global_seed": []
+    })
+    task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
+                                            set_type=utils.MetricLogger.MetricSet.task, logger=logger)
+    pre_evaluated_models = len(task_metrics.model_idx)
 
-    logger = naslib_logging.setup_logger(str(taskdir.resolve() / "log.log"))
-    with open(taskdir / "training_config.json", "w") as fp:
+    with open(dir_tree.task_dir / "task_config.json", "w") as fp:
         json.dump(vars(args), fp, default=str)
 
     if args.debug:
-        tensorboard_logdir = taskdir / "tensorboard_logs"
+        tensorboard_logdir = dir_tree.task_dir / "tensorboard_logs"
         model_tensorboard_dir = None  # To be initialized later
         logger.setLevel(logging.DEBUG)
     else:
@@ -478,109 +503,76 @@ if __name__ == "__main__":
     search_space = NASB201HPOSearchSpace()
     adapt_search_space(search_space, args.opts)
 
-    # TODO: Verify if removing this is fine
-    # data_loaders_start_wctime = time.time()
-    # data_loaders_start_ptime = time.process_time()
-    #
-    # data_loaders_end_wctime = time.time()
-    # data_loaders_end_ptime = time.process_time()
-    #
-    # init_duration = data_loaders_start_wctime - init_time
-    # data_loaders_wc_duration = data_loaders_end_wctime - data_loaders_start_wctime
-    # data_loaders_proc_duration = data_loaders_end_ptime - data_loaders_start_ptime
-    #
-    # with open(outdir / "meta.json", "w") as fp:
-    #     json.dump(dict(
-    #         init_duration=init_duration,
-    #         wc_duration=data_loaders_wc_duration,
-    #         proc_duration=data_loaders_proc_duration,
-    #         resize=args.resize,
-    #         epochs=args.epochs
-    #     ), fp, indent=4)
-
-    n_archs = 0
+    def sampler():
+        while True:
+            curr_global_seed = next(global_seed)
+            naslib_utils.set_seed(curr_global_seed)
+            model: NASB201HPOSearchSpace = search_space.clone()
+            model.sample_random_architecture(rng=rng)
+            model_config = model.config.get_dictionary()
+            yield model, model_config, curr_global_seed
 
     if args.generate_sampling_profile:
-        from signal import signal, SIGINT
-
         sampled_configs = []
 
-        def write_sampling_profile():
-            with open(outdir / "sample_profile.json", "w") as fp:
-                json.dump(sampled_configs, fp)
+    train_config = AttrDict(vars(args))
 
-        def handle_sigint_while_sampling(signal_received, frame):
-            write_sampling_profile()
-            sys.exit(0)
-
-        signal(SIGINT, handle_sigint_while_sampling)
-
-    while True:
-        model: NASB201HPOSearchSpace = search_space.clone()
-        model.sample_random_architecture(rng=rng)
-        model_config = model.config.get_dictionary()
-        n_archs += 1
-
-        naslib_logging.log_every_n_seconds(
-            logging.INFO,
-            f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}",
-            15,
-            name=logger.name
-        )
+    for model_idx, (model, model_config, curr_global_seed) in enumerate(sampler(), start=1):
+        logger.info(f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}")
 
         if args.debug:
-            model_tensorboard_dir = tensorboard_logdir / str(n_archs)
+            model_tensorboard_dir = tensorboard_logdir / str(model_idx)
 
         if args.generate_sampling_profile:
-            sampled_configs.append({"config": model_config, "global_seed": next(global_seed)})
+            sampled_configs.append({"config": model_config, "global_seed": curr_global_seed})
             time.sleep(1)
 
-            if n_archs >= args.nsamples:
-                write_sampling_profile()
+            if model_idx >= args.nsamples:
+                with open(dir_tree.task_dir / "sample_profile.json", "w") as fp:
+                    json.dump(sampled_configs, fp)
                 break
             else:
                 continue
 
         try:
-            curr_global_seed = next(global_seed)
             naslib_utils.set_seed(curr_global_seed)
             data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
                                                        split=args.split, resize=model_config.get("resolution", 0))
             validate = "valid" in data_loaders
-            raw_metrics, job_metrics = train(
+            dir_tree.model_idx = model_idx
+            train(
                 model=model, data_loaders=data_loaders,
-                train_config=AttrDict(vars(args) | {"taskid": real_taskid, "model_idx": n_archs, "outdir": outdir}),
+                train_config=train_config, dir_tree=dir_tree,
                 logger=logger, validate=validate
             )
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
-            job_metrics = {"exception": str(e)}
+            error_description = {
+                "exception": str(e),
+                "config": model_config,
+                "global_seed": curr_global_seed
+            }
+            with open(dir_tree.model_dir / f"error_description.json", "w") as fp:
+                json.dump(error_description, fp, indent=4)
             if args.debug:
                 raise e
         else:
             ## Clean-up after nominal program execution
-            naslib_logging.log_every_n_seconds(logging.INFO, "Finished training architecture.", 15, name=logger.name)
-            del(model) # Release memory
-            metric_df = pd.DataFrame()
-            for k, v in raw_metrics.items():
-                metric_df[k] = v
+            logger.info("Sampled architecture trained successfully.")
+            if model_idx <= pre_evaluated_models:
+                # This particular model has already been evaluated and a checkpoint was loaded. Verify config and seed.
+                assert task_metrics.global_seed[model_idx - 1] == curr_global_seed, \
+                    f"There is a mismatch between the previously registered global seed used for evaluating the " \
+                    f"model index {model_idx} and the newly generated seed {curr_global_seed}"
+                assert  task_metrics.model_config[model_idx - 1] == model_config, \
+                    f"There is a mismatch between the previously registered model config used for evaluating the " \
+                    f"model index {model_idx} and the newly generated config {model_config}"
+            else:
+                # A new model evaluation just finished.
+                task_metrics.model_idx.append(model_idx)
+                task_metrics.model_config.append(model_config)
+                task_metrics.global_seed.append(curr_global_seed)
+                task_metric_logger.log(elapsed_runtime=model_idx, force=True)
 
-            for k, v in model_config.items():
-                metric_df[("config", k)] = v
-
-            metric_df.assign(**job_metrics)
-            metric_df.index = metric_df.index.set_names(["Epoch"]) + 1
-            metric_df.to_pickle(outdir / f"{n_archs}.pkl") # Don't compress yet
-
-            max_idx = metric_df.index.max()
-            job_metrics["final_train_acc"] = metric_df[("train", "acc")][max_idx]
-            if validate:
-                job_metrics["final_val_acc"] = metric_df[("valid", "acc")][max_idx]
-            job_metrics["final_test_acc"] = metric_df[("test", "acc")][max_idx]
-
-            del(metric_df) # Release memory
-        finally:
-            job_metrics["config"] = model_config
-            job_metrics["global_seed"] = curr_global_seed
-            with open(outdir / f"{n_archs}.json", "w") as fp:
-                json.dump(job_metrics, fp, indent=4)
+            del (model)  # Release memory
+            dir_tree.model_idx = None  # Ensure that previously written data cannot be overwritten
