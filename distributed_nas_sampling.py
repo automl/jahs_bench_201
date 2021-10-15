@@ -58,13 +58,10 @@ def argument_parser():
                              "is intended to continue adding more data beyond a previous job's data.")
     parser.add_argument("--epochs", type=int, default=25,
                         help="Number of epochs that each sampled architecture should be trained for. Default: 25")
-    # parser.add_argument("--resize", type=int, default=0,
-    #                     help="An integer value (8, 16, 32, ...) to determine the scaling of input images. Default: 0 - "
-    #                          "don't use resize.")
     parser.add_argument("--global_seed", type=int, default=None,
-                        help="A value for a global seed to be used for all global NumPy and PyTorch random operations. "
-                             "This is different from the fixed seed used for reproducible search space sampling. If not "
-                             "specified, a random source of entropy is used instead.")
+                        help="A value for a global seed to be used for all global NumPy and PyTorch random "
+                             "operations. This is different from the fixed seed used for reproducible search space "
+                             "sampling. If not specified, a random source of entropy is used instead.")
     parser.add_argument("--standalone-mode", action="store_true",
                         help="Switch that enables working in a single-task local setup as opposed to the default "
                              "multi-node cluster setup.")
@@ -73,9 +70,6 @@ def argument_parser():
     parser.add_argument("--split", action="store_true",
                         help="Split training dataset into training and validation sets.")
     parser.add_argument("--batch_size", type=int, default=256, help="Number of samples per mini-batch.")
-    # parser.add_argument("--cutout", type=float, default=0.,
-    #                     help="Cutout probability for applying stochastic cutout to training data during pre-processing. "
-    #                          "Settings this to 0. disables cutout (default). [DISABLED]")
     parser.add_argument("--warmup_epochs", type=int, default=0.,
                         help="When set to a positive integer, this many epochs are used to warm-start the training.")
     parser.add_argument("--generate_sampling_profile", action="store_true",
@@ -249,7 +243,8 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, dir_tree: utils.DirectoryTree,
           logger: logging.Logger, validate=False):
     """
-    Train the given model using the given data loaders and training configuration. Returns a dict containing various metrics.
+    Train the given model using the given data loaders and training configuration. Returns a dict containing
+    various metrics.
 
     Parameters
     ----------
@@ -303,7 +298,6 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
             logger=logger, map_location=device)
         old_chkpt_runtime = checkpoint.runtime
         old_chkpt_epochs = checkpoint.elapsed_epochs
-        # TODO: Handle case when checkpoint.elapsed_epochs = train_config.epochs - 1 i.e. training had finished
 
     model_metrics_logger = utils.MetricLogger(
         dir_tree=dir_tree, metrics=model_metrics,
@@ -414,8 +408,8 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         raise RuntimeError(f"Model training has diverged after {e} epochs.")
 
     if not train_config.disable_checkpointing:
-        del (checkpoint)
-    del (model_metrics_logger)
+        del checkpoint
+    del model_metrics_logger
 
     return model_metrics
 
@@ -486,7 +480,7 @@ if __name__ == "__main__":
     })
     task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
                                             set_type=utils.MetricLogger.MetricSet.task, logger=logger)
-    pre_evaluated_models = len(task_metrics.model_idx)
+    n_known_samples = len(task_metrics.model_idx)
 
     with open(dir_tree.task_dir / "task_config.json", "w") as fp:
         json.dump(vars(args), fp, default=str)
@@ -520,16 +514,28 @@ if __name__ == "__main__":
     for model_idx, (model, model_config, curr_global_seed) in enumerate(sampler(), start=1):
         logger.info(f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}")
 
+        if model_idx <= n_known_samples:
+            # This particular model has already been sampled once. Verify config and seed.
+            assert task_metrics.global_seed[model_idx - 1] == curr_global_seed, \
+                f"There is a mismatch between the previously registered global seed used for evaluating the " \
+                f"model index {model_idx} and the newly generated seed {curr_global_seed}"
+            assert task_metrics.model_config[model_idx - 1] == model_config, \
+                f"There is a mismatch between the previously registered model config used for evaluating the " \
+                f"model index {model_idx} and the newly generated config {model_config}"
+        else:
+            # A new model config has been sampled.
+            task_metrics.model_idx.append(model_idx)
+            task_metrics.model_config.append(model_config)
+            task_metrics.global_seed.append(curr_global_seed)
+            task_metric_logger.log(elapsed_runtime=model_idx, force=True)
+
         if args.debug:
             model_tensorboard_dir = tensorboard_logdir / str(model_idx)
 
         if args.generate_sampling_profile:
-            sampled_configs.append({"config": model_config, "global_seed": curr_global_seed})
             time.sleep(1)
 
             if model_idx >= args.nsamples:
-                with open(dir_tree.task_dir / "sample_profile.json", "w") as fp:
-                    json.dump(sampled_configs, fp)
                 break
             else:
                 continue
@@ -559,20 +565,9 @@ if __name__ == "__main__":
         else:
             ## Clean-up after nominal program execution
             logger.info("Sampled architecture trained successfully.")
-            if model_idx <= pre_evaluated_models:
-                # This particular model has already been evaluated and a checkpoint was loaded. Verify config and seed.
-                assert task_metrics.global_seed[model_idx - 1] == curr_global_seed, \
-                    f"There is a mismatch between the previously registered global seed used for evaluating the " \
-                    f"model index {model_idx} and the newly generated seed {curr_global_seed}"
-                assert  task_metrics.model_config[model_idx - 1] == model_config, \
-                    f"There is a mismatch between the previously registered model config used for evaluating the " \
-                    f"model index {model_idx} and the newly generated config {model_config}"
-            else:
-                # A new model evaluation just finished.
-                task_metrics.model_idx.append(model_idx)
-                task_metrics.model_config.append(model_config)
-                task_metrics.global_seed.append(curr_global_seed)
-                task_metric_logger.log(elapsed_runtime=model_idx, force=True)
 
-            del (model)  # Release memory
+            del model  # Release memory
             dir_tree.model_idx = None  # Ensure that previously written data cannot be overwritten
+    del task_metrics
+    del task_metric_logger
+    del dir_tree
