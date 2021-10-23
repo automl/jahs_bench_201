@@ -11,7 +11,7 @@ an index level named "iteration" if the other comparison indices are specified.
 
 
 import logging
-from typing import List, Sequence, Any, Tuple, Union, Iterator, Dict
+from typing import List, Sequence, Any, Tuple, Union, Iterator, Dict, Optional, Callable, Hashable
 from pathlib import Path
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -112,11 +112,32 @@ def get_view_on_data(row_val, col_val, data: Union[pd.DataFrame, pd.Series], gri
     return data.xs(selection[0], level=selection[1])
 
 
-def draw_hist_groups(ax: plt.Axes, data: pd.Series, compare_indices: Sequence[str], color_generator: Iterator,
-                   known_colors: dict, calculate_stats: bool = True):
+def draw_hist_groups(ax: plt.Axes, data: [pd.Series, pd.DataFrame], compare_indices: Sequence[str],
+                     color_generator: Iterator, known_colors: dict, calculate_stats: bool = True):
+    """ Draw grouped histograms according to the given data. 'data' can be either a pandas Series or DataFrame object.
+    In the case of the latter, it can contain up to two columns, 'mean' and 'std'. If only one column is present or if
+    'data' is a Series, it is treated as the 'mean' column. 'compare_indices' contains up to 2 strings, corresponding
+    to the index levels along which the histograms are grouped, such that each unique value of 'compare_indices[0]'
+    corresponds to one group of histograms. 'color_generator' is an iterator that iteratres over matplotlib compatible
+    colours and the dictionary 'known_colors' is used to check if a new colour should be generated. 'calculate_stats'
+    is still unused and has been provided mostly for the purpose of compatibility with other functions. """
 
-    assert isinstance(data, pd.Series), f"draw_hist_groups() expects the data to be passed as a pandas Series, not " \
-                                        f"{str(type(data))}"
+    assert isinstance(data, (pd.Series, pd.DataFrame)), \
+        f"draw_hist_groups() expects the data to be passed as either a pandas Series or DataFrame, not " \
+        f"{str(type(data))}"
+
+    if isinstance(data, pd.Series):
+        mean = data
+        std = None
+    else:
+        data: pd.DataFrame
+        assert len(data.columns) <= 2, "When data is passed as a DataFrame to draw_hist_groups(), it should contain " \
+                                       "no more than two columns, optionally named 'mean' and 'std'."
+        mean = data[data.columns[0]] if 'mean' not in data.columns else data['mean']
+        std = pd.Series(None, index=mean.index) if data.columns.size == 1 else \
+            data[data.columns[1]] if 'std' not in data.columns else data['std']
+
+    draw_stds = std is None
 
     if len(compare_indices) > 2:
         raise RuntimeError("Cannot draw histogram groups with more than two levels of indices to be compared.")
@@ -133,14 +154,16 @@ def draw_hist_groups(ax: plt.Axes, data: pd.Series, compare_indices: Sequence[st
     yticks = [[], []]
 
     for level_1_key in level_1_labels:
-        subseries: pd.Series = data.xs(level_1_key, level=compare_indices[1]) if level_1_key is not None else data
+        submean: pd.Series = mean.xs(level_1_key, level=compare_indices[1]) if level_1_key is not None else mean
+        substd: pd.Series = std.xs(level_1_key, level=compare_indices[1]) if level_1_key is not None else std
 
-        level_0_labels = subseries.index.get_level_values(compare_indices[0]).values
+        level_0_labels = submean.index.get_level_values(compare_indices[0]).values
         ser_colors = [map_label_to_color(i, known_colors, color_generator) for i in level_0_labels]
-        bin_locs = list(range(bin_loc_offset, bin_loc_offset + subseries.size, bar_height))
-        ax.barh(bin_locs, height=bar_height, width=subseries.values, color=ser_colors, edgecolor="k", align="center")
-        bin_loc_offset += subseries.size + 2
-        yticks[0] += [sum(bin_locs) / subseries.size, ]
+        bin_locs = list(range(bin_loc_offset, bin_loc_offset + submean.size, bar_height))
+        ax.barh(bin_locs, height=bar_height, width=submean.values, color=ser_colors, edgecolor="k", align="center",
+                xerr=None if not draw_stds else substd)
+        bin_loc_offset += (submean.size + 2) * bar_height
+        yticks[0] += [sum(bin_locs) / submean.size, ]
         yticks[1] += [level_1_key, ]
 
     ax.yaxis.set_ticks(yticks[0])
@@ -300,15 +323,46 @@ def mean_std(data: pd.DataFrame, indices: List[str], xaxis_level: str, suptitle:
     return fig
 
 
-def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None, legend_pos: str = "auto",
-                xlabel: str = "") -> plt.Figure:
+class _AxisAligner:
+    def __init__(self, which: str = 'x'):
+        assert which in ('x', 'y', 'X', 'Y'), f"'which' must be either 'x' or 'y', was {which}."
+        self.which = which.lower()
+        self._known_axes = {}
+        self._known_limits = {}
+
+    def record(self, ax: plt.Axes, index: Hashable):
+        self._known_axes[index] = ax
+        self._known_limits[ax] = ax.get_xlim() if self.which == 'x' else ax.get_ylim()
+
+    def align_limits(self, indices: Optional[Sequence[Hashable]] = None):
+        if indices is None:
+            return
+
+        low, high = [], []
+        for i in indices:
+            ax = self._known_axes[i]
+            low.append(self._known_limits[ax][0])
+            high.append(self._known_limits[ax][1])
+
+        lowest, highest = min(low), max(high)
+        for i in indices:
+            if self.which == 'x':
+                self._known_axes[i].set_xlim(lowest, highest)
+            else:
+                self._known_axes[i].set_ylim(lowest, highest)
+
+
+def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], suptitle: str = None,
+                legend_pos: str = "auto", xlabel: str = "", align_xlims: Optional[str] = None) -> plt.Figure:
     """
     Create a visualization that displays a grid of grouped histograms, such that each cell in the grid contains a
     single plot consisting of multiple groups of horizontal bars.
+
     :param data: pandas.DataFrame
-        A DataFrame object containing all the data to be visualized with the appropriate index.
+        A pandas Series or DataFrame object containing all the data to be visualized with the appropriate index.
+        Consult parameter 'indices' below and 'draw_hist_groups()' for more details.
     :param indices: A list of strings
-        Upto four strings denoting the names of a pandas Multi-Level Index across which comparisons are to be
+        Upto four strings denoting the level names of a pandas Multi-Level Index across which comparisons are to be
         visualized. The first name is used to generate multiple bars in the same group, the second name for
         generating groups of bars, the third for comparisons across grid columns and the fourth for comparisons across
         rows.
@@ -316,7 +370,16 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None, le
         Used to attach a title for the visualization as a whole.
     :param legend_pos: str
         The position of the legend w.r.t. the grid. Possible values: "auto", "bottom", "right". Default: "auto".
-    :return: None
+    :param xlabel: str
+        The common xlabel for all x-axes. All other axes labels are fixed to denote the various index level names and
+        values.
+    :param align_xlims: str or None
+        If None (default), the limits of the x-axis (called xlims) are not adjusted and aligned across grid cells. If
+        'row' or 'r', all xlims along each grid row are adjusted to be equal. Similarly and analogously for 'col' or
+        'c', corresponding to columns. If 'both' is given, all xlims across all cells are aligned to the same values.
+
+    :return: plt.Figure
+        The Figure object containing the drawn histograms.
     """
 
     index: pd.MultiIndex = data.index
@@ -328,12 +391,15 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None, le
 
     nind = len(indices)
     assert nind <= 4, "Hist-Group visualization cannot handle more than 4 index names to compare across."
+    if align_xlims not in [None, 'r', 'row', 'c', 'col', 'both']:
+        raise ValueError(f"Unrecognized value for 'align_xlims': {align_xlims}")
+
     for idx in indices:
         assert idx in index.names, f"{idx} is not a valid level name for the given dataframe with levels {index.names}"
 
-    col_labels: Sequence[Any] = index.unique(level=indices[2]) if len(indices) > 2 else [None]
-    row_labels: Sequence[Any] = index.unique(level=indices[3]) if len(indices) > 3 else [None]
-    grid_indices = [indices[3], indices[2]]
+    col_labels, grid_col_idx_level = ([None], None) if len(indices) < 3 else (index.unique(level=indices[2]), indices[2])
+    row_labels, grid_row_idx_level = ([None], None) if len(indices) < 4 else (index.unique(level=indices[3]), indices[3])
+    grid_indices = [grid_row_idx_level, grid_col_idx_level]
     nrows = len(row_labels)
     ncols = len(col_labels)
 
@@ -343,6 +409,7 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None, le
     # Create the required Figure
     fig, gs, legend_ax_loc, legend_kwargs = create_figure(nrows=nrows, ncols=ncols, legend_size=legend_size,
                                                           pos=legend_pos)
+    axis_aligner = _AxisAligner(which='x')
 
     for ridx, rlabel in enumerate(row_labels):
         for cidx, clabel in enumerate(col_labels):
@@ -381,6 +448,22 @@ def hist_groups(data: pd.DataFrame, indices: List[str], suptitle: str = None, le
                 alt_ax.set_ylabel(f"{indices[3]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
                 alt_ax.yaxis.set_ticks([])
 
+            # Record X-axis limits
+            if align_xlims is not None:
+                axis_aligner.record(ax, (ridx, cidx))
+
+    # Perform X-Axis limits alignment
+    if align_xlims is not None:
+        if align_xlims in ['r', 'row']:
+            for r in range(nrows):
+                axis_aligner.align_limits([(r, c) for c in range(ncols)])
+        elif align_xlims in ['c', 'col']:
+            for c in range(ncols):
+                axis_aligner.align_limits([(r, c) for r in range(nrows)])
+        elif align_xlims == 'both':
+            axis_aligner.align_limits([(r, c) for r in range(nrows) for c in range(ncols)])
+
+    # Draw legend
     legend_ax: plt.Axes = fig.add_subplot(gs[legend_ax_loc])
     legend_labels = [f"{indices[0]}={k}" for k in labels_to_colors.keys()]
     legend_lines = [plt.Line2D([0], [0], linewidth=8, color=labels_to_colors[l]) for l in labels_to_colors.keys()]
