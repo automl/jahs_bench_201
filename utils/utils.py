@@ -79,11 +79,21 @@ class DirectoryTree(object):
     |    |    |    |    |--> <elapsed_runtime>.pt    <-- these are checkpoint files
     """
 
-    def __init__(self, basedir: Path, taskid: Optional[int], model_idx: Optional[int] = None):
+    def __init__(self, basedir: Path, taskid: Optional[int] = None, model_idx: Optional[int] = None,
+                 read_only: bool = False):
+        """
+        The DirectoryTree enables a fixed, pre-determined directory sub-tree to be made and easily traversed at the
+        given base directory, 'basedir'. 'taskid' and 'model_idx' are optional integers that can be changed and
+        reassigned any time in order to generate the respective branch of the tree. Setting 'read_only' to True allows
+        the tree to assume that no new directories need to be created if they don't exist and raise an Error if such an
+        attempt to access such directory is made.
+        """
         self.basedir = basedir.resolve()
         assert self.basedir.exists() and self.basedir.is_dir(), \
             f"The base directory and its parent directory tree must be created beforehand. Given base directory " \
             f"either does not exist or is not a directory: {str(self.basedir)}"
+        self.read_only = read_only
+        # Setting these to int values also creates the appropriate directories if read_only is False
         self.taskid = taskid
         self.model_idx = model_idx
 
@@ -96,8 +106,14 @@ class DirectoryTree(object):
         if new_id is not None:
             assert isinstance(new_id, int), f"Task ID must be an integer, was given {type(new_id)}"
             self._taskid = new_id
-            self.task_dir.mkdir(exist_ok=True, parents=True)
-            self.task_metrics_dir.mkdir(exist_ok=True, parents=True)
+            if self.read_only:
+                return
+            if not self.task_dir.exists():
+                self.task_dir.mkdir(parents=True)
+            if not self.task_metrics_dir.exists():
+                self.task_metrics_dir.mkdir(parents=True)
+            if not self.task_models_dir.exists():
+                self.task_models_dir.mkdir(parents=True)
         else:
             self._taskid = None
 
@@ -110,9 +126,14 @@ class DirectoryTree(object):
         if new_index is not None:
             assert isinstance(new_index, int), f"Model index must be an integer, was given {type(new_index)}"
             self._model_idx = new_index
-            self.model_dir.mkdir(exist_ok=True, parents=True)
-            self.model_metrics_dir.mkdir(exist_ok=True, parents=True)
-            self.model_checkpoints_dir.mkdir(exist_ok=True, parents=True)
+            if self.read_only:
+                return
+            if not self.model_dir.exists():
+                self.model_dir.mkdir(parents=True)
+            if not self.model_metrics_dir.exists():
+                self.model_metrics_dir.mkdir(exist_ok=True, parents=True)
+            if not self.model_checkpoints_dir.exists():
+                self.model_checkpoints_dir.mkdir(exist_ok=True, parents=True)
         else:
             self._model_idx = None
 
@@ -125,10 +146,14 @@ class DirectoryTree(object):
         return self.task_dir / "metrics"
 
     @property
+    def task_models_dir(self) -> Path:
+        return self.task_dir / "models"
+
+    @property
     def model_dir(self) -> Path:
         assert self.model_idx is not None, \
             "A valid model index needs to be set before the relevant model level subtree can be accessed."
-        return self.task_dir / "models" / str(self.model_idx)
+        return self.task_models_dir / str(self.model_idx)
 
     @property
     def model_metrics_dir(self) -> Path:
@@ -137,6 +162,14 @@ class DirectoryTree(object):
     @property
     def model_checkpoints_dir(self) -> Path:
         return self.model_dir / "checkpoints"
+
+    @property
+    def existing_tasks(self) -> Optional[List[Path]]:
+        return None if not self.basedir.exists() else [d for d in self.basedir.iterdir() if d.is_dir()]
+
+    @property
+    def existing_models(self) -> List[Path]:
+        return None if not self.task_models_dir.exists() else [d for d in self.task_models_dir.iterdir() if d.is_dir()]
 
 
 class Checkpointer(object):

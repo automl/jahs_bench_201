@@ -278,6 +278,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         "train": utils.get_common_metrics(extra_metrics=extra_metrics + ["backprop_duration"], template=list),
         "valid": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
         "test": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
+        # TODO: Remove swap memory metric, there is no swap memory on the cluster anyways
         "diagnostic": AttrDict({k: list() for k in ["latency", "runtime", "cpu_percent", "memory_ram", "memory_swap"]}),
     })
 
