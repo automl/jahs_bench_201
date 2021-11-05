@@ -19,6 +19,7 @@ from naslib.search_spaces.core.graph import Graph
 from naslib.utils import utils as naslib_utils
 from naslib.utils.utils import AttrDict, Cutout, AverageMeter
 from .custom_nasb201_code import CosineAnnealingLR
+from aug_lib import TrivialAugment
 
 
 def _query_config(config: Union[ConfigSpace.Configuration, Dict], param: str, default: Optional[Any] = None) -> Any:
@@ -31,20 +32,20 @@ def _query_config(config: Union[ConfigSpace.Configuration, Dict], param: str, de
 
 
 def _init_adam(model, config: Union[ConfigSpace.Configuration, Dict]):
-    lr, weight_decay = _query_config(config, "learning_rate"), _query_config(config, "weight_decay")
+    lr, weight_decay = _query_config(config, "LearningRate"), _query_config(config, "WeightDecay")
     optim = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     return optim
 
 
 def _init_adamw(model, config: Union[ConfigSpace.Configuration, Dict]):
-    lr, weight_decay = _query_config(config, "learning_rate"), _query_config(config, "weight_decay")
+    lr, weight_decay = _query_config(config, "LearningRate"), _query_config(config, "WeightDecay")
     optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     return optim
 
 
 def _init_sgd(model, config: Union[ConfigSpace.Configuration, Dict]):
-    lr, momentum, weight_decay = _query_config(config, "learning_rate"), _query_config(config, "momentum", 0.9), \
-                                 _query_config(config, "weight_decay")
+    lr, momentum, weight_decay = _query_config(config, "LearningRate"), _query_config(config, "Momentum", 0.9), \
+                                 _query_config(config, "WeightDecay")
     optim = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True)
     return optim
 
@@ -444,6 +445,15 @@ def get_common_metrics(extra_metrics: Optional[List[str]] = None, template: Call
     return metrics
 
 
+class TrivialAugmentTransform(torch.nn.Module):
+    def __init__(self):
+        self._apply_op = TrivialAugment()
+        super(TrivialAugmentTransform, self).__init__()
+
+    def forward(self, img: torch.Tensor) -> torch.Tensor:
+        return self._apply_op(img)
+
+
 """
 Adapted in large part from the original NASBench-201 code repository at 
 https://github.com/D-X-Y/AutoDL-Projects/tree/bc4c4692589e8ee7d6bab02603e69f8e5bd05edc
@@ -471,9 +481,11 @@ def load_splits(path: Path):
     return AttrDict(splits)
 
 
-def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True, resize: int = 0):
+def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True, resize: int = 0,
+                    trivial_augment=False):
     datapath = naslib_utils.get_project_root() / "data"
-    train_data, test_data, xshape, class_num = get_datasets(dataset, datapath, cutout=cutout, resize=resize)
+    train_data, test_data, xshape, class_num = get_datasets(dataset, datapath, cutout=cutout, resize=resize,
+                                                            trivial_augment=trivial_augment)
     test_loader = torch.utils.data.DataLoader(
         test_data,
         batch_size=batch_size,
@@ -524,7 +536,7 @@ def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True
     return ValLoaders, train_transform, test_transform
 
 
-def get_datasets(name, root, cutout, resize):
+def get_datasets(name, root, cutout, resize, trivial_augment=False):
     if name == "cifar10":
         mean = [x / 255 for x in [125.3, 123.0, 113.9]]
         std = [x / 255 for x in [63.0, 62.1, 66.7]]
@@ -539,12 +551,13 @@ def get_datasets(name, root, cutout, resize):
     else:
         raise TypeError("Unknown dataset : {:}".format(name))
 
-    # Data Argumentation
+    # Data Augmentation
     if name == "cifar10" or name == "cifar100":
-        lists = [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, padding=4), ] + \
-                ([transforms.Resize(resize)] if resize else []) + \
+        lists = [TrivialAugmentTransform()] if trivial_augment else \
+            [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, padding=4)]
+        lists +=([transforms.Resize(resize)] if resize else []) + \
                 [transforms.ToTensor(), transforms.Normalize(mean, std), ]
-        if cutout > 0:
+        if cutout > 0 and not trivial_augment: # Trivial Augment already contains Cutout
             lists += [Cutout(cutout)]
         train_transform = transforms.Compose(lists)
         test_transform = transforms.Compose(
