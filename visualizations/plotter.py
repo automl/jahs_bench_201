@@ -113,14 +113,16 @@ def get_view_on_data(row_val, col_val, data: Union[pd.DataFrame, pd.Series], gri
 
 
 def draw_hist_groups(ax: plt.Axes, data: [pd.Series, pd.DataFrame], compare_indices: Sequence[str],
-                     color_generator: Iterator, known_colors: dict, calculate_stats: bool = True):
+                     color_generator: Iterator, known_colors: dict, calculate_stats: bool = True,
+                     label_bars: bool = True):
     """ Draw grouped histograms according to the given data. 'data' can be either a pandas Series or DataFrame object.
     In the case of the latter, it can contain up to two columns, 'mean' and 'std'. If only one column is present or if
     'data' is a Series, it is treated as the 'mean' column. 'compare_indices' contains up to 2 strings, corresponding
     to the index levels along which the histograms are grouped, such that each unique value of 'compare_indices[0]'
     corresponds to one group of histograms. 'color_generator' is an iterator that iteratres over matplotlib compatible
     colours and the dictionary 'known_colors' is used to check if a new colour should be generated. 'calculate_stats'
-    is still unused and has been provided mostly for the purpose of compatibility with other functions. """
+    is still unused and has been provided mostly for the purpose of compatibility with other functions. 'label_bars'
+    determines whether or not the mean value represented by each bar should be labeled next to it. """
 
     assert isinstance(data, (pd.Series, pd.DataFrame)), \
         f"draw_hist_groups() expects the data to be passed as either a pandas Series or DataFrame, not " \
@@ -137,7 +139,7 @@ def draw_hist_groups(ax: plt.Axes, data: [pd.Series, pd.DataFrame], compare_indi
         std = pd.Series(None, index=mean.index) if data.columns.size == 1 else \
             data[data.columns[1]] if 'std' not in data.columns else data['std']
 
-    draw_stds = std is None
+    draw_stds = not std is None
 
     if len(compare_indices) > 2:
         raise RuntimeError("Cannot draw histogram groups with more than two levels of indices to be compared.")
@@ -155,13 +157,18 @@ def draw_hist_groups(ax: plt.Axes, data: [pd.Series, pd.DataFrame], compare_indi
 
     for level_1_key in level_1_labels:
         submean: pd.Series = mean.xs(level_1_key, level=compare_indices[1]) if level_1_key is not None else mean
-        substd: pd.Series = std.xs(level_1_key, level=compare_indices[1]) if level_1_key is not None else std
+        substd: pd.Series = None if not draw_stds else std.xs(level_1_key, level=compare_indices[1]) \
+            if level_1_key is not None else std
 
         level_0_labels = submean.index.get_level_values(compare_indices[0]).values
         ser_colors = [map_label_to_color(i, known_colors, color_generator) for i in level_0_labels]
         bin_locs = list(range(bin_loc_offset, bin_loc_offset + submean.size, bar_height))
         ax.barh(bin_locs, height=bar_height, width=submean.values, color=ser_colors, edgecolor="k", align="center",
-                xerr=None if not draw_stds else substd)
+                xerr=None if not draw_stds else substd, error_kw={"elinewidth": 1})
+        if label_bars:
+            # for x, y in zip(submean.values if not draw_stds else (submean + substd).values, bin_locs):
+            for x, y in zip(submean.values, bin_locs):
+                ax.text(x, y, f"{x:.2f}")
         bin_loc_offset += (submean.size + 2) * bar_height
         yticks[0] += [sum(bin_locs) / submean.size, ]
         yticks[1] += [level_1_key, ]
@@ -348,12 +355,14 @@ class _AxisAligner:
         for i in indices:
             if self.which == 'x':
                 self._known_axes[i].set_xlim(lowest, highest)
+                # self._known_axes[i].xaxis.set_minor_locator(mtick.LinearLocator(10))
             else:
                 self._known_axes[i].set_ylim(lowest, highest)
+                # self._known_axes[i].yaxis.set_minor_locator(mtick.LinearLocator(10))
 
 
 def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], suptitle: str = None,
-                legend_pos: str = "auto", xlabel: str = "", align_xlims: Optional[str] = None) -> plt.Figure:
+                legend_pos: str = "auto", xlabel: str = "", align_xlims: Optional[str] = None, **kwargs) -> plt.Figure:
     """
     Create a visualization that displays a grid of grouped histograms, such that each cell in the grid contains a
     single plot consisting of multiple groups of horizontal bars.
@@ -383,8 +392,8 @@ def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], supti
     """
 
     index: pd.MultiIndex = data.index
-    labels_to_colors = {}
-    colors = iter(plt.cm.Set2.colors)
+    labels_to_colors = kwargs.get("labels_to_colors", {})
+    colors = kwargs.get("colors", iter(plt.cm.Set2.colors))
 
     # Identify the requested layout
     _log.info("Inferring plot layout.")
@@ -397,8 +406,8 @@ def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], supti
     for idx in indices:
         assert idx in index.names, f"{idx} is not a valid level name for the given dataframe with levels {index.names}"
 
-    col_labels, grid_col_idx_level = ([None], None) if len(indices) < 3 else (index.unique(level=indices[2]), indices[2])
-    row_labels, grid_row_idx_level = ([None], None) if len(indices) < 4 else (index.unique(level=indices[3]), indices[3])
+    col_labels, grid_col_idx_level = ([None], None) if nind < 3 else (index.unique(level=indices[2]), indices[2])
+    row_labels, grid_row_idx_level = ([None], None) if nind < 4 else (index.unique(level=indices[3]), indices[3])
     grid_indices = [grid_row_idx_level, grid_col_idx_level]
     nrows = len(row_labels)
     ncols = len(col_labels)
@@ -434,7 +443,7 @@ def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], supti
                 ax.set_xlabel("")
 
             # Top row only
-            if ridx == 0:
+            if ridx == 0 and nind >= 3:
                 ax.set_title(f"{indices[2]}={clabel}", fontdict=dict(fontsize=label_fontsize))
 
             # Left-most column only
@@ -443,7 +452,7 @@ def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], supti
                 ax.set_ylabel(indices[1], fontdict=dict(fontsize=label_fontsize))
 
             # Right-most column only
-            if cidx == ncols - 1:
+            if cidx == ncols - 1 and nind == 4:
                 alt_ax: plt.Axes = ax.twinx()
                 alt_ax.set_ylabel(f"{indices[3]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
                 alt_ax.yaxis.set_ticks([])
