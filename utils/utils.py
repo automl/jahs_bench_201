@@ -19,7 +19,7 @@ from naslib.search_spaces.core.graph import Graph
 from naslib.utils import utils as naslib_utils
 from naslib.utils.utils import AttrDict, Cutout, AverageMeter
 from .custom_nasb201_code import CosineAnnealingLR
-from aug_lib import TrivialAugment
+from .aug_lib import TrivialAugment
 
 
 def _query_config(config: Union[ConfigSpace.Configuration, Dict], param: str, default: Optional[Any] = None) -> Any:
