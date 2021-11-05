@@ -21,6 +21,9 @@ global seeds for numpy/torch/random.
 
 """
 
+# TODO: Convert this script into a re-useable library file, with a bare minimum runner script replacement here
+# TODO: Extract this entire tree out of the original NASLib repo (see "git subtree") and into its own repo
+
 import argparse
 import json
 import logging
@@ -305,7 +308,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
 
     if debug:
         summary_writer = SummaryWriter(model_tensorboard_dir)
-        inp_size = train_config.batch_size, 3, model.config["resolution"], model.config["resolution"] or 32
+        inp_size = train_config.batch_size, 3, model.config["Resolution"] or 32, model.config["Resolution"] or 32
         model.eval()
         with torch.no_grad():
             summary_writer.add_graph(model, torch.tensor(np.random.random(inp_size).astype(np.float32)).to(device))
@@ -539,7 +542,8 @@ if __name__ == "__main__":
             task_metrics.size_MB.append(naslib_utils.count_parameters_in_MB(model))
             task_metrics.FLOPS.append(get_model_flops(
                 model=model,
-                input_shape=(train_config.batch_size, 3, model_config["resolution"], model_config["resolution"]),
+                input_shape=(train_config.batch_size, 3, model_config["Resolution"] or 32,
+                             model_config["Resolution"] or 32),
                 transfer_devices=transfer_devices,
                 device=device
             ))
@@ -560,7 +564,8 @@ if __name__ == "__main__":
         try:
             naslib_utils.set_seed(curr_global_seed)
             data_loaders, _, _ = utils.get_dataloaders(dataset="cifar10", batch_size=args.batch_size, cutout=0,
-                                                       split=args.split, resize=model_config.get("resolution", 0))
+                                                       split=args.split, resize=model_config.get("Resolution", 0),
+                                                       trivial_augment=model_config.get("TrivialAugment", False))
             validate = "valid" in data_loaders
             dir_tree.model_idx = model_idx
             train(
