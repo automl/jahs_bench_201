@@ -74,9 +74,9 @@ def argument_parser():
 
 
 def construct_model_optimizer(model: NASB201HPOSearchSpace, train_config: AttrDict):
-    optim_type = utils.optimizers.__members__[model.config["optimizer"]]
+    optim_type = utils.Optimizers.__members__[model.config["optimizer"]]
     optimizer = optim_type.construct(model, model.config)
-    if optim_type == utils.optimizers.SGD:
+    if optim_type == utils.Optimizers.SGD:
         # Potentially stabilize SGD with Warm-up
         scheduler = CosineAnnealingLR(optimizer, warmup_epochs=train_config.warmup_epochs, epochs=train_config.epochs,
                                       T_max=train_config.epochs, eta_min=0.)

@@ -1,16 +1,17 @@
-import pandas as pd
-from pathlib import Path
-import numpy as np
 import argparse
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-from typing import Union, Dict, Sequence, Iterable
+from pathlib import Path
+from typing import Dict, Iterable
 
-fidelity_params=("epochs", "resize", "N", "W")
+import matplotlib.pyplot as plt
+import pandas as pd
+from matplotlib.lines import Line2D
+
+fidelity_params = ("epochs", "resize", "N", "W")
 # fidelity_params=("N", "W")
 
 # Common settings
 plt.rcParams.update({"xtick.labelsize": 14, "ytick.labelsize": 14, "axes.labelsize": 16, "axes.titlesize": 16})
+
 
 def map_label_to_color(label: str, map: Dict, colors: Iterable):
     if not label in map:
@@ -20,8 +21,9 @@ def map_label_to_color(label: str, map: Dict, colors: Iterable):
 
 def parse_cli():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--basedir", type=Path, help="Path to the base directory where the relevant dataframe(s) is/are "
-                                                     "stored as a file named data.pkl.gz.")
+    parser.add_argument("--basedir", type=Path,
+                        help="Path to the base directory where the relevant dataframe(s) is/are "
+                             "stored as a file named data.pkl.gz.")
     args = parser.parse_args()
     return args
 
@@ -76,8 +78,8 @@ def analyze_single_job(basedir, save_tables=False, save_plots=False):
         bin_locs = list(range(bin_loc_offset, bin_loc_offset + subseries.size, bar_width))
         ax.bar(bin_locs, height=subseries.values, width=bar_width, color=ser_colors)
         bin_loc_offset += subseries.size + 2
-        xticks[0] += [sum(bin_locs) / subseries.size,]
-        xticks[1] += [level_0_key,]
+        xticks[0] += [sum(bin_locs) / subseries.size, ]
+        xticks[1] += [level_0_key, ]
 
     ax.xaxis.set_ticks(xticks[0])
     ax.xaxis.set_ticklabels(xticks[1])
@@ -113,8 +115,6 @@ def analyze_single_job(basedir, save_tables=False, save_plots=False):
     # fig, ax = plt.subplots(1, 1, figsize=(16, 9)) if save_plots else plt.subplots(1, 1)
     # fig: plt.Figure
     # ax: plt.Axes
-
-
 
 
 if __name__ == "__main__":

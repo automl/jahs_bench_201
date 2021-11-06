@@ -12,13 +12,12 @@ import pandas as pd
 import torch
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
-
 from naslib.search_spaces.core.graph import Graph
-from tabular_sampling.search_space import NASB201HPOSearchSpace
-from naslib.utils import utils as naslib_utils
 from naslib.utils.utils import AttrDict, Cutout, AverageMeter
-from .custom_nasb201_code import CosineAnnealingLR
+
+from tabular_sampling.search_space import NASB201HPOSearchSpace
 from .aug_lib import TrivialAugment
+from .custom_nasb201_code import CosineAnnealingLR
 
 
 def _query_config(config: Union[ConfigSpace.Configuration, Dict], param: str, default: Optional[Any] = None) -> Any:
@@ -50,7 +49,7 @@ def _init_sgd(model, config: Union[ConfigSpace.Configuration, Dict]):
 
 
 @enum.unique
-class optimizers(enum.Enum):
+class Optimizers(enum.Enum):
     def __init__(self, constructor):
         self.constructor = constructor
 
@@ -339,7 +338,8 @@ class MetricLogger(object):
     @classmethod
     def _handle_task_metric_dict(cls, metrics: Dict) -> pd.DataFrame:
         model_configs = pd.DataFrame(metrics["model_config"]).to_dict()
-        model_configs = {k: list(v.values()) for k, v in model_configs.items()} # Convert list of dicts to dict of lists
+        model_configs = {k: list(v.values()) for k, v in
+                         model_configs.items()}  # Convert list of dicts to dict of lists
         df = cls._nested_dict_to_df(metrics | {"model_config": model_configs})
 
         assert isinstance(df, pd.DataFrame), f"This function should only be used with a DataFrame, not {type(df)}"
@@ -385,6 +385,7 @@ class MetricLogger(object):
         """ Converts the currently stored dict of metrics into a Pandas DataFrame ready for being saved to disk. """
 
         # metric_df = self._nested_dict_to_df(self.metrics)
+        # noinspection PyArgumentList
         metric_df = self._metric_set_dict_handlers[self.set_type](self.metrics)
         return metric_df
 
@@ -427,6 +428,7 @@ class MetricLogger(object):
             return
 
         metric_df = pd.read_pickle(latest)
+        # noinspection PyArgumentList
         self.metrics |= self._metric_set_df_handlers[self.set_type](metric_df)
         self.elapsed_runtime = extract_runtime(latest)
 
@@ -444,7 +446,6 @@ def get_common_metrics(extra_metrics: Optional[List[str]] = None, template: Call
         **({m: template() for m in extra_metrics} if extra_metrics else {})
     )
     return metrics
-
 
 
 def adapt_search_space(original_space: NASB201HPOSearchSpace, opts, suffix: Optional[str] = "_custom") -> bool:
@@ -488,6 +489,10 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, opts, suffix: Opti
     return modified
 
 
+def get_default_datadir() -> Path:
+    return Path(__file__).parent.parent.parent / "data"
+
+
 class TrivialAugmentTransform(torch.nn.Module):
     def __init__(self):
         self._apply_op = TrivialAugment()
@@ -520,13 +525,13 @@ def load_splits(path: Path):
     with open(path, "r") as f:
         data = json.load(f)
     splits = {k: np.array(v[1], dtype=int) for k, v in data.items()}
-    del (data)
+    del data
     return AttrDict(splits)
 
 
 def get_dataloaders(dataset, batch_size, cutout: float = -1., split: bool = True, resize: int = 0,
-                    trivial_augment=False):
-    datapath = naslib_utils.get_project_root() / "data"
+                    trivial_augment=False, datadir: Path = None):
+    datapath = get_default_datadir() if datadir is None else datadir
     train_data, test_data, xshape, class_num = get_datasets(dataset, datapath, cutout=cutout, resize=resize,
                                                             trivial_augment=trivial_augment)
     test_loader = torch.utils.data.DataLoader(
@@ -598,9 +603,9 @@ def get_datasets(name, root, cutout, resize, trivial_augment=False):
     if name == "cifar10" or name == "cifar100":
         lists = [TrivialAugmentTransform()] if trivial_augment else \
             [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, padding=4)]
-        lists +=([transforms.Resize(resize)] if resize else []) + \
-                [transforms.ToTensor(), transforms.Normalize(mean, std), ]
-        if cutout > 0 and not trivial_augment: # Trivial Augment already contains Cutout
+        lists += ([transforms.Resize(resize)] if resize else []) \
+                 + [transforms.ToTensor(), transforms.Normalize(mean, std), ]
+        if cutout > 0 and not trivial_augment:  # Trivial Augment already contains Cutout
             lists += [Cutout(cutout)]
         train_transform = transforms.Compose(lists)
         test_transform = transforms.Compose(

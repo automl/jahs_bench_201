@@ -1,6 +1,6 @@
+import argparse
 import json
 from pathlib import Path
-import argparse
 
 import numpy as np
 
@@ -48,7 +48,6 @@ for sub in subdirs:
 
         with open(dirpath / "stats.json", "w") as fp:
             json.dump(overall_stats[sub], fp)
-
 
 if args.plot_only or args.plot:
     import matplotlib.pyplot as plt

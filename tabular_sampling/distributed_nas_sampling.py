@@ -82,6 +82,8 @@ def argument_parser():
     parser.add_argument("--basedir", type=Path, default=Path().cwd(),
                         help="Path to the base directory where all the tasks' output will be stored. Task-specific "
                              "sub-directories will be created here if needed.")
+    parser.add_argument("--datadir", type=Path, default=utils.get_default_datadir(),
+                        help="The directory where all datasets are expected to be stored.")
     parser.add_argument("--taskid", type=int,
                         help="An offset from 0 for this task within the current node's allocation of tasks.")
     parser.add_argument("--taskid_base", type=int, default=0,
@@ -123,9 +125,10 @@ def default_global_seed_gen(rng: Optional[np.random.RandomState] = None, global_
         raise ValueError("Cannot generate sequence of global seeds when both 'rng' and 'global_seed' are None.")
 
 
-def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, local_seed: Optional[int] = None,
-             global_seed: Optional[Union[Iterable[int], int]] = None, debug: bool = False,
-             generate_sampling_profile: bool = False, nsamples: int = 0, opts: Optional[Sequence[str]] = None):
+def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, datadir: Optional[Path] = None,
+             local_seed: Optional[int] = None, global_seed: Optional[Union[Iterable[int], int]] = None,
+             debug: bool = False, generate_sampling_profile: bool = False, nsamples: int = 0,
+             opts: Optional[Sequence[str]] = None):
     """
     Run the sampling, training and evaluation procedures on a single task.
 
@@ -261,7 +264,8 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, l
             naslib_utils.set_seed(curr_global_seed)
             data_loaders, _, _ = utils.get_dataloaders(
                 dataset=dataset, batch_size=train_config.batch_size, cutout=0, split=train_config.split,
-                resize=model_config.get("Resolution", 0), trivial_augment=model_config.get("TrivialAugment", False)
+                resize=model_config.get("Resolution", 0), trivial_augment=model_config.get("TrivialAugment", False),
+                datadir=datadir
             )
             validate = "valid" in data_loaders
             train(
@@ -301,5 +305,5 @@ if __name__ == "__main__":
     real_taskid = args.taskid_base + args.taskid
 
     run_task(basedir=args.basedir, taskid=real_taskid, train_config=get_tranining_config_from_args(args),
-             dataset="cifar10", local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
+             dataset="cifar10", datadir=args.datadir, local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
              generate_sampling_profile=args.generate_sampling_profile, nsamples=args.nsamples, opts=args.opts)

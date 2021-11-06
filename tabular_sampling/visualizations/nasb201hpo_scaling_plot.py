@@ -1,8 +1,9 @@
-import pandas as pd
-from pathlib import Path
-import numpy as np
 import argparse
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--basedir", type=Path, help="Path to the base directory where all the relevant dataframes are "
@@ -13,16 +14,17 @@ basedir: Path = args.basedir
 subdirs = [1, 4, 16, 64, 256, 512, 1024]
 dfs = []
 
+
 def get_num_configs(df: pd.DataFrame):
     df = df.xs(key=0, level="idx")["train_time"]
     return df.count()
+
 
 counts = []
 for sub in subdirs:
     pth = basedir / str(sub)
     df = pd.read_pickle(pth / "data.pkl.gz")
     counts.append(get_num_configs(df))
-
 
 # Common settings
 plt.rcParams.update({"xtick.labelsize": 14, "ytick.labelsize": 14, "axes.labelsize": 16, "axes.titlesize": 16})

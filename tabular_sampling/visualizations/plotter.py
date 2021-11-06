@@ -9,20 +9,19 @@ an index level named "iteration" if the other comparison indices are specified.
 'hist-groups': Generates grouped histograms to compare data across up to three different parameters.
 """
 
-
 import logging
-from typing import List, Sequence, Any, Tuple, Union, Iterator, Dict, Optional, Callable, Hashable
-from pathlib import Path
+from typing import List, Sequence, Any, Tuple, Union, Iterator, Dict, Optional, Hashable
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 _log = logging.getLogger(__name__)
 
 plt.rcParams.update({
     "xtick.labelsize": 14, "ytick.labelsize": 14, "axes.labelsize": 16, "axes.titlesize": 16, "axes.linewidth": 2,
-    "axes.edgecolor":"black", "lines.linewidth": 5
+    "axes.edgecolor": "black", "lines.linewidth": 5
 })
 
 default_metrics_row_index_labels: Sequence[str] = ("model", "metric", "rng_offset", "iteration")
@@ -34,6 +33,7 @@ cell_width = 8
 label_fontsize = 20
 legend_fontsize = 15
 pt_to_inch = 0.04167 / 3
+
 
 def map_label_to_color(label: str, map: Dict, colors: Iterator):
     if not label in map:
@@ -56,6 +56,7 @@ def create_figure(nrows: int, ncols: int, legend_size: int, pos: str = "auto") -
     if pos == "bottom":
         # Legend will be placed below the grid
         legend_ax_height = cell_height / 8 * (legend_size // ncols + int(legend_size % ncols > 0))
+
         def adjust_gridspec(height, width, height_ratios, width_ratios) -> \
                 Tuple[int, int, float, float, Sequence[float], Sequence[float]]:
             return nrows + 1, ncols, height + legend_ax_height, width, height_ratios + [legend_ax_height], width_ratios
@@ -66,6 +67,7 @@ def create_figure(nrows: int, ncols: int, legend_size: int, pos: str = "auto") -
     elif pos == "right":
         # Legend will be placed to the right of the grid
         legend_ax_width = cell_width / 2
+
         def adjust_gridspec(height, width, height_ratios, width_ratios) -> \
                 Tuple[float, float, Sequence[float], Sequence[float]]:
             return nrows, ncols + 1, height, width + legend_ax_width, height_ratios, width_ratios + [legend_ax_width]
@@ -179,7 +181,7 @@ def draw_hist_groups(ax: plt.Axes, data: [pd.Series, pd.DataFrame], compare_indi
 
 
 def _mean_std_plot(ax: plt.Axes, data: pd.Series, across: str, xaxis_level: str, color_generator: Iterator,
-                   known_colors: dict, calculate_stats: bool = True, outlines = True):
+                   known_colors: dict, calculate_stats: bool = True, outlines=True):
     """ Plots a Mean-Variance metric data visualization on the given Axes object comparing all indices defined by the
         name 'across' in the Series 'data' within the same plot. Remember that the Series index must contain at
         least 2 levels, one of which has to be 'across' and the other 'xaxis_level'. The remaining level(s) will be
@@ -266,7 +268,7 @@ def mean_std(data: pd.DataFrame, indices: List[str], xaxis_level: str, suptitle:
     assert nind <= 3, "Mean-Variance visualization of metric values cannot handle more than 3 " \
                       "index names to compare across."
     for idx in indices:
-        assert idx in index.names, f"{idx} is not a valid level name for the given dataframe with levels "\
+        assert idx in index.names, f"{idx} is not a valid level name for the given dataframe with levels " \
                                    f"{index.names}"
 
     col_labels: Sequence[Any] = index.unique(level=indices[1]) if len(indices) > 1 else [None]
@@ -321,7 +323,7 @@ def mean_std(data: pd.DataFrame, indices: List[str], xaxis_level: str, suptitle:
     handles, labels = legend
     _ = legend_ax.legend(handles, labels, **legend_kwargs)
     legend_ax.set_axis_off()
-    fig.align_labels(axs=fig.axes[0::ncols]) # Align only the left-column's y-labels
+    fig.align_labels(axs=fig.axes[0::ncols])  # Align only the left-column's y-labels
     fig.set_constrained_layout_pads(w_pad=1.1 * label_fontsize * pt_to_inch, h_pad=1.1 * label_fontsize * pt_to_inch)
     fig.set_constrained_layout(True)
     if suptitle:
@@ -361,7 +363,7 @@ class _AxisAligner:
                 # self._known_axes[i].yaxis.set_minor_locator(mtick.LinearLocator(10))
 
 
-def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], suptitle: str = None,
+def hist_groups(data: Union[pd.Series, pd.DataFrame], indices: List[str], suptitle: str = None,
                 legend_pos: str = "auto", xlabel: str = "", align_xlims: Optional[str] = None, **kwargs) -> plt.Figure:
     """
     Create a visualization that displays a grid of grouped histograms, such that each cell in the grid contains a
@@ -478,7 +480,7 @@ def hist_groups(data: Union[pd. Series, pd.DataFrame], indices: List[str], supti
     legend_lines = [plt.Line2D([0], [0], linewidth=8, color=labels_to_colors[l]) for l in labels_to_colors.keys()]
     _ = legend_ax.legend(legend_lines, legend_labels, **legend_kwargs)
     legend_ax.set_axis_off()
-    fig.align_labels(axs=fig.axes[0::ncols]) # Align only the left-column's y-labels
+    fig.align_labels(axs=fig.axes[0::ncols])  # Align only the left-column's y-labels
     fig.set_constrained_layout_pads(w_pad=1.1 * label_fontsize * pt_to_inch, h_pad=1.1 * label_fontsize * pt_to_inch)
     fig.set_constrained_layout(True)
     if suptitle:
@@ -499,7 +501,8 @@ def time_series_stats_plot():
         smoothed_series = series_data.groupby(lambda x: (x[0], (((x[1] - 1) // xaxis_smoothing_factor) + 1) *
                                                          xaxis_smoothing_factor)).agg("mean")
         smoothed_series.index = pd.MultiIndex.from_tuples(smoothed_series.index, names=["config_idx", xaxis_level])
-        base = smoothed_series.where(smoothed_series.index.get_level_values(xaxis_level) == xaxis_smoothing_factor).ffill()
+        base = smoothed_series.where(
+            smoothed_series.index.get_level_values(xaxis_level) == xaxis_smoothing_factor).ffill()
         if scale_data:
             scaled_series = smoothed_series / base
             epoch_stats = scaled_series.groupby(xaxis_level).describe()
@@ -510,7 +513,8 @@ def time_series_stats_plot():
         ax.set_title(metric_type_map[metric_type], fontsize=plotter.label_fontsize + 5)
 
         plotter._mean_std_plot(ax=ax, data=epoch_stats.assign(id="Mean").set_index("id", append=True), across="id",
-                               xaxis_level=xaxis_level, color_generator=iter(plt.cm.Set2.colors), known_colors={}, calculate_stats=False)
+                               xaxis_level=xaxis_level, color_generator=iter(plt.cm.Set2.colors), known_colors={},
+                               calculate_stats=False)
         ax.set_xlabel(xaxis_level, fontsize=plotter.label_fontsize)
         if col == 0:
             h, l = ax.get_legend_handles_labels()
@@ -518,11 +522,16 @@ def time_series_stats_plot():
 
         ax: plt.Axes = fig.add_subplot(gs[1, col])
         colors = iter(plt.cm.Set2.colors)
-        ax.plot(epoch_stats.index, epoch_stats["min"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="Min")
-        ax.plot(epoch_stats.index, epoch_stats["25%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="q=0.25")
-        ax.plot(epoch_stats.index, epoch_stats["50%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="q=0.50")
-        ax.plot(epoch_stats.index, epoch_stats["75%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="q=0.75")
-        ax.plot(epoch_stats.index, epoch_stats["max"], c=next(colors), linestyle="--", linewidth=plotter.linewidth, label="Max")
+        ax.plot(epoch_stats.index, epoch_stats["min"], c=next(colors), linestyle="--", linewidth=plotter.linewidth,
+                label="Min")
+        ax.plot(epoch_stats.index, epoch_stats["25%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth,
+                label="q=0.25")
+        ax.plot(epoch_stats.index, epoch_stats["50%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth,
+                label="q=0.50")
+        ax.plot(epoch_stats.index, epoch_stats["75%"], c=next(colors), linestyle="--", linewidth=plotter.linewidth,
+                label="q=0.75")
+        ax.plot(epoch_stats.index, epoch_stats["max"], c=next(colors), linestyle="--", linewidth=plotter.linewidth,
+                label="Max")
         # ax.set_yscale("log")
         ax.set_xlabel(xaxis_level, fontsize=plotter.label_fontsize)
         ax.grid(True, which='both', linewidth=0.5, c='k')
@@ -545,8 +554,8 @@ def time_series_stats_plot():
 
 # TODO: Polish and standardize
 def plot_spearman_rank_correlation(rho: pd.DataFrame, pval: pd.DataFrame,
-                                   exclude_row_vals: Union[None, Sequence[Any]]=None,
-                                   exclude_col_vals: Union[None, Sequence[Any]]=None):
+                                   exclude_row_vals: Union[None, Sequence[Any]] = None,
+                                   exclude_col_vals: Union[None, Sequence[Any]] = None):
     rows = rho.index
     columns = rho.columns
 

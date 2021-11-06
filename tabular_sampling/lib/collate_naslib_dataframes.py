@@ -35,7 +35,7 @@ from pathlib import Path
 import pandas as pd
 import json
 import argparse
-from naslib.tabular_sampling.lib.utils import DirectoryTree
+from tabular_sampling.lib.utils import DirectoryTree
 
 parser = argparse.ArgumentParser("Collates all results from the DataFrames produced after successful NASLib training "
                                  "runs into a single large DataFrame.")
