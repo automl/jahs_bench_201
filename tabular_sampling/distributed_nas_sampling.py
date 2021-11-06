@@ -36,10 +36,10 @@ import torch
 import naslib.utils.logging as naslib_logging
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AttrDict
-from naslib.tabular_sampling.search_space import NASB201HPOSearchSpace
-from naslib.tabular_sampling.lib import utils
-from naslib.tabular_sampling.lib.count_flops import get_model_flops
-from naslib.tabular_sampling.lib.procs import train
+from tabular_sampling.search_space import NASB201HPOSearchSpace
+from tabular_sampling.lib import utils
+from tabular_sampling.lib.count_flops import get_model_flops
+from tabular_sampling.lib.procs import train
 
 # Randomly generated entropy source, to remain fixed across experiments.
 seed = 79029434164686768057103648623012072794
