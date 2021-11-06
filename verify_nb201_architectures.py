@@ -11,11 +11,11 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 
-from naslib.search_spaces import NASB201HPOSearchSpace
-from naslib.search_spaces.nasb201_hpo import conversions
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
+from naslib.tabular_sampling.search_space import NASB201HPOSearchSpace
+from naslib.tabular_sampling.search_space import conversions
 from naslib.tabular_sampling.lib import utils
 from naslib.tabular_sampling.lib.custom_nasb201_code import CosineAnnealingLR
 

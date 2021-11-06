@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import naslib.utils.logging as naslib_logging
 import naslib.utils.utils as naslib_utils
-from naslib.search_spaces import NASB201HPOSearchSpace
+from naslib.tabular_sampling.search_space import NASB201HPOSearchSpace
 from naslib.tabular_sampling.lib import utils
 from naslib.tabular_sampling.lib.custom_nasb201_code import CosineAnnealingLR
 from naslib.utils.utils import AverageMeter, AttrDict

@@ -1,5 +1,3 @@
-import logging
-from pathlib import Path
 import enum
 import json
 import logging
@@ -16,7 +14,7 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 
 from naslib.search_spaces.core.graph import Graph
-from naslib.search_spaces.nasb201_hpo.graph import NASB201HPOSearchSpace
+from naslib.tabular_sampling.search_space import NASB201HPOSearchSpace
 from naslib.utils import utils as naslib_utils
 from naslib.utils.utils import AttrDict, Cutout, AverageMeter
 from .custom_nasb201_code import CosineAnnealingLR
