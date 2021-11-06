@@ -89,6 +89,11 @@ def argument_parser():
     parser.add_argument("--taskid_base", type=int, default=0,
                         help="An additional offset from 0 to manually shift all task IDs further, useful when sampling "
                              "is intended to continue adding more data beyond a previous job's data.")
+    parser.add_argument("--portfolio", type=Path, default=None,
+                        help="Path to a saved pandas DataFrame or Series containing a portfolio of configurations. If "
+                             "given, the portfolio is read and used to restrict the search space on a per-task basis. "
+                             "Key-value pairs specified as CLI arguments for 'opts' override corresponding portfolio "
+                             "values.")
     parser.add_argument("--global_seed", type=int, default=None,
                         help="A value for a global seed to be used for all global NumPy and PyTorch random "
                              "operations. This is different from the fixed seed used for reproducible search space "
@@ -102,8 +107,8 @@ def argument_parser():
                              "repeatedly drawn at 1s intervals and saved in order to build a profile of expected "
                              "samples.")
     parser.add_argument("--nsamples", type=int, default=100,
-                        help="Only used when --generate_sampling_profile is given. Sets the number of samples to be "
-                             "drawn from the search space.")
+                        help="Sets the maximum number of samples to be drawn from the search space for each task. Use "
+                             "-1 to set this to unlimited.")
     parser.add_argument("opts", nargs=argparse.REMAINDER, default=None,
                         help="A variable number of optional keyword arguments provided as 2-tuples, each potentially "
                              "corresponding to a hyper-parameter in the search space. If a match is found, that "
@@ -125,10 +130,21 @@ def default_global_seed_gen(rng: Optional[np.random.RandomState] = None, global_
         raise ValueError("Cannot generate sequence of global seeds when both 'rng' and 'global_seed' are None.")
 
 
+def default_random_sampler(search_space: NASB201HPOSearchSpace, global_seed_gen: Iterable[int],
+                           rng: np.random.RandomState):
+    while True:
+        curr_global_seed = next(global_seed_gen)
+        naslib_utils.set_seed(curr_global_seed)
+        model: NASB201HPOSearchSpace = search_space.clone()
+        model.sample_random_architecture(rng=rng)
+        model_config = model.config.get_dictionary()
+        yield model, model_config, curr_global_seed
+
+
 def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, datadir: Optional[Path] = None,
              local_seed: Optional[int] = None, global_seed: Optional[Union[Iterable[int], int]] = None,
              debug: bool = False, generate_sampling_profile: bool = False, nsamples: int = 0,
-             opts: Optional[Sequence[str]] = None):
+             portfolio: Optional[Path] = None, opts: Optional[Sequence[str]] = None):
     """
     Run the sampling, training and evaluation procedures on a single task.
 
@@ -158,8 +174,8 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
         generate the expected sampling profile of this task without actually training/evaluating the sampled models.
         Also consult 'nsamples'. Default: False.
     :param nsamples: int
-        Only applicable when 'generate_sampling_profile' is True. The number of samples to be drawn from the search
-        space for each task. Default: 0.
+        The maximum number of samples to be drawn from the search space for each task. When set to -1, draws an
+        unlimited number of samples. Default: 0.
     :param opts: Sequence of str
         A sequence of strings read as pairs of values that modify the search space such that the first string in each
         pair corresponds to a known parameter in the relevant config space and the second string corresponds to a
@@ -200,22 +216,16 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
     search_space = NASB201HPOSearchSpace()
 
-    if utils.adapt_search_space(search_space, opts):
+    if utils.adapt_search_space(original_space=search_space, portfolio=portfolio, taskid=taskid, opts=opts):
         logger.info(f"Modified original search space's hyperparameter config space using constant values. "
                     f"New config space: \n{search_space.config_space}")
 
+    sampler = default_random_sampler
 
-    def sampler():
-        while True:
-            curr_global_seed = next(global_seed_gen)
-            naslib_utils.set_seed(curr_global_seed)
-            model: NASB201HPOSearchSpace = search_space.clone()
-            model.sample_random_architecture(rng=rng)
-            model_config = model.config.get_dictionary()
-            yield model, model_config, curr_global_seed
-
-
-    for model_idx, (model, model_config, curr_global_seed) in enumerate(sampler(), start=1):
+    for model_idx, (model, model_config, curr_global_seed) in \
+            enumerate(sampler(search_space, global_seed_gen, rng), start=1):
+        if nsamples != -1 and model_idx >= nsamples:
+            break
         logger.info(f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}")
 
         ## Model initialization
@@ -252,11 +262,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
 
         if generate_sampling_profile:
             time.sleep(1)
-
-            if model_idx >= nsamples:
-                break
-            else:
-                continue
+            continue
 
         ## Actual model training and evaluation
         try:
@@ -306,4 +312,5 @@ if __name__ == "__main__":
 
     run_task(basedir=args.basedir, taskid=real_taskid, train_config=get_tranining_config_from_args(args),
              dataset="cifar10", datadir=args.datadir, local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
-             generate_sampling_profile=args.generate_sampling_profile, nsamples=args.nsamples, opts=args.opts)
+             generate_sampling_profile=args.generate_sampling_profile, nsamples=args.nsamples,
+             portfolio=args.portfolio, opts=args.opts)
