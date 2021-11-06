@@ -161,7 +161,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
 
 def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, dir_tree: utils.DirectoryTree,
           logger: logging.Logger, validate=False, transfer_devices: bool = False,
-          device: [torch.DeviceObjType, str] = "cpu"):
+          device: [torch.DeviceObjType, str] = "cpu", debug: bool = False):
     """
     Train the given model using the given data loaders and training configuration. Returns a dict containing
     various metrics.
@@ -177,7 +177,6 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         An attribute dict containing various configuration parameters for the model training.
     """
 
-    debug = train_config.debug
     start_time = time.time()
     latency = AverageMeter()
 
