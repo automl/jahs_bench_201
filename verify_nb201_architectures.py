@@ -16,8 +16,8 @@ from naslib.search_spaces.nasb201_hpo import conversions
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AverageMeter, AttrDict
 import naslib.utils.logging as naslib_logging
-from naslib.tabular_sampling.utils import utils
-from naslib.tabular_sampling.utils.custom_nasb201_code import CosineAnnealingLR
+from naslib.tabular_sampling.lib import utils
+from naslib.tabular_sampling.lib.custom_nasb201_code import CosineAnnealingLR
 
 # Randomly generated entropy source, to remain fixed across experiments.
 # seed = 79029434164686768057103648623012072794
