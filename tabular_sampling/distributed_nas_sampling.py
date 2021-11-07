@@ -25,50 +25,23 @@ import argparse
 import json
 import logging
 import time
-from itertools import repeat, cycle
-from typing import Iterable, Sequence, Optional, Union, Tuple
 from pathlib import Path
-
-import ConfigSpace
-import numpy as np
-import pandas as pd
-import torch
+from typing import Iterable, Sequence, Optional, Union
 
 import naslib.utils.logging as naslib_logging
 import naslib.utils.utils as naslib_utils
+import numpy as np
+import torch
 from naslib.utils.utils import AttrDict
-from tabular_sampling.search_space import NASB201HPOSearchSpace
+
+from tabular_sampling.lib.constants import training_config as _training_config
 from tabular_sampling.lib import utils
 from tabular_sampling.lib.count_flops import get_model_flops
 from tabular_sampling.lib.procs import train
+from tabular_sampling.search_space import NASB201HPOSearchSpace
 
 # Randomly generated entropy source, to remain fixed across experiments.
 _seed = 79029434164686768057103648623012072794
-_training_config = {
-    "epochs": dict(type=int, default=25,
-         help="Number of epochs that each sampled architecture should be trained for. Default: 25"),
-    "batch_size": dict(type=int, default=256, help="Number of samples per mini-batch."),
-    "use_grad_clipping": dict(action="store_true", help="Enable gradient clipping for SGD."),
-    "split": dict(action="store_true", help="Split training dataset into training and validation sets."),
-    "warmup_epochs": dict(type=int, default=0.,
-                          help="When set to a positive integer, this many epochs are used to warm-start the training."),
-    "disable_checkpointing": dict(
-        action="store_true",
-        help="When given, checkpointing of model training is disabled. By default, model training is checkpointed "
-             "either every X seconds or Y epochs, whichever occurs first. Check --checkpoint_interval_seconds and "
-             "--checkpoint_interval_epochs."),
-    "checkpoint_interval_seconds": dict(
-        type=int, default=1800,
-        help="The time interval between subsequent model training checkpoints, in seconds. Default: 30 minutes i.e. "
-             "1800 seconds."),
-    "checkpoint_interval_epochs": dict(
-        type=int, default=20, help="The interval between subsequent model training checkpoints, in epochs. Default: "
-                                   "20 epochs.")
-}
-
-
-def get_training_config_help() -> dict:
-    return {k: v["help"] for k, v in _training_config.items()}
 
 
 def get_tranining_config_from_args(args: Sequence[str]) -> AttrDict:
@@ -77,11 +50,11 @@ def get_tranining_config_from_args(args: Sequence[str]) -> AttrDict:
 
 def argument_parser():
     parser = argparse.ArgumentParser()
-    
+
     # Unpack the training config into CLI flags.
     for k, v in _training_config.items():
         parser.add_argument(f"--{k}", **v)
-    
+
     parser.add_argument("--basedir", type=Path, default=Path().cwd(),
                         help="Path to the base directory where all the tasks' output will be stored. Task-specific "
                              "sub-directories will be created here if needed.")
@@ -106,7 +79,7 @@ def argument_parser():
     #                          "multi-node cluster setup.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
     parser.add_argument("--generate_sampling_profile", action="store_true",
-                        help="When given, does not actually train the sampled models. Instead, only samples are "
+                        help="When given, does not actually train the sampled models. Instead, samples are simply "
                              "repeatedly drawn at 1s intervals and saved in order to build a profile of expected "
                              "samples.")
     parser.add_argument("--nsamples", type=int, default=100,
@@ -277,7 +250,6 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
 
 
 if __name__ == "__main__":
-
     ## Parse CLI
     args = argument_parser().parse_args()
 

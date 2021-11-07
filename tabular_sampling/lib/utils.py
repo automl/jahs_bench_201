@@ -3,10 +3,12 @@ import json
 import logging
 import random
 from copy import deepcopy
+from itertools import repeat, cycle
 from pathlib import Path
-from typing import Dict, Union, Any, Optional, Iterable, Callable, List
+from typing import Dict, Union, Any, Optional, Iterable, Callable, List, Tuple
 
 import ConfigSpace
+import naslib.utils.utils as naslib_utils
 import numpy as np
 import pandas as pd
 import torch
@@ -15,9 +17,14 @@ import torchvision.transforms as transforms
 from naslib.search_spaces.core.graph import Graph
 from naslib.utils.utils import AttrDict, Cutout, AverageMeter
 
+import tabular_sampling.lib.constants as constants
 from tabular_sampling.search_space import NASB201HPOSearchSpace
 from .aug_lib import TrivialAugment
 from .custom_nasb201_code import CosineAnnealingLR
+
+
+def get_training_config_help() -> dict:
+    return {k: v["help"] for k, v in constants.training_config.items()}
 
 
 def _query_config(config: Union[ConfigSpace.Configuration, Dict], param: str, default: Optional[Any] = None) -> Any:
@@ -510,7 +517,7 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optiona
             old_param = known_params[arg]
             new_val = param_interpretor(old_param, val)
             if isinstance(new_val, bool):
-                new_val = int(new_val) # Because ConfigSpace doesn't allow Boolean constants.
+                new_val = int(new_val)  # Because ConfigSpace doesn't allow Boolean constants.
             known_params[arg] = ConfigSpace.Constant(arg, new_val,
                                                      meta=dict(old_param.meta, **dict(constant_overwrite=True)))
             modified = True
@@ -542,16 +549,24 @@ def default_random_sampler(search_space: NASB201HPOSearchSpace, global_seed_gen:
 
 def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_gen: Iterable[int],
                   rng: np.random.RandomState, portfolio_pth: Optional[Path] = None, opts: Optional[dict] = None,
-                  **kwargs) -> Iterable[NASB201HPOSearchSpace, dict, int]:
+                  cycle_models: bool = False, **kwargs) -> Iterable[Tuple[NASB201HPOSearchSpace, dict, int]]:
     """ Generates an iterable over tuples of initialized models, their configuration dictionary, and the global int
     seed used to initialize the global RNG state of PyTorch, NumPy and Random for that model by parsing a given search
     space, taking into account an optional portfolio of configurations. 'global_seed_gen' is an iterable of integers
     used to generate the int seeds for each model and 'rng' is used for consistent random sampling. An optional
     dictionary 'opts' mapping parameter names to constant values can be used to override the corresponding parameter
-    values in the portfolio and the search space. """
+    values in the portfolio and the search space. If the flag 'cycle_models' is set, then in the case when a portfolio
+    of fixed model configs for each task is given, the configs are cycled infinitely, thereby allowing the same configs
+    to be evaluated under multiple global seeds. This flag has no effect when the portfolio does not contains
+    model-specific configs or when no portfolio is given. """
 
     use_fixed_sampler = False
-    opts = {} if opts is None else opts
+    if opts is None:
+        opts = {}
+    elif isinstance(opts, list):
+        i = iter(opts)
+        opts = {k: v for k, v in zip(i, i)}
+
     if portfolio_pth is not None:
         # Accomodate for a portfolio file modifying the search space.
         portfolio = pd.read_pickle(portfolio_pth)
@@ -572,8 +587,9 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
 
     if use_fixed_sampler:
         # The portfolio now consists of only the model configs that we want to iterate over within this task.
+        model_inds = cycle(portfolio.index.values) if cycle_models else portfolio.index.values
         def sampler():
-            for idx, curr_global_seed in zip(portfolio.index.values, global_seed_gen):
+            for idx, curr_global_seed in zip(model_inds, global_seed_gen):
                 model_config = portfolio.loc[idx, :].to_dict()
                 model = search_space.clone()
                 model.config = ConfigSpace.Configuration(model.config_space, model_config)
