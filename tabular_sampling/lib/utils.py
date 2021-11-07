@@ -448,18 +448,21 @@ def get_common_metrics(extra_metrics: Optional[List[str]] = None, template: Call
     return metrics
 
 
-def _read_portfolio(portfolio: Path, taskid: int) -> dict:
-    """ Read a portfolio file and generate the configuration options relevant to the given task. """
-    # For now, we are assuming that a portfolio specifies configurations on a per-task basis only.
+def default_global_seed_gen(rng: Optional[np.random.RandomState] = None, global_seed: Optional[int] = None) \
+        -> Iterable[int]:
+    if global_seed is not None:
+        return global_seed if isinstance(global_seed, Iterable) else repeat(global_seed)
+    elif rng is not None:
+        def seeds():
+            while True:
+                yield rng.randint(0, 2 ** 32 - 1)
 
-    data: pd.DataFrame = pd.read_pickle(portfolio)
-    assert isinstance(data, pd.DataFrame), "Expected portfolio files to be DataFrames, handling Series has not yet " \
-                                           "been implemented."
-    task_idx = taskid % data.index.size
-    return data.loc[task_idx, :].to_dict()
+        return seeds()
+    else:
+        raise ValueError("Cannot generate sequence of global seeds when both 'rng' and 'global_seed' are None.")
 
 
-def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optional[Path] = None,
+def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optional[pd.DataFrame] = None,
                        taskid: Optional[int] = None, opts: Optional[Union[Dict[str, Any], List[str]]] = None,
                        suffix: Optional[str] = "_custom") -> bool:
     """ Given a NASB201HPOSearchSpace object and a valid configuration, restricts the respective configuration space
@@ -473,19 +476,20 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optiona
     most likely because no valid keys were present in the configuration dictionary or the dictionary was empty. In
     such a case, False is returned. Otherwise, True is returned. """
 
-    new_config = {}
+    new_consts = {}
     if portfolio is None and opts is None:
         return False
-    elif portfolio is not None and taskid is None:
-        raise ValueError(f"When a path to a portfolio file is given, an integer taskid must also be provided. Was "
-                         f"given {taskid}")
-    else:
-        new_config = _read_portfolio(portfolio, taskid)
+    elif portfolio is not None:
+        if taskid is None:
+            raise ValueError(f"When a portfolio is given, an integer taskid must also be provided. Was given {taskid}")
+        else:
+            new_consts = portfolio.loc[taskid % portfolio.index.size, :].to_dict()
 
+    # Convert opts from list of string pairs to a mapping from string to string.
     if isinstance(opts, List):
         i = iter(opts)
         opts = {k: v for k, v in zip(i, i)}
-    new_config |= opts
+    new_consts |= opts
 
     config_space = original_space.config_space
     known_params = {p.name: p for p in config_space.get_hyperparameters()}
@@ -501,7 +505,7 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optiona
 
     modified = False
 
-    for arg, val in new_config.items():
+    for arg, val in new_consts.items():
         if arg in known_params:
             old_param = known_params[arg]
             new_val = param_interpretor(old_param, val)
@@ -517,6 +521,67 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optiona
         original_space.config_space = new_config_space
 
     return modified
+
+
+def default_random_sampler(search_space: NASB201HPOSearchSpace, global_seed_gen: Iterable[int],
+                           rng: np.random.RandomState, **kwargs) -> Tuple[NASB201HPOSearchSpace, dict, int]:
+    """ Given a compatible search space, a global seed generator for fixing global seeds before model training and a
+    local RNG for controlling sampling from the search space, generates samples from the search space, their
+    configuration dictionary and the corresponding global seed. In this process, the global seed is automatically set.
+    The extra keyword arguments are complete ignored and have been provided only to allow function signature
+    overloading.
+    """
+    while True:
+        curr_global_seed = next(global_seed_gen)
+        naslib_utils.set_seed(curr_global_seed)
+        model: NASB201HPOSearchSpace = search_space.clone()
+        model.sample_random_architecture(rng=rng)
+        model_config = model.config.get_dictionary()
+        yield model, model_config, curr_global_seed
+
+
+def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_gen: Iterable[int],
+                  rng: np.random.RandomState, portfolio_pth: Optional[Path] = None, opts: Optional[dict] = None,
+                  **kwargs) -> Iterable[NASB201HPOSearchSpace, dict, int]:
+    """ Generates an iterable over tuples of initialized models, their configuration dictionary, and the global int
+    seed used to initialize the global RNG state of PyTorch, NumPy and Random for that model by parsing a given search
+    space, taking into account an optional portfolio of configurations. 'global_seed_gen' is an iterable of integers
+    used to generate the int seeds for each model and 'rng' is used for consistent random sampling. An optional
+    dictionary 'opts' mapping parameter names to constant values can be used to override the corresponding parameter
+    values in the portfolio and the search space. """
+
+    use_fixed_sampler = False
+    opts = {} if opts is None else opts
+    if portfolio_pth is not None:
+        # Accomodate for a portfolio file modifying the search space.
+        portfolio = pd.read_pickle(portfolio_pth)
+        if isinstance(portfolio.index, pd.MultiIndex):
+            # Format 2 of the portfolio: We need to sample only the models specified in the portfolio
+            portfolio = portfolio.xs(taskid % portfolio.index.unique("taskid").size, axis=0, level="taskid")
+            if "opts" in portfolio.columns.levels[0]:
+                # These values should be constant across all sampled models
+                opts = portfolio["opts"].iloc[0].to_dict() | opts
+            use_fixed_sampler = True
+            portfolio = portfolio["model_config"]
+        else:
+            # Format 1 of the portfolio: We need to fix one or more parameters in the search space for this task
+            opts = portfolio.loc[taskid % portfolio.index.unique("taskid").size, :].to_dict() | opts
+
+    # Use the search space modifiers that have now already subsumed the portfolio
+    adapt_search_space(search_space, opts=opts, suffix=f"_task_{taskid}")
+
+    if use_fixed_sampler:
+        # The portfolio now consists of only the model configs that we want to iterate over within this task.
+        def sampler():
+            for idx, curr_global_seed in zip(portfolio.index.values, global_seed_gen):
+                model_config = portfolio.loc[idx, :].to_dict()
+                model = search_space.clone()
+                model.config = ConfigSpace.Configuration(model.config_space, model_config)
+                yield model, model_config, curr_global_seed
+
+        return sampler()
+    else:
+        return default_random_sampler(search_space=search_space, global_seed_gen=global_seed_gen, rng=rng)
 
 
 def get_default_datadir() -> Path:

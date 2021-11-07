@@ -25,10 +25,13 @@ import argparse
 import json
 import logging
 import time
-from itertools import repeat
-from typing import Iterable, Sequence, Optional, Union
+from itertools import repeat, cycle
+from typing import Iterable, Sequence, Optional, Union, Tuple
 from pathlib import Path
+
+import ConfigSpace
 import numpy as np
+import pandas as pd
 import torch
 
 import naslib.utils.logging as naslib_logging
@@ -116,35 +119,10 @@ def argument_parser():
     return parser
 
 
-def default_global_seed_gen(rng: Optional[np.random.RandomState] = None, global_seed: Optional[int] = None) \
-        -> Iterable[int]:
-    if global_seed is not None:
-        return global_seed if isinstance(global_seed, Iterable) else repeat(global_seed)
-    elif rng is not None:
-        def seeds():
-            while True:
-                yield rng.randint(0, 2 ** 32 - 1)
-
-        return seeds()
-    else:
-        raise ValueError("Cannot generate sequence of global seeds when both 'rng' and 'global_seed' are None.")
-
-
-def default_random_sampler(search_space: NASB201HPOSearchSpace, global_seed_gen: Iterable[int],
-                           rng: np.random.RandomState):
-    while True:
-        curr_global_seed = next(global_seed_gen)
-        naslib_utils.set_seed(curr_global_seed)
-        model: NASB201HPOSearchSpace = search_space.clone()
-        model.sample_random_architecture(rng=rng)
-        model_config = model.config.get_dictionary()
-        yield model, model_config, curr_global_seed
-
-
 def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, datadir: Optional[Path] = None,
              local_seed: Optional[int] = None, global_seed: Optional[Union[Iterable[int], int]] = None,
              debug: bool = False, generate_sampling_profile: bool = False, nsamples: int = 0,
-             portfolio: Optional[Path] = None, opts: Optional[Sequence[str]] = None):
+             portfolio_pth: Optional[Path] = None, opts: Optional[Sequence[str]] = None):
     """
     Run the sampling, training and evaluation procedures on a single task.
 
@@ -185,7 +163,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
     """
 
     rng = np.random.RandomState(np.random.Philox(seed=local_seed, counter=taskid))
-    global_seed_gen = default_global_seed_gen(rng, global_seed)
+    global_seed_gen = utils.default_global_seed_gen(rng, global_seed)
     dir_tree = utils.DirectoryTree(basedir=basedir, taskid=taskid)
 
     logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
@@ -216,14 +194,10 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
     search_space = NASB201HPOSearchSpace()
 
-    if utils.adapt_search_space(original_space=search_space, portfolio=portfolio, taskid=taskid, opts=opts):
-        logger.info(f"Modified original search space's hyperparameter config space using constant values. "
-                    f"New config space: \n{search_space.config_space}")
+    sampler = utils.model_sampler(search_space=search_space, taskid=taskid, global_seed_gen=global_seed_gen, rng=rng,
+                                  portfolio_pth=portfolio_pth, opts=opts)
 
-    sampler = default_random_sampler
-
-    for model_idx, (model, model_config, curr_global_seed) in \
-            enumerate(sampler(search_space, global_seed_gen, rng), start=1):
+    for model_idx, (model, model_config, curr_global_seed) in enumerate(sampler, start=1):
         if nsamples != -1 and model_idx >= nsamples:
             break
         logger.info(f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}")
@@ -313,4 +287,4 @@ if __name__ == "__main__":
     run_task(basedir=args.basedir, taskid=real_taskid, train_config=get_tranining_config_from_args(args),
              dataset="cifar10", datadir=args.datadir, local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
              generate_sampling_profile=args.generate_sampling_profile, nsamples=args.nsamples,
-             portfolio=args.portfolio, opts=args.opts)
+             portfolio_pth=args.portfolio, opts=args.opts)

@@ -1,5 +1,7 @@
 import os
 import pickle
+
+import ConfigSpace
 import numpy as np
 import random
 import torch
@@ -50,10 +52,7 @@ class NASB201HPOSearchSpace(Graph):
         # dynamic flexibility in graph design required by HPO, which may include fidelity parameters. Thus, the
         # initializer now only sets a number of fixed parameters that provide some general information about the
         # search space and calls a separate function to instantiate a graph. Thus, the graph can be cleared and
-        # re-constructed using different parameters any time by calling the relevant function again. Note that the
-        # search space is immediately compiled into a functional PyTorch model after the graph is constructed using
-        # the default, fixed config. To control this behaviour, make sure to (un-)set the flag COMPILE_ON_CREATE before
-        # creating an object.
+        # re-constructed using different parameters any time by calling the relevant function again.
 
         super().__init__()
         self.num_classes = self.NUM_CLASSES if hasattr(self, 'NUM_CLASSES') else 10
@@ -173,11 +172,11 @@ class NASB201HPOSearchSpace(Graph):
             self.compile()
 
     @property
-    def config(self):
+    def config(self) -> ConfigSpace.Configuration:
         return self._config
 
     @config.setter
-    def config(self, val):
+    def config(self, val: ConfigSpace.Configuration):
         try:
             self.config_space.check_configuration(val)
         except Exception as e:
