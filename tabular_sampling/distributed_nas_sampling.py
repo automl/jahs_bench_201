@@ -65,11 +65,18 @@ def argument_parser():
     parser.add_argument("--taskid_base", type=int, default=0,
                         help="An additional offset from 0 to manually shift all task IDs further, useful when sampling "
                              "is intended to continue adding more data beyond a previous job's data.")
+    parser.add_argument("--nsamples", type=int, default=100,
+                        help="Sets the maximum number of samples to be drawn from the search space for each task. Use "
+                             "-1 to set this to unlimited.")
     parser.add_argument("--portfolio", type=Path, default=None,
                         help="Path to a saved pandas DataFrame or Series containing a portfolio of configurations. If "
                              "given, the portfolio is read and used to restrict the search space on a per-task basis. "
                              "Key-value pairs specified as CLI arguments for 'opts' override corresponding portfolio "
                              "values.")
+    parser.add_argument("--cycle_portfolio", action="store_true",
+                        help="Only appliable when a complete portfolio of task- and mode-wise configurations is given. "
+                             "When given, causes the portfolio configurations within each task to cycle infinitely or "
+                             "until sampling is stopped due to the limit set down by '--nsamples'.")
     parser.add_argument("--global_seed", type=int, default=None,
                         help="A value for a global seed to be used for all global NumPy and PyTorch random "
                              "operations. This is different from the fixed seed used for reproducible search space "
@@ -82,9 +89,6 @@ def argument_parser():
                         help="When given, does not actually train the sampled models. Instead, samples are simply "
                              "repeatedly drawn at 1s intervals and saved in order to build a profile of expected "
                              "samples.")
-    parser.add_argument("--nsamples", type=int, default=100,
-                        help="Sets the maximum number of samples to be drawn from the search space for each task. Use "
-                             "-1 to set this to unlimited.")
     parser.add_argument("opts", nargs=argparse.REMAINDER, default=None,
                         help="A variable number of optional keyword arguments provided as 2-tuples, each potentially "
                              "corresponding to a hyper-parameter in the search space. If a match is found, that "
@@ -92,10 +96,11 @@ def argument_parser():
     return parser
 
 
-def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, datadir: Optional[Path] = None,
+def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, datadir,
              local_seed: Optional[int] = None, global_seed: Optional[Union[Iterable[int], int]] = None,
              debug: bool = False, generate_sampling_profile: bool = False, nsamples: int = 0,
-             portfolio_pth: Optional[Path] = None, opts: Optional[Sequence[str]] = None):
+             portfolio_pth: Optional[Path] = None, cycle_portfolio: bool = False,
+             opts: Optional[Sequence[str]] = None):
     """
     Run the sampling, training and evaluation procedures on a single task.
 
@@ -108,6 +113,8 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
         'get_training_config_help()' and 'get_training_config_from_args()' for more details.
     :param dataset: str
         The name of a known dataset to be used for model training and evaluation.
+    :param datadir: Path-like
+        The path to a directory where all the datasets are stored.
     :param local_seed: int
         An integer seed for a locally instantiated and controlled RNG that will be passed around to control this task's
         sampling processes. If None (default), local system entropy is used as a seed instead. Note that for
@@ -127,6 +134,15 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
     :param nsamples: int
         The maximum number of samples to be drawn from the search space for each task. When set to -1, draws an
         unlimited number of samples. Default: 0.
+    :param portfolio_pth: Path-like
+        Path to a '.pkl.gz' file containing a portfolio of configurations in the form of a compatible Pandas DataFrame.
+        If only task-level configurations are given, the search space is restricted on a task-basis such that the given
+        task's sampled configurations always conform to the portfolio's specifications. If both task-level and
+        model-level configurations are given, the search space isn't sampled at all and instead the precise
+        configurations specified in the portfolio are used to generate models. Also see 'cycle_portfolio'.
+    :param cycle_portfolio: bool
+        Only applicable when a portfolio is provided (see 'portfolio_pth'). When True, the configurations of each task
+        are cycled infinitely or until the limit specified by 'nsamples' is reached. Default: False
     :param opts: Sequence of str
         A sequence of strings read as pairs of values that modify the search space such that the first string in each
         pair corresponds to a known parameter in the relevant config space and the second string corresponds to a
@@ -168,7 +184,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
     search_space = NASB201HPOSearchSpace()
 
     sampler = utils.model_sampler(search_space=search_space, taskid=taskid, global_seed_gen=global_seed_gen, rng=rng,
-                                  portfolio_pth=portfolio_pth, opts=opts)
+                                  portfolio_pth=portfolio_pth, opts=opts, cycle_models=cycle_portfolio)
 
     for model_idx, (model, model_config, curr_global_seed) in enumerate(sampler, start=1):
         if nsamples != -1 and model_idx >= nsamples:
@@ -258,5 +274,5 @@ if __name__ == "__main__":
 
     run_task(basedir=args.basedir, taskid=real_taskid, train_config=get_tranining_config_from_args(args),
              dataset="cifar10", datadir=args.datadir, local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
-             generate_sampling_profile=args.generate_sampling_profile, nsamples=args.nsamples,
-             portfolio_pth=args.portfolio, opts=args.opts)
+             generate_sampling_profile=args.generate_sampling_profile, cycle_portfolio=args.cycle_portfolio,
+             nsamples=args.nsamples, portfolio_pth=args.portfolio, opts=args.opts)

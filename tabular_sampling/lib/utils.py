@@ -592,7 +592,10 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
             for idx, curr_global_seed in zip(model_inds, global_seed_gen):
                 model_config = portfolio.loc[idx, :].to_dict()
                 model = search_space.clone()
-                model.config = ConfigSpace.Configuration(model.config_space, model_config)
+                model.clear()
+                model.config = ConfigSpace.Configuration(
+                    model.config_space, model.config_space.get_default_configuration().get_dictionary() | model_config)
+                model._construct_graph()
                 yield model, model_config, curr_global_seed
 
         return sampler()
