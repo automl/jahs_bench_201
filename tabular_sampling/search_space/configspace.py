@@ -38,11 +38,11 @@ optimizers = CS.CategoricalHyperparameter("Optimizer", choices=["AdamW", "SGD"],
                                           meta=dict(help="Which optimizer to use for training this model. SGD refers "
                                                          "to SGD with Nesterov momentum and a momentum of 0.9. AdamW "
                                                          "refers to AdamW with betas fixed to 0.9 and 0.999."))
-lr = CS.UniformFloatHyperparameter("LearningRate", lower=1e-5, upper=1e-1, default_value=1e-2, log=True,
+lr = CS.UniformFloatHyperparameter("LearningRate", lower=1e-2, upper=1e0, default_value=1e-1, log=True,
                                    meta=dict(help="The learning rate for the optimizer used during model training. "
                                                   "In the case of adaptive learning rate optimizers such as Adam, "
                                                   "this is the initial learning rate."))
-weight_decay = CS.UniformFloatHyperparameter("WeightDecay", lower=1e-5, upper=1e-3, default_value=1e-4,
+weight_decay = CS.UniformFloatHyperparameter("WeightDecay", lower=5e-5, upper=5e-3, default_value=1e-4, log=True,
                                              meta=dict(help="Weight decay to be used by the optimizer during model "
                                                             "training."))
 

@@ -246,7 +246,11 @@ class Checkpointer(object):
         self.model.load_state_dict(state_dicts["model_state_dict"])
         self.optimizer.load_state_dict(state_dicts["optimizer_state_dict"])
         self.scheduler.load_state_dict(state_dicts["scheduler_state_dict"])
-        torch.set_rng_state(state_dicts["torch_rng_state"])
+        torch_rng_state = state_dicts["torch_rng_state"]
+        # Fix needed for compatibilty with cuda, not yet tested for repeatability!!
+        if "cpu" not in str(torch_rng_state.device.type):
+            torch_rng_state = torch_rng_state.cpu()
+        torch.set_rng_state(torch_rng_state)
         np.random.set_state(state_dicts["numpy_rng_state"])
         random.setstate(state_dicts["python_rng_state"])
         self.elapsed_epochs = state_dicts["epochs"]
@@ -558,7 +562,8 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
     values in the portfolio and the search space. If the flag 'cycle_models' is set, then in the case when a portfolio
     of fixed model configs for each task is given, the configs are cycled infinitely, thereby allowing the same configs
     to be evaluated under multiple global seeds. This flag has no effect when the portfolio does not contains
-    model-specific configs or when no portfolio is given. """
+    model-specific configs or when no portfolio is given. Warning: When using the fixed sampling mode by specifying
+    each individual model config, the behaviour of specifying additional 'opts' is undefined. """
 
     use_fixed_sampler = False
     if opts is None:

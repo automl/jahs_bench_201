@@ -194,7 +194,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
                                   portfolio_pth=portfolio_pth, opts=opts, cycle_models=cycle_portfolio)
 
     for model_idx, (model, model_config, curr_global_seed) in enumerate(sampler, start=1):
-        if nsamples != -1 and model_idx >= nsamples:
+        if nsamples != -1 and model_idx > nsamples:
             break
         logger.info(f"Sampled new architecture: {model_config} from space {search_space.__class__.__name__}")
 
