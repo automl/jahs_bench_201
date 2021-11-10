@@ -596,6 +596,7 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
                 model.config = ConfigSpace.Configuration(
                     model.config_space, model.config_space.get_default_configuration().get_dictionary() | model_config)
                 model._construct_graph()
+                model_config = model.config.get_dictionary()
                 yield model, model_config, curr_global_seed
 
         return sampler()
