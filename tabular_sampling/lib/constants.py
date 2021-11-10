@@ -1,5 +1,7 @@
 """ A collection of constant values that are or may be re-used throughout the rest of the code base. """
 
+from enum import Enum
+
 training_config = {
     "epochs": dict(type=int, default=25,
                    help="Number of epochs that each sampled architecture should be trained for. Default: 25"),
@@ -21,5 +23,19 @@ training_config = {
         type=int, default=20, help="The interval between subsequent model training checkpoints, in epochs. Default: "
                                    "20 epochs.")
 }
+
+class Datasets(Enum):
+    """ Constants corresponding to datasets, each value is a 4 tuple corresponding to the format:
+        name: str,
+        image_size: int,
+        nchannels: int,
+        nclasses: int,
+        mean: tuple(int, int, int) or tuple(int),
+        std: tuple(int, int, int) or tuple(int),
+        expected_train_size: int,
+        expected_test_size: int,
+    """
+    cifar10 = "Cifar-10", 32, 3, 10, [0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2616], 50_000, 10_000
+    fashionMNIST = "FashionMNIST", 28, 1, 10, [0.2860,], [0.3530,], 60_000, 10_000
 
 # TODO: Move more constants here so as to save the effort of re-typing and re-checking, say, string values, repeatedly.

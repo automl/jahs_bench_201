@@ -34,6 +34,7 @@ import numpy as np
 import torch
 from naslib.utils.utils import AttrDict
 
+from tabular_sampling.lib.constants import Datasets
 from tabular_sampling.lib.constants import training_config as _training_config
 from tabular_sampling.lib import utils
 from tabular_sampling.lib.count_flops import get_model_flops
@@ -65,6 +66,9 @@ def argument_parser():
     parser.add_argument("--taskid_base", type=int, default=0,
                         help="An additional offset from 0 to manually shift all task IDs further, useful when sampling "
                              "is intended to continue adding more data beyond a previous job's data.")
+    parser.add_argument("--dataset", type=str, choices=list(Datasets.__members__.keys()),
+                        help="The name of which dataset is to be used for model training and evaluation. Only one of "
+                             "the provided choices can be used.")
     parser.add_argument("--nsamples", type=int, default=100,
                         help="Sets the maximum number of samples to be drawn from the search space for each task. Use "
                              "-1 to set this to unlimited.")
@@ -96,7 +100,7 @@ def argument_parser():
     return parser
 
 
-def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, datadir,
+def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datasets, datadir,
              local_seed: Optional[int] = None, global_seed: Optional[Union[Iterable[int], int]] = None,
              debug: bool = False, generate_sampling_profile: bool = False, nsamples: int = 0,
              portfolio_pth: Optional[Path] = None, cycle_portfolio: bool = False,
@@ -169,7 +173,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
 
     task_config = {
         "train_config": train_config,
-        "dataset": dataset,
+        "dataset": dataset.value[0],
         "local_seed": local_seed,
         "global_seed": global_seed,
         "debug": debug,
@@ -182,6 +186,9 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
 
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
     search_space = NASB201HPOSearchSpace()
+    if dataset.value[2] == 1: # Check # of channels
+        # The dataset is in Grayscale
+        search_space.GRAYSCALE = True
 
     sampler = utils.model_sampler(search_space=search_space, taskid=taskid, global_seed_gen=global_seed_gen, rng=rng,
                                   portfolio_pth=portfolio_pth, opts=opts, cycle_models=cycle_portfolio)
@@ -216,7 +223,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
             task_metrics.size_MB.append(naslib_utils.count_parameters_in_MB(model))
             task_metrics.FLOPS.append(get_model_flops(
                 model=model,
-                input_shape=(train_config.batch_size, 3, model_config["Resolution"] or 32,
+                input_shape=(train_config.batch_size, dataset.value[2], model_config["Resolution"] or 32,
                              model_config["Resolution"] or 32),
                 transfer_devices=transfer_devices,
                 device=device
@@ -231,7 +238,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
         try:
             dir_tree.model_idx = model_idx
             naslib_utils.set_seed(curr_global_seed)
-            data_loaders, _, _ = utils.get_dataloaders(
+            data_loaders, min_shape = utils.get_dataloaders(
                 dataset=dataset, batch_size=train_config.batch_size, cutout=0, split=train_config.split,
                 resize=model_config.get("Resolution", 0), trivial_augment=model_config.get("TrivialAugment", False),
                 datadir=datadir
@@ -239,12 +246,12 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: str, d
             validate = "valid" in data_loaders
             train(
                 model=model, data_loaders=data_loaders, train_config=train_config, dir_tree=dir_tree, logger=logger,
-                validate=validate, transfer_devices=transfer_devices, device=device, debug=debug
+                validate=validate, transfer_devices=transfer_devices, device=device, debug=debug, min_shape=min_shape
             )
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
             error_description = {
-                "exception": str(e),
+                "exception": repr(e),
                 "config": model_config,
                 "global_seed": curr_global_seed
             }
@@ -271,8 +278,9 @@ if __name__ == "__main__":
 
     # Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
     real_taskid = args.taskid_base + args.taskid
+    dataset = Datasets.__members__[args.dataset] # Value checking has already been performed by ArgumentParser
 
     run_task(basedir=args.basedir, taskid=real_taskid, train_config=get_tranining_config_from_args(args),
-             dataset="cifar10", datadir=args.datadir, local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
+             dataset=dataset, datadir=args.datadir, local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
              generate_sampling_profile=args.generate_sampling_profile, cycle_portfolio=args.cycle_portfolio,
              nsamples=args.nsamples, portfolio_pth=args.portfolio, opts=args.opts)
