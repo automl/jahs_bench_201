@@ -42,7 +42,7 @@ lr = CS.UniformFloatHyperparameter("LearningRate", lower=1e-2, upper=1e0, defaul
                                    meta=dict(help="The learning rate for the optimizer used during model training. "
                                                   "In the case of adaptive learning rate optimizers such as Adam, "
                                                   "this is the initial learning rate."))
-weight_decay = CS.UniformFloatHyperparameter("WeightDecay", lower=5e-5, upper=5e-3, default_value=1e-4, log=True,
+weight_decay = CS.UniformFloatHyperparameter("WeightDecay", lower=5e-5, upper=5e-3, default_value=5e-4, log=True,
                                              meta=dict(help="Weight decay to be used by the optimizer during model "
                                                             "training."))
 

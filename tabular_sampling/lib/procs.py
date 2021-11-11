@@ -168,6 +168,9 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
 
     Parameters
     ----------
+    TODO: Update docs, model must be of type NASB201HPOSearchSpace since its config is being read. Alternatively, the
+     required config values can be generalised to function arguments. Also, the model should be parsed BEFORE being
+     passed.
     model: naslib.search_spaces.Graph
         A NASLib object obtained by sampling a random architecture on a search space. Ideally, the sampled object should
         be cloned before being passsed. The model will be parsed to PyTorch before training.
@@ -203,6 +206,9 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
     })
 
     optimizer, scheduler, loss_fn = construct_model_optimizer(model, train_config)
+    if transfer_devices:
+        # TODO: Include transfer of model to GPU right here instead of doing it repeatedly in '_main_proc()'.
+        loss_fn = loss_fn.to(device)
     logger.debug(f"Initialized optimizer: {optimizer.__class__.__name__}")
 
     ## Initialize checkpoint function and metric logger, load existing checkpoints and metrics
@@ -236,6 +242,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
     diverged = False
 
     for e in range(old_chkpt_epochs + 1, train_config.epochs):
+        scheduler.update(e, 0.0)
         ## Handle training set
         dataloader = train_queue
         epoch_metrics = model_metrics.train
