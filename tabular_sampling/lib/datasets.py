@@ -1,6 +1,8 @@
 import json
 from copy import deepcopy
 from pathlib import Path
+from functools import partial
+from typing import Any, Callable, Sequence, Optional
 
 import numpy as np
 import torch
@@ -9,6 +11,8 @@ from torchvision import datasets as dset, transforms as transforms
 
 from tabular_sampling.lib import constants as constants
 from tabular_sampling.lib.aug_lib import TrivialAugment
+
+from icgen.vision_dataset import ICVisionDataset
 
 """
 Adapted in large part from the original NASBench-201 code repository at 
@@ -95,13 +99,30 @@ class TrivialAugmentTransform(torch.nn.Module):
         return self._apply_op(img)
 
 
+def load_icgen_dataset(name: str, root: Path, train: bool = True, transform: Optional[Sequence[Callable]] = None,
+                       target_transform: Otional[Sequence[Callable]] = None, download: bool = False) -> ICVisionDataset:
+    """ Load an ICVisionDataset. This function serves as a wrapper around the underlying ICVisionDataset initializer
+    in order to provide an interface compatible with calls to most Torchvision.Dataset classes. The 'download'
+    parameter has been provided for compatibility only, the actual dataset should be downloaded and prepared in advance.
+    """
+
+    if download:
+        raise UserWarning("The parameter 'download' has been provided for compatibility purposes only. The actual "
+              "dataset should be downloaded and prepared in advance using ICGen.")
+
+    dataset = ICVisionDataset(dataset=name, root=root, split="train" if train else "test", transform=transform,
+                              target_transform=target_transform)
+    return dataset
+
+
 def get_datasets(name: constants.Datasets, root: Path, cutout: int, resize: int, trivial_augment=False):
     if not isinstance(name, constants.Datasets):
         raise TypeError(f"A dataset name should be an instance of {constants.Datasets}, was given {type(name)}.")
 
     dataset_fns = {
         constants.Datasets.cifar10: dset.CIFAR10,
-        constants.Datasets.fashionMNIST: dset.FashionMNIST
+        constants.Datasets.fashionMNIST: dset.FashionMNIST,
+        constants.Datasets.uc_merced: partial(load_icgen_dataset, name=constants.Datasets.uc_merced.name)
     }
 
     name_str, image_size, nchannels, nclasses, mean, std, train_size, test_size = name.value
