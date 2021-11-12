@@ -37,6 +37,7 @@ from naslib.utils.utils import AttrDict
 from tabular_sampling.lib.constants import Datasets
 from tabular_sampling.lib.constants import training_config as _training_config
 from tabular_sampling.lib import utils
+from tabular_sampling.lib import datasets as dataset_lib
 from tabular_sampling.lib.count_flops import get_model_flops
 from tabular_sampling.lib.procs import train
 from tabular_sampling.search_space import NASB201HPOSearchSpace
@@ -59,7 +60,7 @@ def argument_parser():
     parser.add_argument("--basedir", type=Path, default=Path().cwd(),
                         help="Path to the base directory where all the tasks' output will be stored. Task-specific "
                              "sub-directories will be created here if needed.")
-    parser.add_argument("--datadir", type=Path, default=utils.get_default_datadir(),
+    parser.add_argument("--datadir", type=Path, default=dataset_lib.get_default_datadir(),
                         help="The directory where all datasets are expected to be stored.")
     parser.add_argument("--taskid", type=int,
                         help="An offset from 0 for this task within the current node's allocation of tasks.")
@@ -238,7 +239,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
         try:
             dir_tree.model_idx = model_idx
             naslib_utils.set_seed(curr_global_seed)
-            data_loaders, min_shape = utils.get_dataloaders(
+            data_loaders, min_shape = dataset_lib.get_dataloaders(
                 dataset=dataset, batch_size=train_config.batch_size, cutout=0, split=train_config.split,
                 resize=model_config.get("Resolution", 0), trivial_augment=model_config.get("TrivialAugment", False),
                 datadir=datadir

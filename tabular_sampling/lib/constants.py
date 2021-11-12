@@ -35,7 +35,11 @@ class Datasets(Enum):
         expected_train_size: int,
         expected_test_size: int,
     """
+
     cifar10 = "Cifar-10", 32, 3, 10, [0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2616], 50_000, 10_000
     fashionMNIST = "FashionMNIST", 28, 1, 10, [0.2860,], [0.3530,], 60_000, 10_000
+    # TODO: Fix UC-Merced pixel stats, currently they include test-set stats as well.
+    uc_merced = "UC-Merced", 256, 3, 21, [123.47803224419, 124.96319675993959, 114.87820437887096], \
+                   [44.238157875221745, 41.69850666766839, 39.646115769885235], 60_000, 10_000
 
 # TODO: Move more constants here so as to save the effort of re-typing and re-checking, say, string values, repeatedly.
