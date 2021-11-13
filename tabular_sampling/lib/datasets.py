@@ -100,7 +100,8 @@ class TrivialAugmentTransform(torch.nn.Module):
 
 
 def load_icgen_dataset(name: str, root: Path, train: bool = True, transform: Optional[Sequence[Callable]] = None,
-                       target_transform: Otional[Sequence[Callable]] = None, download: bool = False) -> ICVisionDataset:
+                       target_transform: Optional[Sequence[Callable]] = None,
+                       download: bool = False) -> ICVisionDataset:
     """ Load an ICVisionDataset. This function serves as a wrapper around the underlying ICVisionDataset initializer
     in order to provide an interface compatible with calls to most Torchvision.Dataset classes. The 'download'
     parameter has been provided for compatibility only, the actual dataset should be downloaded and prepared in advance.
