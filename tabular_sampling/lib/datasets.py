@@ -21,10 +21,59 @@ https://github.com/D-X-Y/AutoDL-Projects/tree/bc4c4692589e8ee7d6bab02603e69f8e5b
 
 
 def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = -1, split: bool = True,
-                    resize: int = 0, trivial_augment=False, datadir: Path = None):
-    datapath = get_default_datadir() if datadir is None else datadir
-    train_data, test_data, min_shape, class_num = get_datasets(dataset, datapath, cutout=cutout, resize=resize,
-                                                    trivial_augment=trivial_augment)
+                    resolution: int = 1., trivial_augment=False, datadir: Path = None):
+
+    if not isinstance(dataset, constants.Datasets):
+        raise TypeError(f"A dataset name should be an instance of {constants.Datasets}, was given {type(name)}.")
+
+    if resolution <= 0. or resolution > 1.:
+        raise ValueError(f"Invalid image resolution scaling: {resolution}. Should be a value between 0. and 1.")
+
+    dataset_fns = {
+        constants.Datasets.cifar10: dset.CIFAR10,
+        constants.Datasets.fashionMNIST: dset.FashionMNIST,
+    } | {d: partial(load_icgen_dataset, name=d.name) for d in constants.icgen_datasets}
+
+    name_str, image_size, nchannels, nclasses, mean, std, train_size, test_size = dataset.value
+    image_size = int(resolution * image_size)
+
+    datadir = get_default_datadir() if datadir is None else datadir
+    if dataset in constants.icgen_datasets:
+        # Ugly hack. This data would automatically be read by ICVisionDataset but we need the mean/std values before
+        # that object is initialized.
+        datadir = datadir / "downsampled" / str(image_size)
+        with open(datadir / dataset.name / "info.json") as fp:
+            meta = json.read(fp)
+        mean = meta["mean_pixel_value_per_channel"]
+        std = meta["mean_std_pixel_value_per_channel"]
+
+    if dataset not in dataset_fns:
+        raise NotImplementedError(f"Pre-processing for dataset {name_str} has not yet been implemented.")
+
+    # Data Augmentation
+    lists = [TrivialAugmentTransform()] if trivial_augment else []
+    lists += [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, padding=4)]
+    # ICGen datasets have been resized already so we avoid downsampling twice.
+    lists += [transforms.Resize(image_size)] if resolution < 1. and dataset not in constants.icgen_datasets else []
+    lists += [transforms.ToTensor(), transforms.Normalize(mean, std)]
+
+    if cutout > 0 and not trivial_augment:  # Trivial Augment already contains Cutout
+        lists += [Cutout(cutout)]
+
+    train_transform = transforms.Compose(lists)
+    test_transform = transforms.Compose(
+        ([transforms.Resize(image_size)] if resolution < 1. and dataset not in constants.icgen_datasets else [])
+        + [transforms.ToTensor(), transforms.Normalize(mean, std)]
+    )
+    min_shape = (1, nchannels, image_size, image_size)
+    train_data = dataset_fns[dataset](root=datadir, train=True, transform=train_transform, download=False)
+    test_data = dataset_fns[dataset](root=datadir, train=False, transform=test_transform, download=False)
+
+    assert len(train_data) == train_size, f"Invalid dataset configuration, expected {train_size} images, got " \
+                                          f"{len(train_data)} for dataset {name_str}."
+    assert len(test_data) == test_size, f"Invalid dataset configuration, expected {test_size} images, got " \
+                                        f"{len(test_data)} for dataset {name_str}."
+
     test_loader = torch.utils.data.DataLoader(
         test_data,
         batch_size=batch_size,
@@ -32,15 +81,14 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
         num_workers=0,
         pin_memory=True,
     )
-    train_transform = train_data.transform
+
     test_transform = test_data.transform
 
-    ValLoaders = {"test": test_loader}
+    loaders = {"test": test_loader}
     if split:
         ## Split original training data into a training and a validation set, use test data as a test set
-        assert dataset is constants.Datasets.cifar10, f"Only Cifar-10 supports validation set splits, cannot split " \
-                                                      f"{dataset.value[0]}"
-        split_info = load_splits(path=datapath / "cifar-split.json")
+        splitdir = datadir / dataset.name if dataset in constants.icgen_datasets else datadir
+        split_info = load_splits(path=splitdir / f"{dataset.name}-validation-split.json")
         assert len(train_data) == len(split_info.train) + len(split_info.valid), \
             f"invalid length : {len(train_data)} vs {len(split_info.train)} + {len(split_info.valid)}"
         valid_data = deepcopy(train_data)
@@ -60,8 +108,8 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
             num_workers=0,
             pin_memory=True,
         )
-        ValLoaders["train"] = train_loader
-        ValLoaders["valid"] = valid_loader
+        loaders["train"] = train_loader
+        loaders["valid"] = valid_loader
     else:
         # data loader
         train_loader = torch.utils.data.DataLoader(
@@ -71,9 +119,9 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
             num_workers=0,
             pin_memory=True,
         )
-        ValLoaders["train"] = train_loader
+        loaders["train"] = train_loader
 
-    return ValLoaders, min_shape
+    return loaders, min_shape
 
 
 def load_splits(path: Path):
@@ -99,7 +147,8 @@ class TrivialAugmentTransform(torch.nn.Module):
         return self._apply_op(img)
 
 
-def load_icgen_dataset(name: str, root: Path, train: bool = True, transform: Optional[Sequence[Callable]] = None,
+def load_icgen_dataset(name: str, root: Path, train: bool = True,
+                       transform: Optional[Sequence[Callable]] = None,
                        target_transform: Optional[Sequence[Callable]] = None,
                        download: bool = False) -> ICVisionDataset:
     """ Load an ICVisionDataset. This function serves as a wrapper around the underlying ICVisionDataset initializer
@@ -111,44 +160,7 @@ def load_icgen_dataset(name: str, root: Path, train: bool = True, transform: Opt
         raise UserWarning("The parameter 'download' has been provided for compatibility purposes only. The actual "
               "dataset should be downloaded and prepared in advance using ICGen.")
 
-    dataset = ICVisionDataset(dataset=name, root=root, split="train" if train else "test", transform=transform,
-                              target_transform=target_transform)
+    dataset = ICVisionDataset(dataset=name, root=root,
+                              split="train" if train else "test",
+                              transform=transform, target_transform=target_transform)
     return dataset
-
-
-def get_datasets(name: constants.Datasets, root: Path, cutout: int, resize: int, trivial_augment=False):
-    if not isinstance(name, constants.Datasets):
-        raise TypeError(f"A dataset name should be an instance of {constants.Datasets}, was given {type(name)}.")
-
-    dataset_fns = {
-        constants.Datasets.cifar10: dset.CIFAR10,
-        constants.Datasets.fashionMNIST: dset.FashionMNIST,
-        constants.Datasets.uc_merced: partial(load_icgen_dataset, name=constants.Datasets.uc_merced.name)
-    }
-
-    name_str, image_size, nchannels, nclasses, mean, std, train_size, test_size = name.value
-
-    if name not in dataset_fns:
-        raise NotImplementedError(f"Pre-processing for dataset {name_str} has not yet been implemented.")
-
-    # Data Augmentation
-    lists = [TrivialAugmentTransform()] if trivial_augment else []
-    lists += [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, padding=4)]
-    lists += [transforms.Resize(resize)] if resize else []
-    lists += [transforms.ToTensor(), transforms.Normalize(mean, std)]
-
-    if cutout > 0 and not trivial_augment:  # Trivial Augment already contains Cutout
-        lists += [Cutout(cutout)]
-    train_transform = transforms.Compose(lists)
-    test_transform = transforms.Compose(
-        ([transforms.Resize(resize)] if resize else []) + [transforms.ToTensor(), transforms.Normalize(mean, std)]
-    )
-    min_shape = (1, nchannels, image_size, image_size)
-    train_data = dataset_fns[name](root, train=True, transform=train_transform, download=True)
-    test_data = dataset_fns[name](root, train=False, transform=test_transform, download=True)
-    assert len(train_data) == train_size, f"Invalid dataset configuration, expected {train_size} images, got " \
-                                          f"{len(train_data)} for dataset {name_str}."
-    assert len(test_data) == test_size, f"Invalid dataset configuration, expected {test_size} images, got " \
-                                        f"{len(test_data)} for dataset {name_str}."
-
-    return train_data, test_data, min_shape, nclasses

@@ -187,7 +187,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
 
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
     search_space = NASB201HPOSearchSpace()
-    if dataset.value[2] == 1: # Check # of channels
+    if dataset.value[2] == 1:  # Check # of channels
         # The dataset is in Grayscale
         search_space.GRAYSCALE = True
 
@@ -241,7 +241,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
             naslib_utils.set_seed(curr_global_seed)
             data_loaders, min_shape = dataset_lib.get_dataloaders(
                 dataset=dataset, batch_size=train_config.batch_size, cutout=0, split=train_config.split,
-                resize=model_config.get("Resolution", 0), trivial_augment=model_config.get("TrivialAugment", False),
+                resolution=model_config.get("Resolution", 0), trivial_augment=model_config.get("TrivialAugment", False),
                 datadir=datadir
             )
             validate = "valid" in data_loaders
@@ -279,7 +279,7 @@ if __name__ == "__main__":
 
     # Pseudo-RNG should rely on a bit-stream that is largely uncorrelated both within and across tasks
     real_taskid = args.taskid_base + args.taskid
-    dataset = Datasets.__members__[args.dataset] # Value checking has already been performed by ArgumentParser
+    dataset = Datasets.__members__[args.dataset]  # Value checking has already been performed by ArgumentParser
 
     run_task(basedir=args.basedir, taskid=real_taskid, train_config=get_tranining_config_from_args(args),
              dataset=dataset, datadir=args.datadir, local_seed=_seed, global_seed=args.global_seed, debug=args.debug,
