@@ -11,6 +11,7 @@ columns - pandas.MultiIndex, level names: [MetricType, MetricName]
 import argparse
 from pathlib import Path
 from typing import Dict, Iterable
+from functools import wraps
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -39,7 +40,51 @@ def parse_cli():
     return args
 
 
-def analyze_single_job(basedir, save_tables=False, save_plots=False):
+def df_loader_wrapper(func):
+    @wraps(func)
+    def load_metric_df(basedir: Path = None, df: pd.DataFrame = None, *args, **kwargs):
+        assert basedir is not None or df is not None, "Either the 'basedir' should be a Path to load the data from " \
+                                                      "or 'df' should be a pre-loaded metric data DataFrame."
+
+        if df is None:
+            df_fn = basedir / "data.pkl.gz"
+            df: pd.DataFrame = pd.read_pickle(df_fn)
+        return func(basedir, df, *args, **kwargs)
+
+    return load_metric_df
+
+
+@df_loader_wrapper
+def get_runtimes(basedir: Path = None, df: pd.DataFrame = None, display: bool = False, reduce_epochs: bool = True):
+    """
+    Extract the runtimes of the various models.
+
+    :param basedir:
+    :param df:
+    :param save_tables:
+    :param save_plots:
+    :return:
+    """
+
+    datasets = ["train", "valid", "test"]
+    runtime_metrics = [(ds, "duration") for ds in datasets] + [("diagnostic", "runtime")]
+
+    if reduce_epochs:
+        d1 = df.loc[:, runtime_metrics[:-1]].groupby(model_ids_by).agg("sum")
+        d2 = df.loc[:, runtime_metrics[-1:]].groupby(model_ids_by).agg("max")
+        runtimes_df = d1.join(d2, on=model_ids_by)
+    else:
+        runtimes_df = df[runtime_metrics]
+
+    if display:
+        print(f"Runtime statistics:\n{runtimes_df.describe()}")
+    return df, runtimes_df
+
+
+
+@df_loader_wrapper
+def analyze_accuracies(basedir: Path = None, df: pd.DataFrame = None, display: bool = False, filter_epochs: int = -1,
+                       save_tables=False, save_plots=False) -> (pd.DataFrame, pd.DataFrame):
     """
     Analyzes a single job's output. A single job consists of any number of parallel, i.i.d. evaluations distributed
     across any number of nodes on the cluster on a joint HPO+NAS space. The data is expected to be read from a single
@@ -48,21 +93,26 @@ def analyze_single_job(basedir, save_tables=False, save_plots=False):
 
     # outdir = basedir / "analysis"
     # outdir.mkdir(exist_ok=True, parents=True)
-    df_fn = basedir / "data.pkl.gz"
-    df: pd.DataFrame = pd.read_pickle(df_fn)
+
     try:
         assert isinstance(df.index, pd.MultiIndex), "DataFrame index must be a MultiIndex."
     except AssertionError as e:
         raise RuntimeError(f"Could not properly parse dataframe stored at '{df_fn}'") from e
 
-    nepochs = df[df.columns.values[0]].groupby(model_ids_by).agg("count").to_frame(("nepochs"))
-    confs = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value)
-    valid_acc = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
-    test_acc = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
+    nepochs: pd.DataFrame = df[df.columns.values[0]].groupby(model_ids_by).agg("count").to_frame(("nepochs"))
+    confs: pd.DataFrame = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value)
+    valid_acc: pd.DataFrame = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
+    test_acc: pd.DataFrame = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
 
-    print(f"Accuracy stats:\n{pd.concat([valid_acc, test_acc], axis=1).describe()}")
+    acc_df = confs.join([nepochs, valid_acc, test_acc])
 
-    return nepochs, confs, valid_acc, test_acc
+    if filter_epochs > 0:
+        acc_df = acc_df[acc_df.where(acc_df["nepochs"] == filter_epochs).notna().all(axis=1)]
+
+    if display:
+        print(f"Accuracy stats:\n{acc_df[['valid-acc', 'test-acc']].describe()}")
+
+    return df, acc_df
     #
     #
     # if "idx" in df.index.names:
@@ -137,4 +187,4 @@ def analyze_single_job(basedir, save_tables=False, save_plots=False):
 if __name__ == "__main__":
     args = parse_cli()
     basedir: Path = args.basedir
-    analyze_single_job(basedir=basedir)
+    analyze_accuracies(basedir=basedir)

@@ -12,9 +12,10 @@ class ConvBN(AbstractPrimitive):
         super().__init__(locals())
         self.kernel_size = kernel_size
         pad = 0 if stride == 1 and kernel_size == 1 else 1
+        activation_fn = Activations.__members__[activation].value[1]
         self.op = nn.Sequential(
             # nn.SiLU(inplace=False) if use_swish else nn.ReLU(inplace=False),
-            Activations.__members__[activation].value[1](inplace=False),
+            activation_fn(inplace=False),
             nn.Conv2d(C_in, C_out, kernel_size, stride=stride, padding=pad, bias=False),
             nn.BatchNorm2d(C_out, affine=affine)
         )
