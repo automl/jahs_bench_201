@@ -51,8 +51,10 @@ icgen_datasets = (Datasets.uc_merced, Datasets.colorectal_histology)
 
 ## Metric DataFrame constant
 class MetricDFIndexLevels(Enum):
-    taskid = "TaskIndex"
-    modelid = "ModelIndex"
+    # taskid = "TaskIndex" # intended new, will require lots of modifications to AttrDict member accesses
+    # modelid = "ModelIndex" # intended new
+    taskid = "taskid" # old, to be replaced
+    modelid = "model_idx" # old, to be replaced
     epoch = "Epoch"
 
 metricdf_column_level_names = ["MetricType", "MetricName"]

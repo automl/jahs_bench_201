@@ -15,8 +15,8 @@ from typing import Dict, Iterable
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.lines import Line2D
-from tabular_sampling.lib import constants
 from tabular_sampling.lib.constants import MetricDFIndexLevels, metricdf_column_level_names, metricdf_index_levels
+from tabular_sampling.lib import constants
 
 model_ids_by = [MetricDFIndexLevels.taskid.value, MetricDFIndexLevels.modelid.value]
 fidelity_params = ("N", "W", "Resolution")
@@ -46,8 +46,8 @@ def analyze_single_job(basedir, save_tables=False, save_plots=False):
     DataFrame stored in "[basedir]/data.pkl.gz".
     """
 
-    outdir = basedir / "analysis"
-    outdir.mkdir(exist_ok=True, parents=True)
+    # outdir = basedir / "analysis"
+    # outdir.mkdir(exist_ok=True, parents=True)
     df_fn = basedir / "data.pkl.gz"
     df: pd.DataFrame = pd.read_pickle(df_fn)
     try:
@@ -55,13 +55,12 @@ def analyze_single_job(basedir, save_tables=False, save_plots=False):
     except AssertionError as e:
         raise RuntimeError(f"Could not properly parse dataframe stored at '{df_fn}'") from e
 
-    nepochs = df.groupby(model_ids_by)[df.columns.values[0]].agg("count").to_frame(("nepochs"))
+    nepochs = df[df.columns.values[0]].groupby(model_ids_by).agg("count").to_frame(("nepochs"))
     confs = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value)
     valid_acc = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
     test_acc = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
 
-    print(f"Valid accuracy stats: {valid_acc.describe()}")
-    print(f"Test accuracy stats: {test_acc.describe()}")
+    print(f"Accuracy stats:\n{pd.concat([valid_acc, test_acc], axis=1).describe()}")
 
     return nepochs, confs, valid_acc, test_acc
     #
