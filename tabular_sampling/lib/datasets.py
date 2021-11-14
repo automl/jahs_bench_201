@@ -35,15 +35,18 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
     } | {d: partial(load_icgen_dataset, name=d.name) for d in constants.icgen_datasets}
 
     name_str, image_size, nchannels, nclasses, mean, std, train_size, test_size = dataset.value
+    crop_size = image_size
+    padding_size = max(0, int(4 * resolution))
     image_size = int(resolution * image_size)
 
     datadir = get_default_datadir() if datadir is None else datadir
     if dataset in constants.icgen_datasets:
         # Ugly hack. This data would automatically be read by ICVisionDataset but we need the mean/std values before
         # that object is initialized.
+        crop_size = image_size
         datadir = datadir / "downsampled" / str(image_size)
         with open(datadir / dataset.name / "info.json") as fp:
-            meta = json.read(fp)
+            meta = json.load(fp)
         mean = [m / 255 for m in meta["mean_pixel_value_per_channel"]]
         std = [m / 255 for m in meta["mean_std_pixel_value_per_channel"]]
 
@@ -52,7 +55,7 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
 
     # Data Augmentation
     lists = [TrivialAugmentTransform()] if trivial_augment else []
-    lists += [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, padding=4)]
+    lists += [transforms.RandomHorizontalFlip(), transforms.RandomCrop(crop_size, padding=padding_size)]
     # ICGen datasets have been resized already so we avoid downsampling twice.
     lists += [transforms.Resize(image_size)] if resolution < 1. and dataset not in constants.icgen_datasets else []
     lists += [transforms.ToTensor(), transforms.Normalize(mean, std)]

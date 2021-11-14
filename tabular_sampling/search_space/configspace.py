@@ -19,7 +19,7 @@ joint_config_space.add_hyperparameters([
                                  meta=dict(help="The operation on the fifth edge of the cell.")),
     CS.CategoricalHyperparameter("Op6", choices=list(range(5)), default_value=0,
                                  meta=dict(help="The operation on the sixth edge of the cell.")),
-    CS.OrdinalHyperparameter("Resolution", sequence=[0.25, 0.5, 1.], default_value=32,
+    CS.OrdinalHyperparameter("Resolution", sequence=[0.25, 0.5, 1.], default_value=1.,
                              meta=dict(help="The sample resolution of the input images w.r.t. one side of the actual "
                                             "image size, assuming square images, i.e. for a dataset with 32x32 images, "
                                             "specifying a value of 0.5 corresponds to using downscaled images of size "
