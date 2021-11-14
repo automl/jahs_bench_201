@@ -10,7 +10,6 @@ tasks
     - model_config
     - global_seed
     - size_MB
-    - FLOPS
 
 models - [train/valid/test]
 ------
@@ -23,6 +22,7 @@ models - [train/valid/test]
     - backprop_duration
 
 models - diagnostic
+    - FLOPS
     - latency
     - runtime
     - cpu_percent
@@ -35,6 +35,7 @@ from pathlib import Path
 import pandas as pd
 import json
 import argparse
+from tabular_sampling.lib import constants
 from tabular_sampling.lib.utils import DirectoryTree
 
 parser = argparse.ArgumentParser("Collates all results from the DataFrames produced after successful NASLib training "
@@ -54,9 +55,9 @@ def get_latest_metrics(metric_dir: Path) -> pd.DataFrame:
     )
 
 
-# TODO: Fix this hack at its source
-task_metadata_columns = ["model_idx", "global_seed", "size_MB", "FLOPS"]
+task_metadata_columns = constants.standard_task_metrics
 def task_df_hack(task_df: pd.DataFrame) -> pd.DataFrame:
+    # TODO: Fix this hack at its source
     metadata = task_df[task_metadata_columns].droplevel(1, axis=1)
     model_configs = task_df["model_config"]
     return pd.concat({"model_config": model_configs, "metadata": metadata}, axis=1)

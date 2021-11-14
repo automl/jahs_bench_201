@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 import naslib.utils.logging as naslib_logging
 import naslib.utils.utils as naslib_utils
 from tabular_sampling.search_space import NASB201HPOSearchSpace
-from tabular_sampling.lib import utils
+from tabular_sampling.lib import utils, constants
 from tabular_sampling.lib.custom_nasb201_code import CosineAnnealingLR
 from tabular_sampling.lib.count_flops import get_model_flops
 from naslib.utils.utils import AverageMeter, AttrDict
@@ -64,7 +64,7 @@ def _main_proc(model, dataloader: Iterable, loss_fn: Callable, optimizer: torch.
         extra_metrics.append("backprop_duration")
         # metrics["backprop_duration"] = AverageMeter()
 
-    metrics = utils.get_common_metrics(extra_metrics=extra_metrics)
+    metrics = utils.attrdict_factory(metrics=constants.standard_model_dataset_metrics + extra_metrics)
 
     if debug:
         losses = []
@@ -198,13 +198,13 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         valid_queue = data_loaders["valid"]
 
     extra_metrics = ["data_transfer_duration"] if transfer_devices else []
+    dataset_metrics = constants.standard_model_dataset_metrics + extra_metrics
     model_metrics = AttrDict({
-        "train": utils.get_common_metrics(extra_metrics=extra_metrics + ["backprop_duration"], template=list),
-        "valid": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
-        "test": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
-        # TODO: Remove swap memory metric, there is no swap memory on the cluster anyways
-        "diagnostic": AttrDict({k: list() for k in ["FLOPS", "latency", "runtime", "cpu_percent", "memory_ram",
-                                                    "memory_swap"]}),
+        "train": utils.attrdict_factory(metrics=dataset_metrics + constants.extra_model_training_metrics,
+                                        template=list),
+        "valid": utils.attrdict_factory(metrics=dataset_metrics, template=list),
+        "test": utils.attrdict_factory(metrics=dataset_metrics, template=list),
+        "diagnostic": utils.attrdict_factory(metrics=constants.standard_model_diagnostic_metrics, template=list),
     })
 
     optimizer, scheduler, loss_fn = construct_model_optimizer(model, train_config)

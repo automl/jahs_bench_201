@@ -439,18 +439,13 @@ class MetricLogger(object):
         self.elapsed_runtime = extract_runtime(latest)
 
 
-def get_common_metrics(extra_metrics: Optional[List[str]] = None, template: Callable = AverageMeter) -> AttrDict:
-    """ Convenience function for generating a dictionary with the most commonly used metrics as keys. The initial value
-    of these keys can optionally be set by passing an object factory to the parameter 'template', which defaults to
-    naslib.utils.utils.AverageMeter. """
-    metrics = AttrDict(
-        duration=template(),
-        forward_duration=template(),
-        data_load_duration=template(),
-        loss=template(),
-        acc=template(),
-        **({m: template() for m in extra_metrics} if extra_metrics else {})
-    )
+def attrdict_factory(metrics: Optional[List[str]] = None, template: Callable = AverageMeter) -> AttrDict:
+    """ Convenience function for generating an AttrDict object with arbitrary keys initialized using a factory
+    function, essentially an AttrDict extension to collections.defaultdict. 'metrics' is a list of keys (usually
+    strings) and the initial value of these keys can optionally be set by passing an object factory to the parameter
+    'template', which defaults to naslib.utils.utils.AverageMeter. """
+
+    metrics = AttrDict({m: template() for m in metrics} if metrics else {})
     return metrics
 
 
