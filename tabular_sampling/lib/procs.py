@@ -300,12 +300,13 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         ## Checkpointing
         # Add a one-time offset to the runtime in case an old checkpoint was loaded
         effective_elapsed_runtime = time.time() - start_time + old_chkpt_runtime
+        first_epoch = e == 0
         last_epoch = e == train_config.epochs - 1
         if not train_config.disable_checkpointing:
             checkpoint(
                 runtime=effective_elapsed_runtime,
                 elapsed_epochs=e,
-                force_checkpoint=last_epoch
+                force_checkpoint=first_epoch or last_epoch
             )
 
         # No need to calculate this again everytime, changes reflect checkpointing-relevant differences.
