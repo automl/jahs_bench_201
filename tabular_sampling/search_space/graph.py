@@ -151,7 +151,7 @@ class NASB201HPOSearchSpace(Graph):
         self.edges[edge_names["postproc"]].set('op', core_ops.Sequential(
             nn.BatchNorm2d(channels[-1]),
             # nn.SiLU(inplace=False) if use_swish else nn.ReLU(inplace=False),
-            activation.value[1](inplace=False),
+            Activations.__members__[activation].value[1](inplace=False),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(channels[-1], self.num_classes)
@@ -223,7 +223,7 @@ class NASB201HPOSearchSpace(Graph):
         return 'nasbench201_hpo'
 
 
-def _set_cell_ops(edge, C, activation=Activations.ReLU):
+def _set_cell_ops(edge, C, activation=Activations.ReLU.name):
     edge.data.set('op', [
         core_ops.Identity(),
         core_ops.Zero(stride=1),

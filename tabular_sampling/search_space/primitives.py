@@ -8,13 +8,13 @@ from .constants import Activations
 
 class ConvBN(AbstractPrimitive):
 
-    def __init__(self, C_in, C_out, kernel_size, stride=1, affine=True, activation=Activations.ReLU, **kwargs):
+    def __init__(self, C_in, C_out, kernel_size, stride=1, affine=True, activation=Activations.ReLU.name, **kwargs):
         super().__init__(locals())
         self.kernel_size = kernel_size
         pad = 0 if stride == 1 and kernel_size == 1 else 1
         self.op = nn.Sequential(
             # nn.SiLU(inplace=False) if use_swish else nn.ReLU(inplace=False),
-            activation.value[1](inplace=False),
+            Activations.__members__[activation].value[1](inplace=False),
             nn.Conv2d(C_in, C_out, kernel_size, stride=stride, padding=pad, bias=False),
             nn.BatchNorm2d(C_out, affine=affine)
         )
@@ -66,7 +66,7 @@ Code below from NASBench-201 and adapted
 
 class ResNetBasicblock(AbstractPrimitive):
 
-    def __init__(self, C_in, C_out, stride, affine=True, activation=Activations.ReLU):
+    def __init__(self, C_in, C_out, stride, affine=True, activation=Activations.ReLU.name):
         super().__init__(locals())
         assert stride == 1 or stride == 2, 'invalid stride {:}'.format(stride)
         self.conv_a = ConvBN(C_in, C_out, 3, stride, activation=activation)
