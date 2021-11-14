@@ -12,6 +12,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, Iterable
 from functools import wraps
+from typing import Any
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -49,13 +50,16 @@ def df_loader_wrapper(func):
         if df is None:
             df_fn = basedir / "data.pkl.gz"
             df: pd.DataFrame = pd.read_pickle(df_fn)
+        else:
+            assert isinstance(df, pd.DataFrame), f"This script was designed to only work with pandas DataFrames, not " \
+                                                 f"{type(df)}"
         return func(basedir, df, *args, **kwargs)
 
     return load_metric_df
 
 
 @df_loader_wrapper
-def get_runtimes(basedir: Path = None, df: pd.DataFrame = None, display: bool = False, reduce_epochs: bool = True):
+def get_runtimes(basedir: Path, df: pd.DataFrame, display: bool = False, reduce_epochs: bool = True):
     """
     Extract the runtimes of the various models.
 
@@ -72,7 +76,9 @@ def get_runtimes(basedir: Path = None, df: pd.DataFrame = None, display: bool = 
     if reduce_epochs:
         d1 = df.loc[:, runtime_metrics[:-1]].groupby(model_ids_by).agg("sum")
         d2 = df.loc[:, runtime_metrics[-1:]].groupby(model_ids_by).agg("max")
-        runtimes_df = d1.join(d2, on=model_ids_by)
+        d1.columns = d1.columns.map("{0[0]}-{0[1]}".format)
+        d2.columns = d2.columns.map("{0[1]}".format)
+        runtimes_df = d1.join([d2])
     else:
         runtimes_df = df[runtime_metrics]
 
@@ -83,7 +89,7 @@ def get_runtimes(basedir: Path = None, df: pd.DataFrame = None, display: bool = 
 
 
 @df_loader_wrapper
-def analyze_accuracies(basedir: Path = None, df: pd.DataFrame = None, display: bool = False, filter_epochs: int = -1,
+def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, filter_epochs: int = -1,
                        save_tables=False, save_plots=False) -> (pd.DataFrame, pd.DataFrame):
     """
     Analyzes a single job's output. A single job consists of any number of parallel, i.i.d. evaluations distributed
@@ -107,7 +113,7 @@ def analyze_accuracies(basedir: Path = None, df: pd.DataFrame = None, display: b
     acc_df = confs.join([nepochs, valid_acc, test_acc])
 
     if filter_epochs > 0:
-        acc_df = acc_df[acc_df.where(acc_df["nepochs"] == filter_epochs).notna().all(axis=1)]
+        acc_df = acc_df[acc_df["nepochs"].where(acc_df["nepochs"] == filter_epochs).notna()]
 
     if display:
         print(f"Accuracy stats:\n{acc_df[['valid-acc', 'test-acc']].describe()}")
@@ -182,6 +188,73 @@ def analyze_accuracies(basedir: Path = None, df: pd.DataFrame = None, display: b
     # fig, ax = plt.subplots(1, 1, figsize=(16, 9)) if save_plots else plt.subplots(1, 1)
     # fig: plt.Figure
     # ax: plt.Axes
+
+
+# @df_loader_wrapper
+# def group(basedir: Path = None, df: pd.DataFrame = None, groupby: list = None, columns: list = None):
+#     """ Convenience function for generating specific groupings. The list "groupby" refers to column names that should
+#     be used to group the data by and the list "columns" refers to those columns that should be present in the grouped
+#     data. If "groupby" is None, the dataframe is returned unchanged. If "columns" is None, all columns other than those
+#     in "groupby" are present in the returned group. """
+#
+#     if groupby is None:
+#         return df, df
+#
+#     assert all([g in df.columns.names for g in groupby]), \
+#         f"Mismatch between provided grouping parameters, {groupby}, and the dataframe's column names {df.columns.names}"
+#
+#     g = df.groupby(groupby)
+#
+#     pass
+
+
+def collapse_index_names(index: pd.MultiIndex, levels: list = None, nlevels: int = None, separator: str = "-"):
+    """ Collapses the index labels in a MultiIndex. The levels to be collapsed can be passed as either a list of
+    specific levels in "levels" or an integer can be passed to "nlevels" indicating that the first "nlevels" levels
+    should be collapsed into one level - the first level. """
+
+    if levels is not None and nlevels is not None:
+        raise RuntimeError("Either a list of index names or the number of indices to be collapsed should be provided, "
+                           "not both.")
+
+    if levels is not None:
+        inds = [index.names.index(i) for i in levels]
+        old_names = levels
+    else:
+        inds = list(range(nlevels))
+        old_names = [index.names[i] for i in inds]
+
+    compressor = separator.join([f"{{0[{i}]}}" for i in inds]).format
+
+    if len(inds) > index.nlevels:
+        raise RuntimeError(f"Number of levels to be collapsed - {len(inds)} - cannot exceed the number of levels in "
+                           f"the original index - {index.nlevels}")
+    if len(inds) < index.nlevels:
+        remainder = [i for i in range(index.nlevels) if i not in inds]
+        new_ind: list = [index.map(lambda i: (compressor(i)))] + [index.get_level_values(j) for j in remainder]
+        new_names = [compressor(index.names)] + index.names.difference(old_names)
+        new_ind: pd.MultiIndex = pd.MultiIndex.from_arrays(new_ind, names=new_names)
+    else:
+        new_ind: pd.Index = index.map(lambda i: compressor(i))
+        new_ind.name = compressor(index.names)
+
+    return new_ind
+
+
+@df_loader_wrapper
+def rank_by_parameter(basedir: Path, df: pd.DataFrame, rank_on: Any, parameters: list = None, ascending=False,
+                      **kwargs):
+    """ Generate ranks for the Dataframe's rows based on the column specified in 'rank_on'. If a list of additional
+    column names is provided, a dataframe containing mean ranks of those parameters is returned, otherwise a copy of
+    the initial dataframe with the "ranks" column tacked at the end is returned. """
+    ranks = df[rank_on].rank(ascending=ascending, **kwargs).to_frame("rank")
+    ranks = df.join([ranks])
+
+    if parameters is not None:
+        ranks = ranks.groupby(parameters)["rank"].agg("mean").to_frame("Rank")
+
+    return ranks
+
 
 
 if __name__ == "__main__":
