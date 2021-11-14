@@ -12,6 +12,7 @@ import naslib.utils.utils as naslib_utils
 from tabular_sampling.search_space import NASB201HPOSearchSpace
 from tabular_sampling.lib import utils
 from tabular_sampling.lib.custom_nasb201_code import CosineAnnealingLR
+from tabular_sampling.lib.count_flops import get_model_flops
 from naslib.utils.utils import AverageMeter, AttrDict
 
 
@@ -202,7 +203,8 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         "valid": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
         "test": utils.get_common_metrics(extra_metrics=extra_metrics, template=list),
         # TODO: Remove swap memory metric, there is no swap memory on the cluster anyways
-        "diagnostic": AttrDict({k: list() for k in ["latency", "runtime", "cpu_percent", "memory_ram", "memory_swap"]}),
+        "diagnostic": AttrDict({k: list() for k in ["FLOPS", "latency", "runtime", "cpu_percent", "memory_ram",
+                                                    "memory_swap"]}),
     })
 
     optimizer, scheduler, loss_fn = construct_model_optimizer(model, train_config)
@@ -228,6 +230,8 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         log_interval=None if train_config.disable_checkpointing else train_config.checkpoint_interval_seconds,
         set_type=utils.MetricLogger.MetricSet.model, logger=logger
     )
+
+    flops = get_model_flops(model=model, input_shape=min_shape, transfer_devices=transfer_devices, device=device)
 
     if debug:
         summary_writer = SummaryWriter(dir_tree.model_tensorboard_dir)
@@ -303,6 +307,9 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
                 elapsed_epochs=e,
                 force_checkpoint=last_epoch
             )
+
+        # No need to calculate this again everytime, changes reflect checkpointing-relevant differences.
+        model_metrics.diagnostic.FLOPS.append(flops)
 
         model_metrics.diagnostic.latency.append(latency.avg)
         model_metrics.diagnostic.runtime.append(effective_elapsed_runtime)

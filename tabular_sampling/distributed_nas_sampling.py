@@ -38,7 +38,6 @@ from tabular_sampling.lib.constants import Datasets
 from tabular_sampling.lib.constants import training_config as _training_config
 from tabular_sampling.lib import utils
 from tabular_sampling.lib import datasets as dataset_lib
-from tabular_sampling.lib.count_flops import get_model_flops
 from tabular_sampling.lib.procs import train
 from tabular_sampling.search_space import NASB201HPOSearchSpace
 
@@ -166,7 +165,6 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
         "model_config": [],
         "global_seed": [],
         "size_MB": [],
-        "FLOPS": [],
     })
     task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
                                             set_type=utils.MetricLogger.MetricSet.task, logger=logger)
@@ -186,6 +184,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
         json.dump(task_config, fp, default=str)
 
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
+    NASB201HPOSearchSpace.NUM_CLASSES = dataset.value[3]
     search_space = NASB201HPOSearchSpace()
     if dataset.value[2] == 1:  # Check # of channels
         # The dataset is in Grayscale
@@ -222,13 +221,6 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
             task_metrics.model_config.append(model_config)
             task_metrics.global_seed.append(curr_global_seed)
             task_metrics.size_MB.append(naslib_utils.count_parameters_in_MB(model))
-            task_metrics.FLOPS.append(get_model_flops(
-                model=model,
-                input_shape=(train_config.batch_size, dataset.value[2], model_config["Resolution"] or 32,
-                             model_config["Resolution"] or 32),
-                transfer_devices=transfer_devices,
-                device=device
-            ))
             task_metric_logger.log(elapsed_runtime=model_idx, force=True)
 
         if generate_sampling_profile:
