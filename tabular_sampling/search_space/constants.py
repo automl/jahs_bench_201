@@ -1,5 +1,8 @@
 """ This file contains a number of constants that are or can be re-used throughout the search space definition. """
 
+import enum
+import torch.nn as nn
+
 # Names of cell ops
 OP_NAMES = ['Identity', 'Zero', 'ConvBN3x3', 'ConvBN1x1', 'AvgPool1x1']
 
@@ -23,3 +26,11 @@ ops_to_nb201 = {
     'Identity': 'skip_connect',
     'Zero': 'none',
 }
+
+@enum.unique
+class Activations(enum.Enum):
+    ReLU = enum.auto(), nn.ReLU
+    SiLU = enum.auto(), nn.SiLU
+    Hardswish = enum.auto(), nn.Hardswish
+    Mish = enum.auto(), nn.Mish,
+    LeakyReLU = enum.auto(), nn.LeakyReLU

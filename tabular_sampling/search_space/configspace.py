@@ -1,4 +1,5 @@
 import ConfigSpace as CS
+from .constants import Activations
 
 joint_config_space = CS.ConfigurationSpace("NASB201HPO_joint_config_space")
 joint_config_space.add_hyperparameters([
@@ -29,10 +30,9 @@ joint_config_space.add_hyperparameters([
                                                 "data. If False (default), a set of manually chosen transforms is "
                                                 "applied during pre-processing. If True, these are skipped in favor "
                                                 "of applying random transforms selected by TrivialAugment.")),
-    CS.CategoricalHyperparameter("Swish", choices=[True, False], default_value=False,
-                                 meta=dict(help="Controls whether or not the Swish actiation function should be used "
-                                                "in the network. When False (default), the ReLU activation is used. "
-                                                "When True, all activations are replaced by Swish-1."))
+    CS.CategoricalHyperparameter("Activation", choices=list(Activations.__members__.keys()),
+                                 default_value="ReLU", meta=dict(help="Which activation function is to be used for the "
+                                                                      "network. Default is ReLU."))
 ])
 
 # Add Optimizer related HyperParamters

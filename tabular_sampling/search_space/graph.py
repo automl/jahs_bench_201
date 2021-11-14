@@ -17,7 +17,7 @@ from naslib.utils.utils import get_project_root
 from .conversions import convert_op_indices_to_naslib, convert_naslib_to_op_indices, convert_naslib_to_str
 from .primitives import ResNetBasicblock, ConvBN, StemGrayscale
 from .configspace import joint_config_space
-from .constants import OP_NAMES
+from .constants import OP_NAMES, Activations
 
 
 class NASB201HPOSearchSpace(Graph):
@@ -67,7 +67,7 @@ class NASB201HPOSearchSpace(Graph):
 
         cell_repeat = self.config.get("N")
         channels = self.KNOWN_CHANNEL_WIDTHS[self.config.get("W")]
-        use_swish = self.config.get("Swish")
+        activation = self.config.get("Activation")
 
         #
         # Cell definition
@@ -137,20 +137,21 @@ class NASB201HPOSearchSpace(Graph):
 
         # stage 2
         self.edges[edge_names["res1"]].set('op', ResNetBasicblock(C_in=channels[0], C_out=channels[1], stride=2,
-                                                                  use_swish=use_swish))
+                                                                  activation=activation))
         for e in edge_names["stage2"]:
             self.edges[e].set('op', cell.copy().set_scope('stage_2'))
 
         # stage 3
         self.edges[edge_names["res2"]].set('op', ResNetBasicblock(C_in=channels[1], C_out=channels[2], stride=2,
-                                                                  use_swish=use_swish))
+                                                                  activation=activation))
         for e in edge_names["stage3"]:
             self.edges[e].set('op', cell.copy().set_scope('stage_3'))
 
         # post-processing
         self.edges[edge_names["postproc"]].set('op', core_ops.Sequential(
             nn.BatchNorm2d(channels[-1]),
-            nn.SiLU(inplace=False) if use_swish else nn.ReLU(inplace=False),
+            # nn.SiLU(inplace=False) if use_swish else nn.ReLU(inplace=False),
+            activation.value[1](inplace=False),
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(channels[-1], self.num_classes)
@@ -161,7 +162,7 @@ class NASB201HPOSearchSpace(Graph):
         # set the ops at the cells (channel dependent)
         for c, scope in zip(channels, self.OPTIMIZER_SCOPE):
             self.update_edges(
-                update_func=lambda edge: _set_cell_ops(edge, C=c, use_swish=use_swish),
+                update_func=lambda edge: _set_cell_ops(edge, C=c, activation=activation),
                 scope=scope,
                 private_edge_data=True
             )
@@ -222,11 +223,11 @@ class NASB201HPOSearchSpace(Graph):
         return 'nasbench201_hpo'
 
 
-def _set_cell_ops(edge, C, use_swish=False):
+def _set_cell_ops(edge, C, activation=Activations.ReLU):
     edge.data.set('op', [
         core_ops.Identity(),
         core_ops.Zero(stride=1),
-        ConvBN(C, C, kernel_size=3, use_swish=use_swish),
-        ConvBN(C, C, kernel_size=1, use_swish=use_swish),
+        ConvBN(C, C, kernel_size=3, activation=activation),
+        ConvBN(C, C, kernel_size=1, activation=activation),
         core_ops.AvgPool1x1(kernel_size=3, stride=1),
     ])
