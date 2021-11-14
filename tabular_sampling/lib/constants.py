@@ -49,8 +49,17 @@ class Datasets(Enum):
 
 icgen_datasets = (Datasets.uc_merced, Datasets.colorectal_histology)
 
+## Metric DataFrame constant
+class MetricDFIndexLevels(Enum):
+    taskid = "TaskIndex"
+    modelid = "ModelIndex"
+    epoch = "Epoch"
+
+metricdf_column_level_names = ["MetricType", "MetricName"]
+metricdf_index_levels = list(MetricDFIndexLevels.__members__.keys())
+
 ## Metric metadata constants
-standard_task_metrics = ["model_idx", "global_seed", "size_MB"]
+standard_task_metrics = [MetricDFIndexLevels.modelid.value, "model_config", "global_seed", "size_MB"]
 standard_model_dataset_metrics = ["duration", "data_load_duration", "forward_duration", "loss", "acc"]
 extra_model_training_metrics = ["backprop_duration"]
 standard_model_diagnostic_metrics = ["FLOPS", "latency", "runtime", "cpu_percent", "memory_ram", "memory_swap"]

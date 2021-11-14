@@ -35,7 +35,7 @@ import numpy as np
 import torch
 from naslib.utils.utils import AttrDict
 
-from tabular_sampling.lib.constants import Datasets
+from tabular_sampling.lib.constants import Datasets, standard_task_metrics
 from tabular_sampling.lib.constants import training_config as _training_config
 from tabular_sampling.lib import utils
 from tabular_sampling.lib import datasets as dataset_lib
@@ -161,12 +161,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
     dir_tree = utils.DirectoryTree(basedir=basedir, taskid=taskid)
 
     logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
-    task_metrics = AttrDict({
-        "model_idx": [],
-        "model_config": [],
-        "global_seed": [],
-        "size_MB": [],
-    })
+    task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
     task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
                                             set_type=utils.MetricLogger.MetricSet.task, logger=logger)
     n_known_samples = len(task_metrics.model_idx)

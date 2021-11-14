@@ -330,15 +330,16 @@ class MetricLogger(object):
         df = cls._nested_dict_to_df(metrics)
         assert isinstance(df, pd.DataFrame), f"This function should only be used with a DataFrame, not {type(df)}"
         assert isinstance(df.index, pd.Index), \
-            f"Expected the model-level metrics DataFrame index to be an Index, was {type(df.index)}"
+            f"Expected the model-level metrics DataFrame index to be an Index, not {type(df.index)}"
         assert isinstance(df.columns, pd.MultiIndex), \
             f"Expected the model-level metrics DataFrame columns to be a MultiIndex, not {type(df.columns)}"
-        assert df.columns.nlevels == 2, \
-            f"Expected the model-level metrics DataFrame to have exactly 2 levels in the columns MultiIndex, got " \
-            f"{df.columns.nlevels}"
+        assert df.columns.nlevels == len(constants.metricdf_column_level_names), \
+            f"Expected the model-level metrics DataFrame to have exactly {len(constants.metricdf_column_level_names)} levels " \
+            f"in the columns MultiIndex, got {df.columns.nlevels}. Consult tabular_sampling.lib.constants for more " \
+            f"details about the expected structure."
 
-        df.index = df.index.set_names(["Epoch"]) + 1
-        df.columns.set_names(["MetricType", "MetricName"], inplace=True)
+        df.index = df.index.set_names([constants.MetricDFIndexLevels.epoch.value]) + 1
+        df.columns.set_names(constants.metricdf_column_level_names, inplace=True)
         return df
 
     @classmethod
@@ -555,6 +556,7 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
     model-specific configs or when no portfolio is given. Warning: When using the fixed sampling mode by specifying
     each individual model config, the behaviour of specifying additional 'opts' is undefined. """
 
+    taskid_lvl = constants.MetricDFIndexLevels.taskid.value
     use_fixed_sampler = False
     if opts is None:
         opts = {}
@@ -567,7 +569,7 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
         portfolio = pd.read_pickle(portfolio_pth)
         if isinstance(portfolio.index, pd.MultiIndex):
             # Format 2 of the portfolio: We need to sample only the models specified in the portfolio
-            portfolio = portfolio.xs(taskid % portfolio.index.unique("taskid").size, axis=0, level="taskid")
+            portfolio = portfolio.xs(taskid % portfolio.index.unique(taskid_lvl).size, axis=0, level=taskid_lvl)
             if "opts" in portfolio.columns.levels[0]:
                 # These values should be constant across all sampled models
                 opts = portfolio["opts"].iloc[0].to_dict() | opts
@@ -575,7 +577,7 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
             portfolio = portfolio["model_config"]
         else:
             # Format 1 of the portfolio: We need to fix one or more parameters in the search space for this task
-            opts = portfolio.loc[taskid % portfolio.index.unique("taskid").size, :].to_dict() | opts
+            opts = portfolio.loc[taskid % portfolio.index.unique(taskid_lvl).size, :].to_dict() | opts
 
     # Use the search space modifiers that have now already subsumed the portfolio
     adapt_search_space(search_space, opts=opts, suffix=f"_task_{taskid}")

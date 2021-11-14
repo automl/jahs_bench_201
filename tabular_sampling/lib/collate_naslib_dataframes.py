@@ -36,6 +36,7 @@ import pandas as pd
 import json
 import argparse
 from tabular_sampling.lib import constants
+from tabular_sampling.lib.constants import MetricDFIndexLevels
 from tabular_sampling.lib.utils import DirectoryTree
 
 parser = argparse.ArgumentParser("Collates all results from the DataFrames produced after successful NASLib training "
@@ -47,6 +48,8 @@ parser.add_argument("--file", default=None, type=Path,
                          "Default: <basedir>/data.pkl.gz")
 args = parser.parse_args()
 
+modelid_lvl = MetricDFIndexLevels.modelid.value
+
 def get_latest_metrics(metric_dir: Path) -> pd.DataFrame:
     return max(
         metric_dir.rglob("*.pkl.gz"),
@@ -55,7 +58,7 @@ def get_latest_metrics(metric_dir: Path) -> pd.DataFrame:
     )
 
 
-task_metadata_columns = constants.standard_task_metrics
+task_metadata_columns = [m for m in constants.standard_task_metrics if m != "model_config"]
 def task_df_hack(task_df: pd.DataFrame) -> pd.DataFrame:
     # TODO: Fix this hack at its source
     metadata = task_df[task_metadata_columns].droplevel(1, axis=1)
@@ -74,10 +77,10 @@ for i, t in enumerate(tasks, start=1):
     latest_task_metrics = get_latest_metrics(tree.task_metrics_dir)
     task_metrics = pd.read_pickle(latest_task_metrics)
     task_metrics = task_df_hack(task_metrics)
-    assert ("metadata", "model_idx") in task_metrics.columns, \
-        f"Unable to process task metrics DataFrame that does not have a 'model_idx' column. Check DataFrame at " \
-        f"{latest_task_metrics}"
-    task_metrics = task_metrics.set_index(("metadata", "model_idx")).rename_axis(["model_idx"], axis=0)
+    assert ("metadata", modelid_lvl) in task_metrics.columns, \
+        f"Unable to process task metrics DataFrame that does not have a '{modelid_lvl}' column. Check DataFrame at " \
+        f"{latest_task_metrics}."
+    task_metrics = task_metrics.set_index(("metadata", modelid_lvl)).rename_axis([modelid_lvl], axis=0)
     models = tree.existing_models
     model_dfs = []
     for m in models:
@@ -87,12 +90,11 @@ for i, t in enumerate(tasks, start=1):
             continue
         model_metrics: pd.DataFrame = pd.read_pickle(latest_model_metrics)
         model_metrics.index = pd.MultiIndex.from_product([model_metrics.index, [tree.model_idx]],
-                                                         names=model_metrics.index.names + ["model_idx"])
+                                                         names=model_metrics.index.names + [modelid_lvl])
         model_dfs.append(model_metrics)
     big_model_df = pd.concat(model_dfs, axis=0)
-    task_df = big_model_df.join(task_metrics, on="model_idx", how="left", lsuffix="_model", rsuffix="_task")
-    # task_df: pd.DataFrame = task_df.drop(["model_idx_model", "model_idx_task"], axis=1)
-    task_df = task_df.assign(taskid=tree.taskid).set_index("taskid", append=True)
+    task_df = big_model_df.join(task_metrics, on=modelid_lvl, how="left", lsuffix="_model", rsuffix="_task")
+    task_df = task_df.assign(taskid=tree.taskid).set_index(constants.MetricDFIndexLevels.taskid.value, append=True)
     task_dfs.append(task_df)
 
 big_task_df = pd.concat(task_dfs, axis=0)
