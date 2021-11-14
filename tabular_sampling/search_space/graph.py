@@ -66,7 +66,8 @@ class NASB201HPOSearchSpace(Graph):
                                           f"{self.NUM_CELL_STAGES} stages were specified."
 
         cell_repeat = self.config.get("N")
-        channels = self.KNOWN_CHANNEL_WIDTHS[self.config.get("W")]
+        # channels = self.KNOWN_CHANNEL_WIDTHS[self.config.get("W")]
+        channels = tuple(self.config.get("W") * (2 ** i) for i in range(3))
         activation = self.config.get("Activation")
 
         #
