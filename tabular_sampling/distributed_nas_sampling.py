@@ -24,6 +24,7 @@ global seeds for numpy/torch/random.
 import argparse
 import json
 import logging
+import traceback
 import time
 from pathlib import Path
 from typing import Iterable, Sequence, Optional, Union
@@ -244,7 +245,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
         except Exception as e:
             naslib_logging.log_every_n_seconds(logging.INFO, "Architecture Training failed.", 15, name=logger.name)
             error_description = {
-                "exception": repr(e),
+                "exception": traceback.format_exc(),
                 "config": model_config,
                 "global_seed": curr_global_seed
             }
