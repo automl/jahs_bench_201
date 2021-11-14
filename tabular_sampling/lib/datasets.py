@@ -44,8 +44,8 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
         datadir = datadir / "downsampled" / str(image_size)
         with open(datadir / dataset.name / "info.json") as fp:
             meta = json.read(fp)
-        mean = meta["mean_pixel_value_per_channel"]
-        std = meta["mean_std_pixel_value_per_channel"]
+        mean = [m / 255 for m in meta["mean_pixel_value_per_channel"]]
+        std = [m / 255 for m in meta["mean_std_pixel_value_per_channel"]]
 
     if dataset not in dataset_fns:
         raise NotImplementedError(f"Pre-processing for dataset {name_str} has not yet been implemented.")
