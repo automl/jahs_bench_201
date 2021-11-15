@@ -30,7 +30,7 @@ ops_to_nb201 = {
 @enum.unique
 class Activations(enum.Enum):
     ReLU = enum.auto(), nn.ReLU
-    SiLU = enum.auto(), nn.SiLU
+    # SiLU = enum.auto(), nn.SiLU
     Hardswish = enum.auto(), nn.Hardswish
     Mish = enum.auto(), nn.Mish,
-    LeakyReLU = enum.auto(), nn.LeakyReLU
+    # LeakyReLU = enum.auto(), nn.LeakyReLU
