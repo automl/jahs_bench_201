@@ -1,7 +1,6 @@
 from pathlib import Path
 import pandas as pd
 from string import Template
-import datetime
 import math
 import argparse
 
@@ -32,25 +31,40 @@ scriptdir.mkdir(exist_ok=True, parents=True)
 
 slurm_dir = args.slurm_dir
 
+
+def timestr(secs: float):
+    minutes = math.ceil(secs / 60)
+    hours = minutes // 60
+    minutes %= 60
+    days = hours // 24
+    hours %= 24
+    return f"{days}-{hours}:{minutes}"
+
+
+task_offset = 0
 for f in fids:
     ncpus = int(cpus_per_worker_per_node_per_bucket[f])
     cpuh = cpuh_per_worker_per_bucket[f]
-    cpuh = str(datetime.timedelta(hours=math.ceil(cpuh / 60) / 60))
+    cpuh = timestr(cpuh)
     nsamples = int(evals_per_worker[f])
-    nnodes = int(evals_per_worker[f])
+    nnodes = int(nodes_per_bucket[f])
+    ntasks = 48 // ncpus
 
-    job_name = f"{'-'.join(['-'.join([m, str(i)]) for n, i in zip(fids.names, f)])}"
+    job_name = f"{'-'.join(['-'.join([n, str(i)]) for n, i in zip(fids.names, f)])}"
     jobdir = slurm_dir / job_name
-    jobdir.mkdir()
-    (jobdir / "tasks").mkdir()
-    (jobdir / "logs").mkdir()
+    jobdir.mkdir(exist_ok=True)
+    (jobdir / "tasks").mkdir(exist_ok=True)
+    (jobdir / "logs").mkdir(exist_ok=True)
 
     job_script = Template(job_template).substitute(cpuh=cpuh, nnodes=nnodes, job_name=job_name, ncpus=ncpus,
-                                                   ntasks=48 // ncpus, jobdir=jobdir, scriptdir=scriptdir)
-    config_script = Template(config_template).substitute(nsamples=nsamples, *{n: i for n, i in zip(fids.names, f)})
+                                                   ntasks=ntasks, jobdir=jobdir, scriptdir=scriptdir)
+    config_script = Template(config_template).substitute(nsamples=nsamples, task_offset=task_offset, **{n: i for n, i in zip(fids.names, f)})
 
     with open(scriptdir / f"{job_name}.job", "w") as fp:
         fp.write(job_script)
 
     with open(scriptdir / f"{job_name}.config", "w") as fp:
         fp.write(config_script)
+
+    task_offset += ntasks * nnodes
+
