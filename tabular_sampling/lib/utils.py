@@ -227,17 +227,26 @@ class Checkpointer(object):
         def extract_runtime(f: Path) -> float:
             return float(f.stem)
 
-        latest = max(
+        latest = sorted(
             self.dir_tree.model_checkpoints_dir.rglob("*.pt"),
             key=lambda f: extract_runtime(f),
-            default=None
         )
 
-        if latest is None:
+        state_dicts = None
+        for pth in latest[::-1]:
+            try:
+                state_dicts = torch.load(pth, map_location=map_location)
+            except Exception as e:
+                self.logger.info(f"Found possibly corrupt checkpoint at {pth}, reverting to an earlier checkpoint.")
+            else:
+                break
+
+
+        if state_dicts is None:
             self.logger.info(f"No valid checkpoints found at {self.dir_tree.model_checkpoints_dir}.")
             return
 
-        state_dicts = torch.load(latest, map_location=map_location)
+        # state_dicts = torch.load(latest, map_location=map_location)
         self.model.load_state_dict(state_dicts["model_state_dict"])
         self.optimizer.load_state_dict(state_dicts["optimizer_state_dict"])
         self.scheduler.load_state_dict(state_dicts["scheduler_state_dict"])
@@ -249,10 +258,11 @@ class Checkpointer(object):
         np.random.set_state(state_dicts["numpy_rng_state"])
         random.setstate(state_dicts["python_rng_state"])
         self.elapsed_epochs = state_dicts["epochs"]
-        self.runtime = extract_runtime(latest)
-        self.logger.info(f"Loaded existing checkpoint from {str(latest)}")
+        self.runtime = extract_runtime(pth)
+        self.logger.info(f"Loaded existing checkpoint from {str(pth)}")
 
 
+# TODO: Add robustness against loading corrupted metric dataframes
 class MetricLogger(object):
     """
     Holds a set of metrics, information about where they are to be logged, the frequency at which they should be

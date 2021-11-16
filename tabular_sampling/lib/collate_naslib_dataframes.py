@@ -32,6 +32,7 @@ models - diagnostic
 
 
 from pathlib import Path
+from typing import Sequence
 import pandas as pd
 import json
 import argparse
@@ -50,11 +51,10 @@ args = parser.parse_args()
 
 modelid_lvl = MetricDFIndexLevels.modelid.value
 
-def get_latest_metrics(metric_dir: Path) -> pd.DataFrame:
-    return max(
+def get_latest_metrics(metric_dir: Path) -> Sequence[Path]:
+    return sorted(
         metric_dir.rglob("*.pkl.gz"),
         key=lambda f: float(f.name.rstrip(".pkl.gz")),
-        default=None
     )
 
 
@@ -74,7 +74,7 @@ task_dfs = []
 for i, t in enumerate(tasks, start=1):
     print(f"Processing task {i}/{len(tasks)}")
     tree.taskid = int(t.stem)
-    latest_task_metrics = get_latest_metrics(tree.task_metrics_dir)
+    latest_task_metrics = get_latest_metrics(tree.task_metrics_dir)[-1]
     task_metrics = pd.read_pickle(latest_task_metrics)
     task_metrics = task_df_hack(task_metrics)
     assert ("metadata", modelid_lvl) in task_metrics.columns, \
@@ -86,12 +86,24 @@ for i, t in enumerate(tasks, start=1):
     for m in models:
         tree.model_idx = int(m.stem)
         latest_model_metrics = get_latest_metrics(tree.model_metrics_dir)
-        if latest_model_metrics is None:
+
+        model_metrics = None
+        for metrics in latest_model_metrics[::-1]:
+            try:
+                model_metrics: pd.DataFrame = pd.read_pickle(metrics)
+            except Exception as e:
+                print(f"Metric DataFrame {metrics} is likely corrupted, looking for an older metrics DataFrame...")
+            else:
+                break
+
+        if not model_metrics:
             continue
-        model_metrics: pd.DataFrame = pd.read_pickle(latest_model_metrics)
+
         model_metrics.index = pd.MultiIndex.from_product([model_metrics.index, [tree.model_idx]],
                                                          names=model_metrics.index.names + [modelid_lvl])
         model_dfs.append(model_metrics)
+    if not model_dfs:
+        continue
     big_model_df = pd.concat(model_dfs, axis=0)
     task_df = big_model_df.join(task_metrics, on=modelid_lvl, how="left", lsuffix="_model", rsuffix="_task")
     task_df = task_df.assign(taskid=tree.taskid).set_index(constants.MetricDFIndexLevels.taskid.value, append=True)
