@@ -20,6 +20,7 @@ fids = pd.MultiIndex.from_product([[1, 3, 5], [4, 8, 16], [0.25, 0.5, 1.0]], nam
 max_fid = (5, 16, 1.0)
 max_memory_req = 6  # GB
 
+
 def approximate_memory_reqs():
     req = pd.DataFrame(index=fids)
     req = req.assign(MemoryReq=max_memory_req)
@@ -53,10 +54,45 @@ def final_calculations(runtimes_per_epoch):
     return cpus_per_worker_per_node_per_bucket, cpuh_per_worker_per_bucket, evals_per_worker, nodes_per_bucket
     
 if __name__ == "__main__":
-    runtimes_pth = Path("/home/archit/thesis/experiments/checkpointing/tables/per_epoch_runtimes.pkl.gz")
-    runtimes_per_epoch = pd.read_pickle(runtimes_pth)["mean"]
+    cifar_total_num = 60_000
+    colorectal_total_num = 5000
+    ucmerced_total_num = 2100
+    batch_size = 256
+
+    runtimes_pth = Path("/home/archit/thesis/experiments/checkpointing/tables")
+    cifar_runtimes_per_epoch: pd.DataFrame = pd.read_pickle(runtimes_pth / "per_epoch_runtimes.pkl.gz")["mean"]
+
+    ## CIFAR-10
+    # outdir = Path("/home/archit/thesis/slurm_configs/cifar10")
+    # runtimes_per_epoch = pd.read_pickle(runtimes_pth)["mean"]
+
+    ## COLORECTAL_HISTOLOGY
+    # outdir = Path("/home/archit/thesis/slurm_configs/colorectal_histology")
+    # runtimes_pth = Path("/home/archit/thesis/slurm_configs/colorectal_histology/")
+    # runtimes_per_epoch = pd.read_pickle(runtimes_pth / "approx_runtimes.pkl.gz")
+    # memory_ratio = (5_000 / 50_000) * (128**2 / 32 ** 2)
+    # max_memory_req = 5 * memory_ratio  # 5 GB base
+    #
+    # if "resolution" in runtimes_per_epoch.index.names:
+    #     runtimes_per_epoch.index = runtimes_per_epoch.index.rename(runtimes_per_epoch.index.names[:2] + ["Resolution"])
+
+    ## UC_MERCED
+    outdir = Path("/home/archit/thesis/slurm_configs/uc_merced")
+    # runtimes_pth = Path("/home/archit/thesis/slurm_configs/uc_merced/")
+    img_size_ratio = 128**2 / 32 ** 2
+    nbatches_ratio = (ucmerced_total_num // batch_size) / (cifar_total_num // batch_size)
+    nimgs_ratio = ucmerced_total_num / cifar_total_num
+    runtime_ratio = nbatches_ratio * img_size_ratio
+    memory_ratio = nimgs_ratio * img_size_ratio
+
+    runtimes_per_epoch = cifar_runtimes_per_epoch * runtime_ratio
+    runtimes_per_epoch.to_pickle(outdir / "per_epoch_runtimes.pkl.gz")
+    max_memory_req = 5 * memory_ratio  # 5 GB base
+
     if "resolution" in runtimes_per_epoch.index.names:
         runtimes_per_epoch.index = runtimes_per_epoch.index.rename(runtimes_per_epoch.index.names[:2] + ["Resolution"])
+
+
 
     # Map fidelity values to updated ones
     runtimes_per_epoch = runtimes_per_epoch[runtimes_per_epoch.index.get_level_values("N").isin([1, 3, 5])]
@@ -67,8 +103,6 @@ if __name__ == "__main__":
     cpus_per_worker_per_node_per_bucket, cpuh_per_worker_per_bucket, evals_per_worker, nodes_per_bucket = \
         final_calculations(runtimes_per_epoch)
 
-    outdir = Path("/home/archit/thesis/slurm_configs/cifar10")
-    outdir.mkdir(parents=True, exist_ok=True)
     cpus_per_worker_per_node_per_bucket.to_pickle(outdir / "cpus_per_worker_per_node_per_bucket.pkl.gz")
     cpuh_per_worker_per_bucket.to_pickle(outdir / "cpuh_per_worker_per_bucket.pkl.gz")
     evals_per_worker.to_pickle(outdir / "evals_per_worker.pkl.gz")

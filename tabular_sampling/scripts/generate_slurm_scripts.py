@@ -38,7 +38,7 @@ def timestr(secs: float):
     minutes %= 60
     days = hours // 24
     hours %= 24
-    return f"{days}-{hours}:{minutes}"
+    return f"{days}-{hours:02}:{minutes:02}"
 
 
 task_offset = 0
