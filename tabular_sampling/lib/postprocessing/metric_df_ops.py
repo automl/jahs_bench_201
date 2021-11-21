@@ -1,4 +1,9 @@
 """
+This is mostly a set of convenience wrappers around small sequences of operations on collated metric DataFrames that
+make it easier to post-process the data in a semantic manner. Another advantage of using the convenience functions here
+is that they handle a lot of boiler-plate code for implementing various checks and balances and ensuring consistent
+outputs.
+
 Expected structure of a single job's metric DataFrame:
 
 index - pandas.MultiIndex, levels: [taskid, model_idx, Epoch]
@@ -9,23 +14,26 @@ columns - pandas.MultiIndex, level names: [MetricType, MetricName]
 """
 
 import argparse
-from pathlib import Path
-from typing import Dict, Iterable
+import logging
 from functools import wraps
-from typing import Any
+from pathlib import Path
+from typing import Dict, Iterable, Union, Optional, Any
 
-import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib.lines import Line2D
-from tabular_sampling.lib.constants import MetricDFIndexLevels, metricdf_column_level_names, metricdf_index_levels
-from tabular_sampling.lib import constants
+
+from tabular_sampling.lib.constants import MetricDFIndexLevels
+
+_log = logging.getLogger(__name__)
 
 model_ids_by = [MetricDFIndexLevels.taskid.value, MetricDFIndexLevels.modelid.value]
 fidelity_params = ("N", "W", "Resolution")
+
+
 # fidelity_params=("N", "W")
 
 # Common settings
-plt.rcParams.update({"xtick.labelsize": 14, "ytick.labelsize": 14, "axes.labelsize": 16, "axes.titlesize": 16})
+# plt.rcParams.update({"xtick.labelsize": 14, "ytick.labelsize": 14, "axes.labelsize": 16, "axes.titlesize": 16})
+
 
 def map_label_to_color(label: str, map: Dict, colors: Iterable):
     if not label in map:
@@ -33,7 +41,7 @@ def map_label_to_color(label: str, map: Dict, colors: Iterable):
     return map[label]
 
 
-def parse_cli():
+def _parse_cli():
     parser = argparse.ArgumentParser()
     parser.add_argument("--basedir", type=Path, help="Path to the base directory where the relevant dataframe(s) "
                                                      "is/are stored as a file named data.pkl.gz.")
@@ -41,37 +49,46 @@ def parse_cli():
     return args
 
 
-def df_loader_wrapper(func):
-    @wraps(func)
-    def load_metric_df(basedir: Path = None, df: pd.DataFrame = None, *args, **kwargs):
-        assert basedir is not None or df is not None, "Either the 'basedir' should be a Path to load the data from " \
-                                                      "or 'df' should be a pre-loaded metric data DataFrame."
+def load_metric_df(basedir: Path = None, df: pd.DataFrame = None) -> pd.DataFrame:
+    assert basedir is not None or df is not None, "Either the 'basedir' should be a Path to load the data from " \
+                                                  "or 'df' should be a pre-loaded metric data DataFrame."
+    if df is None:
+        df_fn = basedir / "data.pkl.gz"
+        df: pd.DataFrame = pd.read_pickle(df_fn)
+    else:
+        assert isinstance(df, pd.DataFrame), f"This script was designed to only work with pandas DataFrames, not " \
+                                             f"{type(df)}"
 
-        if df is None:
-            df_fn = basedir / "data.pkl.gz"
-            df: pd.DataFrame = pd.read_pickle(df_fn)
-        else:
-            assert isinstance(df, pd.DataFrame), f"This script was designed to only work with pandas DataFrames, not " \
-                                                 f"{type(df)}"
+    return df
+
+
+def _df_loader_wrapper(func):
+    @wraps(func)
+    def wrapper(basedir: Path = None, df: pd.DataFrame = None, *args, **kwargs) -> pd.DataFrame:
+        df = load_metric_df(basedir=basedir, df=df)
         return func(basedir, df, *args, **kwargs)
 
-    return load_metric_df
+    return wrapper
 
 
-@df_loader_wrapper
-def get_runtimes(basedir: Path, df: pd.DataFrame, display: bool = False, reduce_epochs: bool = True):
+@_df_loader_wrapper
+def get_runtimes(basedir: Path, df: pd.DataFrame, display: bool = False, reduce_epochs: bool = True,
+                 extra_durations: list = None) -> pd.DataFrame:
     """
     Extract the runtimes of the various models.
 
     :param basedir:
     :param df:
-    :param save_tables:
-    :param save_plots:
+    :param display: bool
+        When True, logs the runtime statistics.
+    :param reduce_epochs: bool
+        When True, abstracts away the per-epoch metrics and generates runtimes on a per-model basis instead.
     :return:
     """
 
     datasets = ["train", "valid", "test"]
-    runtime_metrics = [(ds, "duration") for ds in datasets] + [("diagnostic", "runtime")]
+    duration_metrics = ["duration"] + (extra_durations if extra_durations is not None else [])
+    runtime_metrics = [(ds, met) for ds in datasets for met in duration_metrics] + [("diagnostic", "runtime")]
 
     if reduce_epochs:
         d1 = df.loc[:, runtime_metrics[:-1]].groupby(model_ids_by).agg("sum")
@@ -83,14 +100,12 @@ def get_runtimes(basedir: Path, df: pd.DataFrame, display: bool = False, reduce_
         runtimes_df = df[runtime_metrics]
 
     if display:
-        print(f"Runtime statistics:\n{runtimes_df.describe()}")
-    return df, runtimes_df
+        _log.info(f"Runtime statistics:\n{runtimes_df.describe()}")
+    return runtimes_df
 
 
-
-@df_loader_wrapper
-def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, filter_epochs: int = -1,
-                       save_tables=False, save_plots=False) -> (pd.DataFrame, pd.DataFrame):
+@_df_loader_wrapper
+def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, filter_epochs: int = -1) -> pd.DataFrame:
     """
     Analyzes a single job's output. A single job consists of any number of parallel, i.i.d. evaluations distributed
     across any number of nodes on the cluster on a joint HPO+NAS space. The data is expected to be read from a single
@@ -116,9 +131,9 @@ def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, f
         acc_df = acc_df[acc_df["nepochs"].where(acc_df["nepochs"] == filter_epochs).notna()]
 
     if display:
-        print(f"Accuracy stats:\n{acc_df[['valid-acc', 'test-acc']].describe()}")
+        _log.info(f"Accuracy stats:\n{acc_df[['valid-acc', 'test-acc']].describe()}")
 
-    return df, acc_df
+    return acc_df
     #
     #
     # if "idx" in df.index.names:
@@ -208,7 +223,8 @@ def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, f
 #     pass
 
 
-def collapse_index_names(index: pd.MultiIndex, levels: list = None, nlevels: int = None, separator: str = "-"):
+def collapse_index_names(index: pd.MultiIndex, levels: list = None, nlevels: int = None, separator: str = "-") -> \
+        Union[pd.Index, pd.MultiIndex]:
     """ Collapses the index labels in a MultiIndex. The levels to be collapsed can be passed as either a list of
     specific levels in "levels" or an integer can be passed to "nlevels" indicating that the first "nlevels" levels
     should be collapsed into one level - the first level. """
@@ -241,12 +257,13 @@ def collapse_index_names(index: pd.MultiIndex, levels: list = None, nlevels: int
     return new_ind
 
 
-@df_loader_wrapper
+@_df_loader_wrapper
 def rank_by_parameter(basedir: Path, df: pd.DataFrame, rank_on: Any, parameters: list = None, ascending=False,
-                      **kwargs):
+                      **kwargs) -> pd.DataFrame:
     """ Generate ranks for the Dataframe's rows based on the column specified in 'rank_on'. If a list of additional
     column names is provided, a dataframe containing mean ranks of those parameters is returned, otherwise a copy of
     the initial dataframe with the "ranks" column tacked at the end is returned. """
+
     ranks = df[rank_on].rank(ascending=ascending, **kwargs).to_frame("rank")
     ranks = df.join([ranks])
 
@@ -256,8 +273,50 @@ def rank_by_parameter(basedir: Path, df: pd.DataFrame, rank_on: Any, parameters:
     return ranks
 
 
+@_df_loader_wrapper
+def get_nsamples(basedir: Path, df: pd.DataFrame, groupby: list, index: Optional[list] = None, **kwargs) \
+        -> pd.DataFrame:
+    """
+    Returns a DataFrame with a single column - "nsamples" - that contains the number of individual models (as
+    identified by the tuple (taskid, model_idx)) that were observed. 'groupby' can be a list of column names that
+    dictate the index of the returned DataFrame, i.e. the number of models in each group as identified by a unique
+    combination of the respective values in the columns named in 'groupby' is counted. It is assumed that the input
+    DataFrame's index does not need to be filtered anymore, e.g. for specific epochs. If it contains epoch-wise data,
+    then "nsamples" will count each epoch as a separate data point.
+
+    :param basedir:
+    :param df:
+    :param groupby: list
+        A list of column names, compatible with df.groupby().
+    :param index: list of strings
+        The new index names - should be a one-to-one renaming of "groupby".
+    :param kwargs:
+    :return:
+    """
+
+    assert groupby in df.columns, "Mismatch in input DataFrame's columns and given grouping parameters.\nGiven " \
+                                  f"parameters:\n{groupby}\n\nDataFrame columns:\n{df.columns}"
+    available_cols = df.columns.difference(groupby)
+    nsamples = df[available_cols[0]].groupby(groupby).agg("count")
+    if isinstance(nsamples, pd.Series):
+        nsamples = nsamples.to_frame("nsamples")
+    else:
+        assert isinstance(nsamples, pd.DataFrame), f"Expected a pandas DataFrame, but 'nsamples' is {type(nsamples)}"
+        assert len(nsamples.columns) == 1, f"Expected a DataFrame with a single column, but the given DataFrame has " \
+                                           f"{len(nsamples.columns)} columns."
+        nsamples.columns = pd.Index(["nsamples"])
+
+    # Reduce the names of the index levels to the bare minimum necessary
+    assert len(index) == len(nsamples.index.names), \
+        f"Mismatch in number of index names given - {len(index)} - and the number of available index levels - " \
+        f"{nsamples.index.nlevels}"
+
+    nsamples.index = nsamples.index.set_names(index)
+
+    return nsamples
+
 
 if __name__ == "__main__":
-    args = parse_cli()
+    args = _parse_cli()
     basedir: Path = args.basedir
     analyze_accuracies(basedir=basedir)

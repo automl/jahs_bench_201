@@ -1,8 +1,8 @@
 import json
 import logging
 import os
-from pathlib import Path
 import traceback as tb
+from pathlib import Path
 from typing import Optional, Sequence, Iterable
 
 import pandas as pd
@@ -40,6 +40,8 @@ def safe_load_df(df_pkl_files: Iterable[Path], cleanup: bool = False) -> Optiona
 
 task_metadata_columns = [m for m in constants.standard_task_metrics if m != "model_config"]
 modelid_lvl = constants.MetricDFIndexLevels.modelid.value
+
+
 def task_df_hack(task_df: pd.DataFrame) -> pd.DataFrame:
     # TODO: Fix this hack at its source
     metadata = task_df[task_metadata_columns].droplevel(1, axis=1)
@@ -48,6 +50,7 @@ def task_df_hack(task_df: pd.DataFrame) -> pd.DataFrame:
 
 
 # TODO: Implement 'save_summary'
+# TODO: Fix implementation of 'anonymize' - we still want to retain the "Epoch" index level.
 def collate_task_models(taskid: int, basedir: Optional[Path] = None, dtree: Optional[DirectoryTree] = None,
                         cleanup: bool = False, save_summary: bool = False, anonymize: bool = False) \
         -> Optional[pd.DataFrame]:
@@ -130,7 +133,8 @@ def collate_task_models(taskid: int, basedir: Optional[Path] = None, dtree: Opti
         if anonymize:
             task_df = task_df.reset_index(drop=True)
         else:
-            task_df = task_df.assign(taskid=dtree.taskid).set_index(constants.MetricDFIndexLevels.taskid.value, append=True)
+            task_df = task_df.assign(taskid=dtree.taskid).set_index(constants.MetricDFIndexLevels.taskid.value,
+                                                                    append=True)
             task_df = task_df.reorder_levels(task_df.index.names[::-1], axis=0)
 
         return task_df
