@@ -121,7 +121,7 @@ def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, f
         raise RuntimeError(f"Could not properly parse dataframe stored at '{df_fn}'") from e
 
     nepochs: pd.DataFrame = df[df.columns.values[0]].groupby(model_ids_by).agg("count").to_frame(("nepochs"))
-    confs: pd.DataFrame = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value)
+    confs: pd.DataFrame = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value).reorder_levels(model_ids_by, axis=0)
     valid_acc: pd.DataFrame = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
     test_acc: pd.DataFrame = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
 
@@ -294,10 +294,10 @@ def get_nsamples(basedir: Path, df: pd.DataFrame, groupby: list, index: Optional
     :return:
     """
 
-    assert groupby in df.columns, "Mismatch in input DataFrame's columns and given grouping parameters.\nGiven " \
+    assert all([g in df.columns for g in groupby]), "Mismatch in input DataFrame's columns and given grouping parameters.\nGiven " \
                                   f"parameters:\n{groupby}\n\nDataFrame columns:\n{df.columns}"
     available_cols = df.columns.difference(groupby)
-    nsamples = df[available_cols[0]].groupby(groupby).agg("count")
+    nsamples = df[[available_cols[0], *groupby]].groupby(groupby).agg("count")
     if isinstance(nsamples, pd.Series):
         nsamples = nsamples.to_frame("nsamples")
     else:

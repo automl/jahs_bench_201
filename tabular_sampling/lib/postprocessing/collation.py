@@ -102,8 +102,9 @@ def collate_task_models(taskid: int, basedir: Optional[Path] = None, dtree: Opti
     task_metrics = safe_load_df(latest_task_metrics, cleanup=cleanup)
 
     if task_metrics is None:
-        raise RuntimeError(f"No valid task metrics DataFrame found for task id {dtree.taskid} in the directory tree "
-                           f"rooted at {dtree.basedir}")
+        _log.debug(f"No valid task metrics DataFrame found for task id {dtree.taskid} in the directory tree "
+                  f"rooted at {dtree.basedir}")
+        return None
 
     task_metrics = task_df_hack(task_metrics)
     assert ("metadata", modelid_lvl) in task_metrics.columns, \
@@ -177,8 +178,8 @@ def collate_tasks(basedir: Optional[Path] = None, dtree: Optional[DirectoryTree]
 
     tasks = dtree.existing_tasks
     if tasks is None:
-        raise RuntimeError(f"Found no existing task data sub-directories in the directory tree rooted at "
-                           f"{dtree.basedir}")
+        _log.info(f"Found no existing task data sub-directories in the directory tree rooted at {dtree.basedir}")
+        return None
 
     tasks = list(map(lambda t: int(t.stem), tasks))
     ntasks = len(tasks)

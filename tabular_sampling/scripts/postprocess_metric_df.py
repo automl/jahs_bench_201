@@ -1,6 +1,8 @@
 import argparse
 import logging
 from pathlib import Path
+import sys
+
 from tabular_sampling.lib.postprocessing import metric_df_ops as metric_ops, _log as pproc_log
 
 _log = logging.getLogger(__name__)
@@ -17,20 +19,11 @@ if __name__ == "__main__":
                                      "training runs into a single large DataFrame.")
     parser.add_argument("--basedir", type=Path,
                         help="The base directory, same as what was used by the training script.")
-    parser.add_argument("--file", default=None, type=Path,
-                        help="The desired output filename. The filename should not carry any extension as '.pkl.gz' "
-                             "will be automatically appended to it, unless the extension is already '.pkl.gz'. "
-                             "Default: <basedir>/data.pkl.gz")
-    parser.add_argument("--summarize", action="store_true",
-                        help="When this flag is given, a summary of the current status of each run is generated and "
-                             "saved on a per-task and job-level basis.")
-    parser.add_argument("--cleanup", action="store_true",
-                        help="When this flag is given, various files such as error descriptions and checkpoints are "
-                             "verified for correctness and consistency, and deleted so as to restore the jobs to an "
-                             "state.")
-    parser.add_argument("--anonymize", action="store_true",
-                        help="When this flag is given, the task and model ids of the metric data are removed.")
+    parser.add_argument("--outdir", default=None, type=Path,
+                        help="The desired output directory where post-processes data will be stored as various "
+                             "pickled DataFrame objects. Default: <outdir>/postproc")
     parser.add_argument("--debug", action="store_true", help="When given, enables debug level output.")
+    parser.add_argument("--workerid", type=int, default=-1, help="A worker ID for launching this script on a cluster.")
     parser.add_argument("--log", type=Path, default=None,
                         help="A log file to which output logs will be saved. Specifying this turns off logging to "
                              "stdout and stderr (some initial logs may still be sent to stdout and stderr).")
@@ -51,7 +44,17 @@ if __name__ == "__main__":
         _log.setLevel(logging.INFO)
         pproc_log.setLevel(logging.INFO)
 
-    df = metric_ops.load_metric_df(basedir=args.basedir / "data.pkl.gz")
+    # fids = {"N": [1, 3, 5], "W": [4, 8, 16], "Resolution": [0.25, 0.5, 1.0]}
+    # wid = args.workerid
+    # if wid >= 27:
+    #     sys.exit(0)
+    # ids = [wid % 3, (wid // 3) % 3, (wid // 9) % 3]
+    # subdir = "-".join([f"{k}-{fids[k][ids[i]]}" for i, k in enumerate(["N", "W", "Resolution"])])
+    #
+    # basedir = args.basedir / subdir
+    basedir = args.basedir
+
+    df = metric_ops.load_metric_df(basedir=basedir)
 
     fidelity_confs = [("model_config", f) for f in metric_ops.fidelity_params]
     nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
@@ -59,7 +62,7 @@ if __name__ == "__main__":
     acc_200epochs = metric_ops.analyze_accuracies(basedir=None, df=df, display=False, filter_epochs=200)
     acc_all_epochs = metric_ops.analyze_accuracies(basedir=None, df=df, display=False, filter_epochs=-1)
 
-    outdir = args.basedir / "postproc"
+    outdir = basedir / "postproc" if args.outdir is None else args.outdir.resolve()
     outdir.mkdir(exist_ok=True, parents=False)
 
     nsamples.to_pickle(outdir / "nsamples.pkl.gz")
