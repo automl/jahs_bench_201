@@ -141,6 +141,10 @@ class DirectoryTree(object):
         return self.basedir / str(self.taskid)
 
     @property
+    def task_config_file(self) -> Path:
+        return self.task_dir / "task_config.json"
+
+    @property
     def task_metrics_dir(self) -> Path:
         return self.task_dir / "metrics"
 
@@ -165,6 +169,10 @@ class DirectoryTree(object):
     @property
     def model_tensorboard_dir(self) -> Path:
         return self.model_dir / "tensorboard_logs"
+
+    @property
+    def model_error_description_file(self) -> Path:
+        return self.model_dir / f"error_description.json"
 
     @property
     def existing_tasks(self) -> Optional[List[Path]]:

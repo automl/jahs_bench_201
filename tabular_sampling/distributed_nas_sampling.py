@@ -176,7 +176,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
         "nsamples": nsamples,
         "opts": opts
     }
-    with open(dir_tree.task_dir / "task_config.json", "w") as fp:
+    with open(dir_tree.task_config_file, "w") as fp:
         json.dump(task_config, fp, default=str)
 
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
@@ -244,7 +244,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
                 "config": model_config,
                 "global_seed": curr_global_seed
             }
-            with open(dir_tree.model_dir / f"error_description.json", "w") as fp:
+            with open(dir_tree.model_error_description_file, "w") as fp:
                 json.dump(error_description, fp, indent=4)
             if debug:
                 raise e
