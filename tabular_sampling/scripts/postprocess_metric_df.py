@@ -59,8 +59,8 @@ if __name__ == "__main__":
     fidelity_confs = [("model_config", f) for f in metric_ops.fidelity_params]
     nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
     runtimes = metric_ops.get_runtimes(basedir=None, df=df, reduce_epochs=True, extra_durations=None)
-    acc_200epochs = metric_ops.analyze_accuracies(basedir=None, df=df, display=False, filter_epochs=200)
-    acc_all_epochs = metric_ops.analyze_accuracies(basedir=None, df=df, display=False, filter_epochs=-1)
+    acc_200epochs = metric_ops.get_accuracies(basedir=None, df=df, display=False, filter_epochs=200)
+    acc_all_epochs = metric_ops.get_accuracies(basedir=None, df=df, display=False, filter_epochs=-1)
 
     outdir = basedir / "postproc" if args.outdir is None else args.outdir.resolve()
     outdir.mkdir(exist_ok=True, parents=False)

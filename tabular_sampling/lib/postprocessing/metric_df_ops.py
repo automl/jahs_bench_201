@@ -105,7 +105,36 @@ def get_runtimes(basedir: Path, df: pd.DataFrame, display: bool = False, reduce_
 
 
 @_df_loader_wrapper
-def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, filter_epochs: int = -1) -> pd.DataFrame:
+def get_nepochs(basedir: Path, df: pd.DataFrame, filter_epochs: int = -1) -> pd.DataFrame:
+    assert isinstance(df.index, pd.MultiIndex), f"The input DataFrame index must be a MultiIndex, was {type(df.index)}"
+    assert MetricDFIndexLevels.epoch.value in df.index.names, \
+        f"Missing the level '{MetricDFIndexLevels.epoch.value}' for epochs in input DataFrame with MultiIndex index " \
+        f"levels {df.index.names}."
+
+    nepochs = df[df.columns.values[0]]
+    nepochs = nepochs.groupby(model_ids_by).agg("count").to_frame(("nepochs"))
+
+    if filter_epochs > 0:
+        nepochs = nepochs[nepochs["nepochs"].where(nepochs["nepochs"] == filter_epochs).notna()]
+
+    return nepochs
+
+
+@_df_loader_wrapper
+def get_configs(basedir: Path, df: pd.DataFrame) -> pd.DataFrame:
+    assert isinstance(df.index, pd.MultiIndex), f"The input DataFrame index must be a MultiIndex, was {type(df.index)}"
+    assert MetricDFIndexLevels.epoch.value in df.index.levels, \
+        f"Missing the level '{MetricDFIndexLevels.epoch.value}' for epochs in input DataFrame with MultiIndex index " \
+        f"levels {df.index.levels}."
+    assert all([l in df.index.levels for l in model_ids_by]), \
+        f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.levels}."
+
+    confs = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value)
+    confs = confs.reorder_levels(model_ids_by, axis=0)
+    return nepochs
+
+@_df_loader_wrapper
+def get_accuracies(basedir: Path, df: pd.DataFrame, include_validation: bool = False) -> pd.DataFrame:
     """
     Analyzes a single job's output. A single job consists of any number of parallel, i.i.d. evaluations distributed
     across any number of nodes on the cluster on a joint HPO+NAS space. The data is expected to be read from a single
@@ -115,23 +144,14 @@ def analyze_accuracies(basedir: Path, df: pd.DataFrame, display: bool = False, f
     # outdir = basedir / "analysis"
     # outdir.mkdir(exist_ok=True, parents=True)
 
-    try:
-        assert isinstance(df.index, pd.MultiIndex), "DataFrame index must be a MultiIndex."
-    except AssertionError as e:
-        raise RuntimeError(f"Could not properly parse dataframe stored at '{df_fn}'") from e
+    assert isinstance(df.index, pd.MultiIndex), f"The input DataFrame index must be a MultiIndex, was {type(df.index)}"
+    assert all([l in df.index.levels for l in model_ids_by]), \
+        f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.levels}."
 
-    nepochs: pd.DataFrame = df[df.columns.values[0]].groupby(model_ids_by).agg("count").to_frame(("nepochs"))
-    confs: pd.DataFrame = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value).reorder_levels(model_ids_by, axis=0)
-    valid_acc: pd.DataFrame = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
     test_acc: pd.DataFrame = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
-
-    acc_df = confs.join([nepochs, valid_acc, test_acc])
-
-    if filter_epochs > 0:
-        acc_df = acc_df[acc_df["nepochs"].where(acc_df["nepochs"] == filter_epochs).notna()]
-
-    if display:
-        _log.info(f"Accuracy stats:\n{acc_df[['valid-acc', 'test-acc']].describe()}")
+    if include_validation:
+        valid_acc: pd.DataFrame = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
+        acc_df = test_acc.join([valid_acc])
 
     return acc_df
     #
@@ -319,4 +339,4 @@ def get_nsamples(basedir: Path, df: pd.DataFrame, groupby: list, index: Optional
 if __name__ == "__main__":
     args = _parse_cli()
     basedir: Path = args.basedir
-    analyze_accuracies(basedir=basedir)
+    get_accuracies(basedir=basedir)
