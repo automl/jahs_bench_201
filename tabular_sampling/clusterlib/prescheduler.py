@@ -10,7 +10,7 @@ import math
 import pandas as pd
 from pathlib import Path
 from string import Template
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Iterator, Tuple
 
 from tabular_sampling.lib import constants
 from tabular_sampling.lib.postprocessing import metric_df_ops as postproc
@@ -43,6 +43,16 @@ class JobConfig(object):
     def workers_per_job(self) -> int:
         return self.nodes_per_job * self.workers_per_node
 
+    @property
+    def template_kwargs(self) -> dict:
+        """ A dict of keyword arguments that should provide most of the details needed to fill in a job template. """
+        kwargs = {
+            cpus_per_worker: self.cpus_per_worker,
+            cpus_per_node: self.workers_per_node,
+            nodes_per_job: self.nodes_per_job,
+            timelimit: self.timestr(self.timelimit),
+        }
+
     @staticmethod
     def timestr(secs: float) -> str:
         """ Generates a human-readable and SLURM-compatible string representing the given duration in seconds as
@@ -72,14 +82,30 @@ class WorkerConfig(object):
     @property
     def portolio_file(self) -> Path:
         assert self.portfolio_dir is not None, "No portfolio directory specified, cannot generate portfolio file name."
-        return self.portfolio_dir / f"portfolio_{self.worker_id}"
+        return self.portfolio_dir / f"portfolio_{self.worker_id}.pkl.gz"
 
-    def read_portfolio_file(self) -> pd.DataFrame:
+    def load_portfolio(self):
         if self.portfolio is not None:
             _log.warning(f"Existing portfolio of worker {self.worker_id} will be overwritten by portfolio read from "
                          f"{self.portolio_file}")
         self.portfolio = pd.read_pickle(self.portolio_file)
 
+    def iterate_portfolio(self, start: int = 0, stop: int = None, step: int = 1, rootdir: Optional[Path] = None) -> \
+            Iterator[Tuple[int, int, Path]]:
+        """ Returns an iterator over this worker's portfolio, consisting of a list of 3-tuples, each consisting of
+        an integer task ID, an integer model index, and a path to the base directory where all the metrics and
+        checkpoints of this configuration's previous evaluations are stored. The optional Path-like 'rootdir' can be
+        specified to read all the saved base directory paths to be treated as relative to the specified 'rootdir'. """
+
+        subset = self.portfolio[start:stop:step]
+        index = subset.index.values
+        pths = subset.values
+        if rootdir is None:
+            pths = [Path(p) for p in pths]
+        else:
+            pths = [(rootdir / p).resolve() for p in pths]
+
+        return iter([(*c, p) for c, p in zip(index, pths)])
 
     def __hash__(self):
         return hash(self.worker_id)
@@ -161,12 +187,19 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
         work[assigned_worker][0] -= runtime
         work[assigned_worker][1].append(conf)
 
+    fidelity_params = ["N", "W", "Resolution"]
+    def basedir_map(c: pd.Series):
+        return "-".join(["-".join([p, str(c[p])]) for p in fidelity_params]) / "tasks"
 
     for id, worker in enumerate(workers):
-        # TODO: Check what the appropriate portfolio format is and conform this to the expected format
-        worker.portfolio = runtime_estimates.loc[work[worker][1]][["model_config"]].copy()
+        configs: pd.DataFrame = runtime_estimates.loc[work[worker][1]][["model_config"]].copy()
+        basedirs: pd.DataFrame = configs.apply(basedir_map, axis=1).to_frame("basedir")
+        basedirs.sort_index(axis=0, inplace=True)
+        worker.portfolio = basedirs
+        # worker.portfolio = runtime_estimates.loc[work[worker][1]][["model_config"]].copy()
+        # worker.portfolio.sort_index(axis=0, inplace=True)
 
-    min_waste = 0.
+    min_waste = job_config.timelimit
     if cap_job_timelimit:
         min_waste = min([work[w][0] for w in workers])
         job_config.timelimit = job_config.timelimit - min_waste
@@ -206,8 +239,15 @@ def estimate_remaining_runtime(df: pd.DataFrame, max_epochs: int = 200) -> pd.Da
     return required_runtimes
 
 
-def generate_portfolios(work_allocation: Sequence[WorkerConfig], model_configs: pd.DataFrame):
+def save_worker_portfolios(workers: Sequence[WorkerConfig], portfolio_dir: Path):
+    """ Convenience function. Given a list of WorkerConfig objects that have been pre-allocated worker IDs and
+    portfolios, saves the respective portfolios for each worker in the given directory 'portfolio_dir'. The directory
+    is created if it doesn't already exist. """
 
+    portfolio_dir.mkdir(exist_ok=True, parents=False)
+    for worker in workers:
+        worker.portfolio_dir = portfolio_dir
+        worker.portfolio.to_pickle(worker.portolio_file)
 
 
 if __name__ == "__main__":

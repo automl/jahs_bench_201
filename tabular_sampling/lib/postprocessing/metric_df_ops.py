@@ -131,7 +131,9 @@ def get_configs(basedir: Path, df: pd.DataFrame) -> pd.DataFrame:
 
     confs = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value)
     confs = confs.reorder_levels(model_ids_by, axis=0)
-    return nepochs
+
+    return confs
+
 
 @_df_loader_wrapper
 def get_accuracies(basedir: Path, df: pd.DataFrame, include_validation: bool = False) -> pd.DataFrame:
