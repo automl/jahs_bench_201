@@ -46,11 +46,12 @@ class JobConfig(object):
     @property
     def template_kwargs(self) -> dict:
         """ A dict of keyword arguments that should provide most of the details needed to fill in a job template. """
-        kwargs = {
-            cpus_per_worker: self.cpus_per_worker,
-            cpus_per_node: self.workers_per_node,
-            nodes_per_job: self.nodes_per_job,
-            timelimit: self.timestr(self.timelimit),
+        return {
+            "cpus_per_worker": self.cpus_per_worker,
+            "cpus_per_node": self.cpus_per_node,
+            "nodes_per_job": self.nodes_per_job,
+            "workers_per_node": self.workers_per_node,
+            "timelimit": self.timestr(self.timelimit),
         }
 
     @staticmethod
@@ -98,8 +99,8 @@ class WorkerConfig(object):
         specified to read all the saved base directory paths to be treated as relative to the specified 'rootdir'. """
 
         subset = self.portfolio[start:stop:step]
-        index = subset.index.values
-        pths = subset.values
+        index = subset.index.to_list()
+        pths = subset["basedir"].to_list()
         if rootdir is None:
             pths = [Path(p) for p in pths]
         else:
@@ -164,6 +165,7 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
 
     workers = [WorkerConfig(worker_id=i) for i in range(job_config.workers_per_job * required_num_jobs)]
     work = {w: [job_config.timelimit, []] for w in workers}
+    nworkers = len(workers)
 
     worker_id_cycle = itertools.cycle(list(range(job_config.workers_per_job)))
 
@@ -189,23 +191,27 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
 
     fidelity_params = ["N", "W", "Resolution"]
     def basedir_map(c: pd.Series):
-        return "-".join(["-".join([p, str(c[p])]) for p in fidelity_params]) / "tasks"
+        return "-".join(["-".join([p, str(c[p])]) for p in fidelity_params]) + "/tasks"
 
     for id, worker in enumerate(workers):
-        configs: pd.DataFrame = runtime_estimates.loc[work[worker][1]][["model_config"]].copy()
-        basedirs: pd.DataFrame = configs.apply(basedir_map, axis=1).to_frame("basedir")
+        configs: pd.DataFrame = runtime_estimates.loc[work[worker][1]]["model_config"].copy()
+        basedirs: pd.DataFrame = configs.apply(basedir_map, axis=1)
+        if isinstance(basedirs, pd.Series):
+            # This is the normal route; only in the case when #workers > #configs is 'basedirs' occasionally an empty
+            # DataFrame and not a Series
+            basedirs = basedirs.to_frame("basedir")
         basedirs.sort_index(axis=0, inplace=True)
         worker.portfolio = basedirs
         # worker.portfolio = runtime_estimates.loc[work[worker][1]][["model_config"]].copy()
         # worker.portfolio.sort_index(axis=0, inplace=True)
 
-    min_waste = job_config.timelimit
+    min_waste = 0.
     if cap_job_timelimit:
         min_waste = min([work[w][0] for w in workers])
         job_config.timelimit = job_config.timelimit - min_waste
 
     utilization = sum([job_config.timelimit + min_waste - work[w][0] for w in workers])
-    utilization /= job_config.timelimit * required_num_workers
+    utilization /= job_config.timelimit * nworkers
     underutilized = utilization < cpuh_utilization_cutoff
 
     if underutilized:

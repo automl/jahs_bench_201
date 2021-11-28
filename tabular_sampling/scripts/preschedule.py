@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     job_config = sched_utils.JobConfig(
         cpus_per_worker=args.cpus_per_worker, cpus_per_node=args.cpus_per_node, nodes_per_job=args.nodes_per_job,
-        timelimit=args.timelimit * 60, template_file=args.template_file
+        timelimit=args.timelimit * 60
     )
     workers = sched_utils.allocate_work(
         job_config=job_config, runtime_estimates=estimated_runtimes,
@@ -123,6 +123,18 @@ if __name__ == "__main__":
         jobid = next(ctr)
         job_name = f"resume_{jobid}"
         jobdir = str(args.slurm_dir)
-        job_str = job_template.substitute(jobdir=jobdir, job_name=job_name, **job_config.template_kwargs)
-        srun_str = config_template.substitute(workerid_offset=workerid_offset, portfolio_dir=str(args.portfolio_dir))
+        job_str = job_template.substitute(
+            jobdir=jobdir, scriptdir=args.script_dir, job_name=job_name, **job_config.template_kwargs
+        )
+        srun_str = config_template.substitute(
+            rootdir=jobdir, workerid_offset=workerid_offset, portfolio_dir=str(args.portfolio_dir),
+            epochs=str(args.epochs)
+        )
+
+        with open(args.script_dir / f"job-{jobid}.job", "w") as fp:
+            fp.write(job_str)
+
+        with open(args.script_dir / f"job-{jobid}.config", "w") as fp:
+            fp.write(srun_str)
+
         workerid_offset += job_config.workers_per_job

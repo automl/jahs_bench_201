@@ -5,12 +5,14 @@ pre-compute a better task distribution across multiple workers on a cluster.
 
 
 import argparse
-import logging
-
 import ConfigSpace
+import logging
+import json
 import pandas as pd
 from pathlib import Path
 import sys
+import torch
+import traceback
 from typing import Tuple
 
 import naslib.utils.logging as naslib_logging
@@ -90,7 +92,7 @@ def parse_training_overrides(args: argparse.Namespace) -> AttrDict:
     return AttrDict({k: getattr(args, k) for k in recognized_train_config_overrides.keys()})
 
 
-def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> dict:
+def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> AttrDict:
     """ Load a saved training config from disk, overriding the training config with appropriate values if needed. """
 
     with open(dtree.task_config_file, "r") as fp:
@@ -107,18 +109,19 @@ def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> dict:
     with open(dtree.task_config_file, "w") as fp:
         json.dump(task_config, fp, default=str)
 
-    return task_config["train_config"], dataset
+    return AttrDict(task_config["train_config"]), dataset
 
 
 def load_model_config(task_metrics: AttrDict, model_idx: int) -> Tuple[int, dict]:
-    """ Given the metrics of a task, recover the specified model's configuration. """
+    """ Given the metrics of a task, recover the specified model's configuration. Remember that 'model_idx' uses a
+    starting index of 1 and not 0. """
 
     n_known_samples = len(task_metrics.model_idx)
     if n_known_samples < model_idx:
         raise IndexError(f"The specified model index {model_idx} was not found in the task's recorded metrics.")
 
-    global_seed = task_metrics.global_seed[model_idx]
-    model_config = task_metrics.model_config[model_idx]
+    global_seed = task_metrics.global_seed[model_idx - 1]
+    model_config = task_metrics.model_config[model_idx - 1]
     return global_seed, model_config
 
 
@@ -199,7 +202,7 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
 
     ## Clean up memory before terminating task
     del task_metrics
-    del task_metric_logger
+    # del task_metric_logger
     del dir_tree
 
 

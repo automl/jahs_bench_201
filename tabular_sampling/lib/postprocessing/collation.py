@@ -11,6 +11,8 @@ from tabular_sampling.lib import constants
 from tabular_sampling.lib.utils import DirectoryTree
 
 _log = logging.getLogger(__name__)
+metric_df_index_levels = [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value,
+                          constants.MetricDFIndexLevels.epoch.value]
 
 
 def sorted_metric_files(metric_dir: Path, descending: bool = True) -> Sequence[Path]:
@@ -136,7 +138,7 @@ def collate_task_models(taskid: int, basedir: Optional[Path] = None, dtree: Opti
         else:
             task_df = task_df.assign(taskid=dtree.taskid).set_index(constants.MetricDFIndexLevels.taskid.value,
                                                                     append=True)
-            task_df = task_df.reorder_levels(task_df.index.names[::-1], axis=0)
+            task_df = task_df.reorder_levels(metric_df_index_levels, axis=0)
 
         return task_df
 
@@ -200,6 +202,6 @@ def collate_tasks(basedir: Optional[Path] = None, dtree: Optional[DirectoryTree]
         return None
     else:
         big_task_df = pd.concat(task_dfs, axis=0)
-        big_task_df = big_task_df.reorder_levels(big_task_df.index.names[::-1], axis=0)
+        big_task_df = big_task_df.reorder_levels(metric_df_index_levels, axis=0)
 
         return big_task_df

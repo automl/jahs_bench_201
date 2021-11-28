@@ -123,11 +123,11 @@ def get_nepochs(basedir: Path, df: pd.DataFrame, filter_epochs: int = -1) -> pd.
 @_df_loader_wrapper
 def get_configs(basedir: Path, df: pd.DataFrame) -> pd.DataFrame:
     assert isinstance(df.index, pd.MultiIndex), f"The input DataFrame index must be a MultiIndex, was {type(df.index)}"
-    assert MetricDFIndexLevels.epoch.value in df.index.levels, \
+    assert MetricDFIndexLevels.epoch.value in df.index.names, \
         f"Missing the level '{MetricDFIndexLevels.epoch.value}' for epochs in input DataFrame with MultiIndex index " \
-        f"levels {df.index.levels}."
-    assert all([l in df.index.levels for l in model_ids_by]), \
-        f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.levels}."
+        f"levels {df.index.names}."
+    assert all([l in df.index.names for l in model_ids_by]), \
+        f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.names}."
 
     confs = df["model_config"].xs(1, level=MetricDFIndexLevels.epoch.value)
     confs = confs.reorder_levels(model_ids_by, axis=0)
@@ -147,8 +147,8 @@ def get_accuracies(basedir: Path, df: pd.DataFrame, include_validation: bool = F
     # outdir.mkdir(exist_ok=True, parents=True)
 
     assert isinstance(df.index, pd.MultiIndex), f"The input DataFrame index must be a MultiIndex, was {type(df.index)}"
-    assert all([l in df.index.levels for l in model_ids_by]), \
-        f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.levels}."
+    assert all([l in df.index.names for l in model_ids_by]), \
+        f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.names}."
 
     test_acc: pd.DataFrame = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
     if include_validation:
