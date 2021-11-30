@@ -53,7 +53,8 @@ def load_metric_df(basedir: Path = None, df: pd.DataFrame = None) -> pd.DataFram
     assert basedir is not None or df is not None, "Either the 'basedir' should be a Path to load the data from " \
                                                   "or 'df' should be a pre-loaded metric data DataFrame."
     if df is None:
-        df_fn = basedir / "data.pkl.gz"
+        # TODO: Make the metric df pickle file name a reusable constant
+        df_fn = basedir / "metrics.pkl.gz"
         df: pd.DataFrame = pd.read_pickle(df_fn)
     else:
         assert isinstance(df, pd.DataFrame), f"This script was designed to only work with pandas DataFrames, not " \

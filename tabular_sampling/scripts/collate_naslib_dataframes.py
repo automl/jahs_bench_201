@@ -49,7 +49,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("Collates all results from the DataFrames produced after successful NASLib "
                                      "training runs into a single large DataFrame.")
     parser.add_argument("--basedir", type=Path,
-                        help="The base directory, same as what was used by the training script.")
+                        help="The base directory for the directory tree, or the root directory within which multiple "
+                             "such base directories exist, depending on whether the script is running in 'stand-alone' "
+                             "or 'cluster' mode. See '--workerid' for details.")
     parser.add_argument("--file", default=None, type=Path,
                         help="The desired output filename. The filename should not carry any extension as '.pkl.gz' "
                              "will be automatically appended to it, unless the extension is already '.pkl.gz'. "
@@ -63,7 +65,13 @@ if __name__ == "__main__":
                              "state.")
     parser.add_argument("--anonymize", action="store_true",
                         help="When this flag is given, the task and model ids of the metric data are removed.")
-    parser.add_argument("--workerid", type=int, default=-1, help="A worker ID for launching this script on a cluster.")
+    parser.add_argument("--workerid", type=int, default=-1,
+                        help="A worker ID for launching this script on a cluster. When a non-negative value is given, "
+                             "it is assumed that the script is operating in a cluster with multiple-parallel processes "
+                             "and each process will choose a sub-directory within the given 'basedir' as its own base "
+                             "directory based on the fidelity parameter values. Passing a negative value (default: -1) "
+                             "assumes the script is running in a stand-alone fashion and will directly use the "
+                             "provided 'basedir' as the directory tree's base directory.")
     parser.add_argument("--debug", action="store_true", help="When given, enables debug level output.")
     args = parser.parse_args()
 
@@ -74,19 +82,23 @@ if __name__ == "__main__":
         _log.setLevel(logging.INFO)
         collation._log.setLevel(logging.INFO)
 
-    # fids = {"N": [1, 3, 5], "W": [4, 8, 16], "Resolution": [0.25, 0.5, 1.0]}
-    # wid = args.workerid
-    # if wid >= 27:
-    #     sys.exit(0)
-    # ids = [wid % 3, (wid // 3) % 3, (wid // 9) % 3]
-    # subdir = "-".join([f"{k}-{fids[k][ids[i]]}" for i, k in enumerate(["N", "W", "Resolution"])])
-    #
-    # basedir = args.basedir / subdir / "tasks"
-    basedir = args.basedir
+    if args.workerid >= 0:
+        fids = {"N": [1, 3, 5], "W": [4, 8, 16], "Resolution": [0.25, 0.5, 1.0]}
+        wid = args.workerid
+        if wid >= 27:
+            sys.exit(0)
+        ids = [wid % 3, (wid // 3) % 3, (wid // 9) % 3]
+        subdir = "-".join([f"{k}-{fids[k][ids[i]]}" for i, k in enumerate(["N", "W", "Resolution"])])
+
+        basedir = args.basedir / subdir / "tasks"
+        outdir = args.basedir / subdir
+    else:
+        basedir = args.basedir
+        outdir = args.basedir
 
     collated_df = collation.collate_tasks(basedir=basedir, cleanup=args.cleanup, save_summary=args.summarize,
                                           anonymize=args.anonymize)
-    outfile: Path = args.basedir / "data.pkl.gz" if args.file is None else args.file.resolve()
+    outfile: Path = outdir / "metrics.pkl.gz" if args.file is None else args.file.resolve()
     if collated_df is None:
         _log.info(f"No valid metric data found at: {args.basedir / subdir}")
     else:

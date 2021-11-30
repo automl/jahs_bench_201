@@ -98,6 +98,8 @@ if __name__ == "__main__":
     configs = get_configs(df=metrics_df)
     estimated_runtimes = sched_utils.estimate_remaining_runtime(metrics_df, max_epochs=args.epochs)
     estimated_runtimes = pd.concat({"model_config": configs, "runtime": estimated_runtimes}, axis=1)
+    _log.info(f"Estimated total CPUh requirement: "
+              f"{estimated_runtimes[('runtime', 'required')].sum() * args.cpus_per_worker:,}")
 
     job_config = sched_utils.JobConfig(
         cpus_per_worker=args.cpus_per_worker, cpus_per_node=args.cpus_per_node, nodes_per_job=args.nodes_per_job,
