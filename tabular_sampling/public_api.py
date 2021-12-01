@@ -42,9 +42,9 @@ def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Op
     basedir.mkdir(exist_ok=True)
     dataset = _map_dataset(dataset)
 
-    args = dict(basedir=basedir, taskid=0, train_config=AttrDict(train_config), dataset=dataset, datadir=datadir,
-                local_seed=None, global_seed=None, debug=False, generate_sampling_profile=False, nsamples=1,
-                portfolio_pth=None, cycle_portfolio=False, opts=config) | kwargs
+    args = {**dict(basedir=basedir, taskid=0, train_config=AttrDict(train_config), dataset=dataset, datadir=datadir,
+                   local_seed=None, global_seed=None, debug=False, generate_sampling_profile=False, nsamples=1,
+                   portfolio_pth=None, cycle_portfolio=False, opts=config), **kwargs}
     run_task(**args)
 
     dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)

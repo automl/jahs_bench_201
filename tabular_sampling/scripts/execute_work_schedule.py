@@ -98,7 +98,8 @@ def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> AttrDict:
     with open(dtree.task_config_file, "r") as fp:
         task_config = json.load(fp)
 
-    task_config["train_config"] |= {k: v for k, v in overrides.items() if v is not None}
+    task_config["train_config"] = {**task_config["train_config"],
+                                   **{k: v for k, v in overrides.items() if v is not None}}
 
     try:
         dataset = [v for v in Datasets.__members__.values() if v.value[0] == task_config["dataset"]][0]

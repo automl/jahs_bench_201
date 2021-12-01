@@ -29,10 +29,10 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
     if resolution <= 0. or resolution > 1.:
         raise ValueError(f"Invalid image resolution scaling: {resolution}. Should be a value between 0. and 1.")
 
-    dataset_fns = {
+    dataset_fns = {**{
         constants.Datasets.cifar10: dset.CIFAR10,
         constants.Datasets.fashionMNIST: dset.FashionMNIST,
-    } | {d: partial(load_icgen_dataset, name=d.name) for d in constants.icgen_datasets}
+    }, **{d: partial(load_icgen_dataset, name=d.name) for d in constants.icgen_datasets}}
 
     name_str, image_size, nchannels, nclasses, mean, std, train_size, test_size = dataset.value
     crop_size = image_size

@@ -365,7 +365,7 @@ class MetricLogger(object):
         model_configs = pd.DataFrame(metrics["model_config"]).to_dict()
         model_configs = {k: list(v.values()) for k, v in
                          model_configs.items()}  # Convert list of dicts to dict of lists
-        df = cls._nested_dict_to_df(metrics | {"model_config": model_configs})
+        df = cls._nested_dict_to_df({**metrics, **{"model_config": model_configs}})
 
         assert isinstance(df, pd.DataFrame), f"This function should only be used with a DataFrame, not {type(df)}"
         assert isinstance(df.index, pd.Index), \
@@ -460,7 +460,7 @@ class MetricLogger(object):
 
         metric_df = pd.read_pickle(latest)
         # noinspection PyArgumentList
-        self.metrics |= self._metric_set_df_handlers[self.set_type](metric_df)
+        self.metrics = {**self.metrics, **self._metric_set_df_handlers[self.set_type](metric_df)}
         self.elapsed_runtime = self._extract_runtime_from_filename(latest)
 
 
@@ -515,7 +515,7 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optiona
     if isinstance(opts, List):
         i = iter(opts)
         opts = {k: v for k, v in zip(i, i)}
-    new_consts |= opts
+    new_consts = {**new_consts, **opts}
 
     config_space = original_space.config_space
     known_params = {p.name: p for p in config_space.get_hyperparameters()}
@@ -596,12 +596,12 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
             portfolio = portfolio.xs(taskid % portfolio.index.unique(taskid_lvl).size, axis=0, level=taskid_lvl)
             if "opts" in portfolio.columns.levels[0]:
                 # These values should be constant across all sampled models
-                opts = portfolio["opts"].iloc[0].to_dict() | opts
+                opts = {**portfolio["opts"].iloc[0].to_dict(), **opts}
             use_fixed_sampler = True
             portfolio = portfolio["model_config"]
         else:
             # Format 1 of the portfolio: We need to fix one or more parameters in the search space for this task
-            opts = portfolio.loc[taskid % portfolio.index.unique(taskid_lvl).size, :].to_dict() | opts
+            opts = {**portfolio.loc[taskid % portfolio.index.unique(taskid_lvl).size, :].to_dict(), **opts}
 
     # Use the search space modifiers that have now already subsumed the portfolio
     adapt_search_space(search_space, opts=opts, suffix=f"_task_{taskid}")
@@ -616,7 +616,9 @@ def model_sampler(search_space: NASB201HPOSearchSpace, taskid: int, global_seed_
                 model = search_space.clone()
                 model.clear()
                 model.config = ConfigSpace.Configuration(
-                    model.config_space, model.config_space.get_default_configuration().get_dictionary() | model_config)
+                    model.config_space,
+                    {**model.config_space.get_default_configuration().get_dictionary(), **model_config}
+                )
                 model._construct_graph()
                 model_config = model.config.get_dictionary()
                 yield model, model_config, curr_global_seed
