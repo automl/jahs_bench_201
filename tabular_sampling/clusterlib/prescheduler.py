@@ -9,11 +9,10 @@ import logging
 import math
 import pandas as pd
 from pathlib import Path
-from string import Template
 from typing import Optional, Sequence, Iterator, Tuple
 
 from tabular_sampling.lib import constants
-from tabular_sampling.lib.postprocessing import metric_df_ops as postproc
+from tabular_sampling.lib.postprocessing.metric_df_ops import estimate_remaining_runtime
 
 _log = logging.getLogger(__name__)
 
@@ -222,27 +221,6 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
         _log.debug(f"The job setup has a CPUh utilization factor of {utilization * 100:.2f}%.")
 
     return workers
-
-
-def estimate_remaining_runtime(df: pd.DataFrame, max_epochs: int = 200) -> pd.DataFrame:
-    """
-    Given a complete metrics DataFrame, returns a DataFrame containing the estimated runtime needed to finish
-    evaluating each model.
-    :param df: pandas DataFrame
-        A DataFrame object that can be read by the postprocessing modules to extract the number of epochs that each
-        model has been evaluated for as well as how long each model has been run for.
-    :param max_epochs:
-    :return:
-    """
-
-    nepochs: pd.DataFrame = postproc.get_nepochs(df=df)
-    remaining_epochs: pd.DataFrame = nepochs.rsub(max_epochs)
-
-    runtimes: pd.Series = postproc.get_runtimes(df=df, reduce_epochs=True)[["runtime"]]
-    runtime_per_epoch: pd.Series = runtimes["runtime"] / nepochs["nepochs"]
-    required_runtimes: pd.DataFrame = (remaining_epochs["nepochs"] * runtime_per_epoch).to_frame("required")
-
-    return required_runtimes
 
 
 def save_worker_portfolios(workers: Sequence[WorkerConfig], portfolio_dir: Path):

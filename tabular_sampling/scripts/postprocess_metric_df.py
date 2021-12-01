@@ -69,19 +69,23 @@ if __name__ == "__main__":
     fidelity_confs = [("model_config", f) for f in metric_ops.fidelity_params]
     configs = metric_ops.get_configs(basedir=None, df=df)
 
-    nepochs_200 = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=5)
+    nepochs_200 = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=200)
     nepochs_all = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=-1)
     acc_all_epochs = metric_ops.get_accuracies(basedir=None, df=df, include_validation=True)
+    acc_all_epochs.join([configs])
     acc_200epochs = acc_all_epochs.loc[nepochs_200.index]
 
     nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
     runtimes = metric_ops.get_runtimes(basedir=None, df=df, reduce_epochs=True, extra_durations=None)
     runtimes = runtimes.join([configs])
+    remaining_runtimes = metric_ops.estimate_remaining_runtime(basedir=None, df=df, max_epochs=200)
+    remaining_runtimes = remaining_runtimes.join([configs])
 
     outdir = basedir / "postproc" if args.outdir is None else args.outdir.resolve()
     outdir.mkdir(exist_ok=True, parents=False)
 
     nsamples.to_pickle(outdir / "nsamples.pkl.gz")
     runtimes.to_pickle(outdir / "runtimes.pkl.gz")
+    remaining_runtimes.to_pickle(outdir / "remaining_runtimes.pkl.gz")
     acc_200epochs.to_pickle(outdir / "acc_200epochs.pkl.gz")
     acc_all_epochs.to_pickle(outdir / "acc_all_epochs.pkl.gz")

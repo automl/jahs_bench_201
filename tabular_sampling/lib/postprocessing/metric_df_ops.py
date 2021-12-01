@@ -151,6 +151,7 @@ def get_accuracies(basedir: Path, df: pd.DataFrame, include_validation: bool = F
     assert all([l in df.index.names for l in model_ids_by]), \
         f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.names}."
 
+    train_acc: pd.DataFrame = df[("train", "acc")].groupby(model_ids_by).agg("max").to_frame("train-acc")
     test_acc: pd.DataFrame = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
     if include_validation:
         valid_acc: pd.DataFrame = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
@@ -342,7 +343,30 @@ def get_nsamples(basedir: Path, df: pd.DataFrame, groupby: list, index: Optional
     return nsamples
 
 
+@_df_loader_wrapper
+def estimate_remaining_runtime(basedir: Path, df: pd.DataFrame, max_epochs: int = 200) -> pd.DataFrame:
+    """
+    Given a complete metrics DataFrame, returns a DataFrame containing the estimated runtime needed to finish
+    evaluating each model.
+    :param df: pandas DataFrame
+        A DataFrame object that can be read by the postprocessing modules to extract the number of epochs that each
+        model has been evaluated for as well as how long each model has been run for.
+    :param max_epochs:
+    :return:
+    """
+
+    nepochs: pd.DataFrame = get_nepochs(df=df)
+    remaining_epochs: pd.DataFrame = nepochs.rsub(max_epochs)
+
+    runtimes: pd.Series = get_runtimes(df=df, reduce_epochs=True)["runtime"]
+    runtime_per_epoch: pd.Series = runtimes / nepochs["nepochs"]
+    required_runtimes: pd.DataFrame = (remaining_epochs["nepochs"] * runtime_per_epoch).to_frame("required")
+
+    return required_runtimes
+
+
 if __name__ == "__main__":
     args = _parse_cli()
     basedir: Path = args.basedir
     get_accuracies(basedir=basedir)
+

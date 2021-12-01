@@ -17,6 +17,7 @@ import naslib.utils.logging as naslib_logging
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AttrDict
 
+import tabular_sampling.lib.postprocessing.metric_df_ops
 from tabular_sampling.clusterlib import prescheduler as sched_utils
 from tabular_sampling.lib.constants import Datasets, standard_task_metrics
 from tabular_sampling.lib.constants import training_config as _training_config
@@ -96,7 +97,7 @@ if __name__ == "__main__":
 
     metrics_df = pd.read_pickle(args.metrics_df)
     configs = get_configs(df=metrics_df)
-    estimated_runtimes = sched_utils.estimate_remaining_runtime(metrics_df, max_epochs=args.epochs)
+    estimated_runtimes = tabular_sampling.lib.postprocessing.metric_df_ops.estimate_remaining_runtime(metrics_df, max_epochs=args.epochs)
     estimated_runtimes = pd.concat({"model_config": configs, "runtime": estimated_runtimes}, axis=1)
     _log.info(f"Estimated total CPUh requirement: "
               f"{estimated_runtimes[('runtime', 'required')].sum() * args.cpus_per_worker:,}")
