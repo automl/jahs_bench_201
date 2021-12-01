@@ -67,10 +67,16 @@ if __name__ == "__main__":
     df = metric_ops.load_metric_df(basedir=basedir)
 
     fidelity_confs = [("model_config", f) for f in metric_ops.fidelity_params]
+    configs = metric_ops.get_configs(basedir=None, df=df)
+
+    nepochs_200 = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=5)
+    nepochs_all = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=-1)
+    acc_all_epochs = metric_ops.get_accuracies(basedir=None, df=df, include_validation=True)
+    acc_200epochs = acc_all_epochs.loc[nepochs_200.index]
+
     nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
     runtimes = metric_ops.get_runtimes(basedir=None, df=df, reduce_epochs=True, extra_durations=None)
-    acc_200epochs = metric_ops.get_accuracies(basedir=None, df=df, display=False, filter_epochs=200)
-    acc_all_epochs = metric_ops.get_accuracies(basedir=None, df=df, display=False, filter_epochs=-1)
+    runtimes = runtimes.join([configs])
 
     outdir = basedir / "postproc" if args.outdir is None else args.outdir.resolve()
     outdir.mkdir(exist_ok=True, parents=False)

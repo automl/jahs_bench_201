@@ -319,8 +319,11 @@ def get_nsamples(basedir: Path, df: pd.DataFrame, groupby: list, index: Optional
 
     assert all([g in df.columns for g in groupby]), "Mismatch in input DataFrame's columns and given grouping parameters.\nGiven " \
                                   f"parameters:\n{groupby}\n\nDataFrame columns:\n{df.columns}"
+
     available_cols = df.columns.difference(groupby)
-    nsamples = df[[available_cols[0], *groupby]].groupby(groupby).agg("count")
+    nsamples = df.xs(1, level=MetricDFIndexLevels.epoch.value)
+    nsamples = nsamples[[available_cols[0], *groupby]].groupby(groupby).agg("count")
+
     if isinstance(nsamples, pd.Series):
         nsamples = nsamples.to_frame("nsamples")
     else:
