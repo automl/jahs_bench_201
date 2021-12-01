@@ -22,6 +22,7 @@ from typing import Dict, Iterable, Union, Optional, Any
 import pandas as pd
 
 from tabular_sampling.lib.constants import MetricDFIndexLevels
+from tabular_sampling.search_space.constants import OP_NAMES, EDGE_LIST
 
 _log = logging.getLogger(__name__)
 
@@ -363,6 +364,34 @@ def estimate_remaining_runtime(basedir: Path, df: pd.DataFrame, max_epochs: int 
     required_runtimes: pd.DataFrame = (remaining_epochs["nepochs"] * runtime_per_epoch).to_frame("required")
 
     return required_runtimes
+
+
+@_df_loader_wrapper
+def get_op_counts(basedir: Path, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Given a complete metrics DataFrame, returns a DataFrame containing the number of times each known operation type
+    was used in each model configuration's cell architecture.
+    :param df: pandas DataFrame
+        A DataFrame object that can be read by the postprocessing modules to extract the number of epochs that each
+        model has been evaluated for as well as how long each model has been run for.
+    :return:
+    """
+
+    configs = get_configs(df=df)
+    n_ops = len(EDGE_LIST)
+    ops = configs[[f"Op{o+1}" for o in range(n_ops)]]
+    max_cols = pd.Int64Index(list(range(len(OP_NAMES))))
+    dummies = [pd.get_dummies(ops[c]) for c in ops.columns]
+    for d in dummies:
+        missing_cols = max_cols.difference(d.columns)
+        d[missing_cols] = 0
+
+    freq = sum(dummies)
+    freq.columns = freq.columns.map(lambda x: OP_NAMES[x])
+
+    assert (freq.sum(axis=1) == n_ops).all(), "Failed to verify integrity of cell operation frequency calculation."
+
+    return freq
 
 
 if __name__ == "__main__":

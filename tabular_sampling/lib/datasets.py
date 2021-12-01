@@ -24,7 +24,7 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
                     resolution: int = 1., trivial_augment=False, datadir: Path = None):
 
     if not isinstance(dataset, constants.Datasets):
-        raise TypeError(f"A dataset name should be an instance of {constants.Datasets}, was given {type(name)}.")
+        raise TypeError(f"A dataset name should be an instance of {constants.Datasets}, was given {type(dataset)}.")
 
     if resolution <= 0. or resolution > 1.:
         raise ValueError(f"Invalid image resolution scaling: {resolution}. Should be a value between 0. and 1.")
