@@ -434,19 +434,25 @@ class MetricLogger(object):
             self.elapsed_runtime = elapsed_runtime
             self.logger.info(f"Logged metrics at {str(pth)}")
 
+    @classmethod
+    def _extract_runtime_from_filename(cls, f: Path) -> float:
+        return float(f.name.rstrip(".pkl.gz"))
+
+    @classmethod
+    def _get_latest_metric_path(cls, pth: Path) -> Path:
+        latest = max(
+            pth.rglob("*.pkl.gz"),
+            key=lambda f: cls._extract_runtime_from_filename(f),
+            default=None
+        )
+        return latest
+
     def resume_latest_saved_metrics(self, where: Optional[Path] = None):
         """ Used in conjunction with the corresponding method of Checkpointer to resume model training and evaluation
         from where it was left off. """
 
-        def extract_runtime(f: Path) -> float:
-            return float(f.name.rstrip(".pkl.gz"))
-
         pth = where if where is not None else self.log_directory
-        latest = max(
-            pth.rglob("*.pkl.gz"),
-            key=lambda f: extract_runtime(f),
-            default=None
-        )
+        latest = self._get_latest_metric_path(pth=pth)
 
         if latest is None:
             self.logger.info(f"No valid pre-existing metric DataFrames found at {str(pth)}.")
@@ -455,7 +461,7 @@ class MetricLogger(object):
         metric_df = pd.read_pickle(latest)
         # noinspection PyArgumentList
         self.metrics |= self._metric_set_df_handlers[self.set_type](metric_df)
-        self.elapsed_runtime = extract_runtime(latest)
+        self.elapsed_runtime = self._extract_runtime_from_filename(latest)
 
 
 def attrdict_factory(metrics: Optional[List[str]] = None, template: Callable = AverageMeter) -> AttrDict:
