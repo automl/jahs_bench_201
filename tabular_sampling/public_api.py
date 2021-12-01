@@ -1,7 +1,8 @@
 import logging
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+import shutil
+from typing import Optional, Union
 
 from distributed_nas_sampling import run_task
 from tabular_sampling.lib.constants import training_config, Datasets, MetricDFIndexLevels
@@ -21,12 +22,16 @@ def _map_dataset(dataset: str) -> Datasets:
         return ds
 
 
-def benchmark(config: dict, dataset: str, datadir: Path, nepochs: Optional[int] = 200, batch_size: Optional[int] = 256,
-              use_splits: Optional[bool] = True, train_config: Optional[dict] = None, **kwargs) -> dict:
+def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Optional[int] = 200,
+              batch_size: Optional[int] = 256, use_splits: Optional[bool] = True, train_config: Optional[dict] = None,
+              **kwargs) -> dict:
     """ Simple wrapper around the base benchmark data generation capabilities offered by
     tabular_sampling.distributed_nas_samplig.run_task(). Providing 'train_config' and 'kwargs' dicts can be used to
     access the full range of customizations offered by 'run_task()' - consults its documentation if needed. This script
     requires access to /tmp in order to write temporary data. """
+
+    if isinstance(datadir, str):
+        datadir = Path(datadir)
 
     if train_config is None:
         train_config = dict(epochs=nepochs, batch_size=batch_size, use_grad_clipping=False, split=use_splits,
@@ -45,7 +50,17 @@ def benchmark(config: dict, dataset: str, datadir: Path, nepochs: Optional[int] 
     dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)
     metric_pth = MetricLogger._get_latest_metric_path(pth=dtree.model_metrics_dir)
     df = pd.read_pickle(metric_pth)
-    nepochs = df.index.unique(MetricDFIndexLevels.epoch.value).max()
-    latest = df.xs(nepochs, level=MetricDFIndexLevels.epoch.value)
+
+    # Model metrics dataframe does not have a MultiIndex index - it's simply the epochs and their metrics!
+    nepochs = df.index.max()
+    latest = df.loc[nepochs]
+    shutil.rmtree(dtree.basedir, ignore_errors=True)
 
     return latest.to_dict()
+
+
+if __name__ == "__main__":
+    from tabular_sampling.search_space.configspace import joint_config_space
+    config = joint_config_space.get_default_configuration().get_dictionary()
+    res = benchmark(config=config, dataset="Cifar-10", datadir="/home/archit/thesis/datasets", nepochs=3)
+    print(res)
