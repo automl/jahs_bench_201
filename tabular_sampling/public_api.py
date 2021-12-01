@@ -57,9 +57,17 @@ def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Op
     # Model metrics dataframe does not have a MultiIndex index - it's simply the epochs and their metrics!
     nepochs = df.index.max()
     latest = df.loc[nepochs]
+    ret = {
+        "loss": latest.test.loss,
+        "info_dict": {
+            "val_score": latest.valid.acc,
+            "test_score": latest.test.acc,
+            "train_time": latest.diagnostic.runtime
+        }
+    }
     shutil.rmtree(dtree.basedir, ignore_errors=True)
 
-    return latest.to_dict()
+    return ret
 
 
 if __name__ == "__main__":
