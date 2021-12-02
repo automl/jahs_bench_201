@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 from typing import Optional, Union
 
-from distributed_nas_sampling import run_task
+from tabular_sampling.distributed_nas_sampling import run_task
 from tabular_sampling.lib.constants import training_config, Datasets, MetricDFIndexLevels
 from tabular_sampling.lib.utils import DirectoryTree, MetricLogger, AttrDict
 from tabular_sampling.lib.postprocessing.metric_df_ops import load_metric_df
@@ -57,17 +57,10 @@ def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Op
     # Model metrics dataframe does not have a MultiIndex index - it's simply the epochs and their metrics!
     nepochs = df.index.max()
     latest = df.loc[nepochs]
-    ret = {
-        "loss": latest.test.loss,
-        "info_dict": {
-            "val_score": latest.valid.acc,
-            "test_score": latest.test.acc,
-            "train_time": latest.diagnostic.runtime
-        }
-    }
+
     shutil.rmtree(dtree.basedir, ignore_errors=True)
 
-    return ret
+    return latest.to_dict()
 
 
 if __name__ == "__main__":
