@@ -152,7 +152,7 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
     arguments. """
 
     dir_tree = utils.DirectoryTree(basedir=basedir, taskid=taskid, model_idx=model_idx)
-    logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
+    logger = naslib_logging.setup_logger(str(dir_tree.model_dir / f"resume.log"))
 
     task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
     _ = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,

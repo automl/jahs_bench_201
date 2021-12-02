@@ -22,9 +22,6 @@ def _map_dataset(dataset: str) -> Datasets:
         return ds
 
 
-partial_config = {}
-
-
 def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Optional[int] = 200,
               batch_size: Optional[int] = 256, use_splits: Optional[bool] = True, train_config: Optional[dict] = None,
               **kwargs) -> dict:
@@ -47,7 +44,7 @@ def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Op
 
     args = {**dict(basedir=basedir, taskid=0, train_config=AttrDict(train_config), dataset=dataset, datadir=datadir,
                    local_seed=None, global_seed=None, debug=False, generate_sampling_profile=False, nsamples=1,
-                   portfolio_pth=None, cycle_portfolio=False, opts={**config, **partial_config}), **kwargs}
+                   portfolio_pth=None, cycle_portfolio=False, opts=config), **kwargs}
     run_task(**args)
 
     dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)
@@ -57,7 +54,6 @@ def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Op
     # Model metrics dataframe does not have a MultiIndex index - it's simply the epochs and their metrics!
     nepochs = df.index.max()
     latest = df.loc[nepochs]
-
     shutil.rmtree(dtree.basedir, ignore_errors=True)
 
     return latest.to_dict()
