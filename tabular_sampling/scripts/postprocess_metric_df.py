@@ -71,9 +71,14 @@ if __name__ == "__main__":
 
     nepochs_200 = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=200)
     nepochs_all = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=-1)
+
     acc_all_epochs = metric_ops.get_accuracies(basedir=None, df=df, include_validation=True)
     acc_all_epochs = acc_all_epochs.join([configs])
     acc_200epochs = acc_all_epochs.loc[nepochs_200.index]
+
+    loss_all_epochs = metric_ops.get_losses(basedir=None, df=df, include_validation=True)
+    loss_all_epochs = loss_all_epochs.join([configs])
+    loss_200epochs = loss_all_epochs.loc[nepochs_200.index]
 
     nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
     runtimes = metric_ops.get_runtimes(basedir=None, df=df, reduce_epochs=True, extra_durations=None)
@@ -86,6 +91,9 @@ if __name__ == "__main__":
 
     nsamples.to_pickle(outdir / "nsamples.pkl.gz")
     runtimes.to_pickle(outdir / "runtimes.pkl.gz")
+    nepochs_all.to_pickle(outdir / "nepochs.pkl.gz")
     remaining_runtimes.to_pickle(outdir / "remaining_runtimes.pkl.gz")
     acc_200epochs.to_pickle(outdir / "acc_200epochs.pkl.gz")
     acc_all_epochs.to_pickle(outdir / "acc_all_epochs.pkl.gz")
+    loss_200epochs.to_pickle(outdir / "acc_200epochs.pkl.gz")
+    loss_all_epochs.to_pickle(outdir / "acc_all_epochs.pkl.gz")

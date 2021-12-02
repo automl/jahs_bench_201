@@ -140,9 +140,7 @@ def get_configs(basedir: Path, df: pd.DataFrame) -> pd.DataFrame:
 @_df_loader_wrapper
 def get_accuracies(basedir: Path, df: pd.DataFrame, include_validation: bool = False) -> pd.DataFrame:
     """
-    Analyzes a single job's output. A single job consists of any number of parallel, i.i.d. evaluations distributed
-    across any number of nodes on the cluster on a joint HPO+NAS space. The data is expected to be read from a single
-    DataFrame stored in "[basedir]/data.pkl.gz".
+    Extract and return a DataFrame containing only the train, test and (if enabled) validation accuracy scores.
     """
 
     # outdir = basedir / "analysis"
@@ -156,11 +154,36 @@ def get_accuracies(basedir: Path, df: pd.DataFrame, include_validation: bool = F
     test_acc: pd.DataFrame = df[("test", "acc")].groupby(model_ids_by).agg("max").to_frame("test-acc")
     if include_validation:
         valid_acc: pd.DataFrame = df[("valid", "acc")].groupby(model_ids_by).agg("max").to_frame("valid-acc")
-        acc_df = test_acc.join([valid_acc])
+        acc_df = test_acc.join([train_acc, valid_acc])
+    else:
+        acc_df = test_acc.join([train_acc])
 
     return acc_df
-    #
-    #
+
+
+@_df_loader_wrapper
+def get_losses(basedir: Path, df: pd.DataFrame, include_validation: bool = False) -> pd.DataFrame:
+    """
+    Extract and return a DataFrame containing only the train, test and (if enabled) validation losses.
+    """
+
+    # outdir = basedir / "analysis"
+    # outdir.mkdir(exist_ok=True, parents=True)
+
+    assert isinstance(df.index, pd.MultiIndex), f"The input DataFrame index must be a MultiIndex, was {type(df.index)}"
+    assert all([l in df.index.names for l in model_ids_by]), \
+        f"The input DataFrame index must include the levels {model_ids_by}, but had the levels {df.index.names}."
+
+    train_loss: pd.DataFrame = df[("train", "loss")].groupby(model_ids_by).agg("max").to_frame("train-loss")
+    test_loss: pd.DataFrame = df[("test", "loss")].groupby(model_ids_by).agg("max").to_frame("test-loss")
+    if include_validation:
+        valid_loss: pd.DataFrame = df[("valid", "loss")].groupby(model_ids_by).agg("max").to_frame("valid-loss")
+        loss_df = test_loss.join([train_loss, valid_loss])
+    else:
+        loss_df = test_loss.join([train_loss])
+
+    return loss_df
+
     # if "idx" in df.index.names:
     #     df_no_idx = df.xs(0, level="idx")
     # else:
