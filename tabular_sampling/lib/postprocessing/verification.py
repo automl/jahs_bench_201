@@ -142,14 +142,14 @@ def clean_corrupt_files(basedir: Path, taskid: Optional[int] = None, model_idx: 
 class MetricDataIntegrityChecker:
     dtree: DirectoryTree
 
-    found_faults = False  # If faults have been found, there is a need to run a more intense data verification procedure
-    consistent = True  # Should the data be inconsistent, there is no choice but to abandon it
-    faulty_epochs = []  # The epoch nums found to be the cause of data faults
-    verified_chkpts = []  # The checkpoint timestamps that have been verified to be consistent and fault-free
-    verified_metric_logs = []  # The metrics log timestamps that have been verified to be consistent and fault-free
-    fixed_metric_logs = []  # The metrics log timestamps that needed to be fixed
-    invalid_chkpts = []  # The checkpoint timestamps that have been deemed inconsistent and should be deleted
-    invalid_metric_logs = []  # The metrics log timestamps that have been deemed inconsistent and should be deleted
+    # found_faults = False  # If faults have been found, there is a need to run a more intense data verification procedure
+    # consistent = True  # Should the data be inconsistent, there is no choice but to abandon it
+    # faulty_epochs = []  # The epoch nums found to be the cause of data faults
+    # verified_chkpts = []  # The checkpoint timestamps that have been verified to be consistent and fault-free
+    # verified_metric_logs = []  # The metrics log timestamps that have been verified to be consistent and fault-free
+    # fixed_metric_logs = []  # The metrics log timestamps that needed to be fixed
+    # invalid_chkpts = []  # The checkpoint timestamps that have been deemed inconsistent and should be deleted
+    # invalid_metric_logs = []  # The metrics log timestamps that have been deemed inconsistent and should be deleted
 
     _map_location = None
     __CHECKPOINT = Dict
@@ -191,28 +191,28 @@ class MetricDataIntegrityChecker:
         return list(map(MetricLogger._extract_runtime_from_filename,
                         MetricLogger._get_sorted_metric_paths(pth=self.dtree.model_metrics_dir, ascending=False)))
 
-    def save_results(self):
-        """ Saves a JSON file in the model directory detailing the results of the verification procedure. """
-        save_dict = {
-            "found_faults": self.found_faults,
-            "consistent": self.consistent,
-            "faulty_epochs": self.faulty_epochs,
-            "verified_chkpts": self.verified_chkpts,
-            "verified_metric_logs": self.verified_metric_logs,
-            "fixed_metric_logs": self.fixed_metric_logs,
-            "invalid_chkpts": self.invalid_chkpts,
-            "invalid_metric_logs": self.invalid_metric_logs,
-        }
-        with open(self.dtree.model_metrics_dir / "metric_logs_verification_results.json") as fp:
-            json.dump(save_dict, fp)
+    # def save_results(self):
+    #     """ Saves a JSON file in the model directory detailing the results of the verification procedure. """
+    #     save_dict = {
+    #         "found_faults": self.found_faults,
+    #         "consistent": self.consistent,
+    #         "faulty_epochs": self.faulty_epochs,
+    #         "verified_chkpts": self.verified_chkpts,
+    #         "verified_metric_logs": self.verified_metric_logs,
+    #         "fixed_metric_logs": self.fixed_metric_logs,
+    #         "invalid_chkpts": self.invalid_chkpts,
+    #         "invalid_metric_logs": self.invalid_metric_logs,
+    #     }
+    #     with open(self.dtree.model_metrics_dir / "metric_logs_verification_results.json") as fp:
+    #         json.dump(save_dict, fp)
 
-    def _declare_invalid(self):
-        """ Declares all of the current model's data to be invalid and saves the results to disk. """
-
-        self.consistent = False
-        self.invalid_chkpts = list(sorted(self.chkpt_pths.keys(), reverse=True))
-        self.invalid_metric_logs = list(sorted(self.metrics_log_pths.keys(), reverse=True))
-        save_results()
+    # def _declare_invalid(self):
+    #     """ Declares all of the current model's data to be invalid and saves the results to disk. """
+    #
+    #     self.consistent = False
+    #     self.invalid_chkpts = list(sorted(self.chkpt_pths.keys(), reverse=True))
+    #     self.invalid_metric_logs = list(sorted(self.metrics_log_pths.keys(), reverse=True))
+    #     save_results()
 
     def _iterate_corresponding_pairs_over_timestamps(
             self, start: Optional[int] = 0, stop: Optional[int] = None, step: Optional[int] = 1,
@@ -258,30 +258,30 @@ class MetricDataIntegrityChecker:
             del chkpt
             del metrics_log
 
-    def _is_all_metric_data_clean(self) -> bool:
-        """ Checks if, for corresponding checkpoint and metric log pairs only, all existing pairs agree on the number
-        of registered epochs. """
+    # def _is_all_metric_data_clean(self) -> bool:
+    #     """ Checks if, for corresponding checkpoint and metric log pairs only, all existing pairs agree on the number
+    #     of registered epochs. """
+    #
+    #     gen = self._iterate_corresponding_pairs_over_timestamps(timestamps=False, nepochs=True)
+    #     for chkpt, metrics_log, nepochs_chkpt, nepochs_metrics in gen:
+    #         if chkpt is None or metrics_log is None:
+    #             continue
+    #         if nepochs_chkpt != nepochs_metrics:
+    #             _log.debug(f"Checkpoint {timestamp} of model at {self.dtree.model_dir} is not consistent in terms of "
+    #                        f"number of epochs with its corresponding metric logs.")
+    #             del gen
+    #             return False
+    #     return True
 
-        gen = self._iterate_corresponding_pairs_over_timestamps(timestamps=False, nepochs=True)
-        for chkpt, metrics_log, nepochs_chkpt, nepochs_metrics in gen:
-            if chkpt is None or metrics_log is None:
-                continue
-            if nepochs_chkpt != nepochs_metrics:
-                _log.debug(f"Checkpoint {timestamp} of model at {self.dtree.model_dir} is not consistent in terms of "
-                           f"number of epochs with its corresponding metric logs.")
-                del gen
-                return False
-        return True
-
-    @classmethod
-    def _fix_metric_logs_faulty_epochs(cls, metrics_log: pd.DataFrame, faulty_epochs: Iterable[int]) -> pd.DataFrame:
-        """ Removes the rows corresponding to indices listed in 'faulty_epochs' from 'metrics_log', re-indexes the
-        DataFrame and returns it. """
-
-        metrics_log: pd.DataFrame = metrics_log.drop(index=faulty_epochs)
-        nepochs = metrics_log.index.size
-        metrics_log.index = pd.Int64Index(list(range(nepochs))) + 1
-        return metrics_log
+    # @classmethod
+    # def _fix_metric_logs_faulty_epochs(cls, metrics_log: pd.DataFrame, faulty_epochs: Iterable[int]) -> pd.DataFrame:
+    #     """ Removes the rows corresponding to indices listed in 'faulty_epochs' from 'metrics_log', re-indexes the
+    #     DataFrame and returns it. """
+    #
+    #     metrics_log: pd.DataFrame = metrics_log.drop(index=faulty_epochs)
+    #     nepochs = metrics_log.index.size
+    #     metrics_log.index = pd.Int64Index(list(range(nepochs))) + 1
+    #     return metrics_log
 
     def check_model_metric_data_integrity_aggressive(self, backup_dir: Path):
         """
@@ -368,129 +368,129 @@ class MetricDataIntegrityChecker:
 
         # TODO: Add stage 2 verification
 
-    def _locate_faults(self, first_inconsistent_timestamp: float, last_consistent_timestamp: float,
-                       n_faulty_epochs: int):
-        """ Attempts to locate a stray metrics log file that may have introduced inconsistencies in the logged data,
-        and retroactively removes the faulty data. """
-
-        chkpt_pths = self.chkpt_pths
-        metrics_log_pths = self.metrics_log_pths
-
-        timestamps = self.metrics_log_timestamps
-        idx_first_inconst = timestamps.index(first_inconsistent_timestamp)
-        idx_last_const = timestamps.index(last_consistent_timestamp)
-
-        assert idx_last_const > idx_first_inconst, \
-            "The first inconsistent pair cannot occur before the last consistent pair."
-
-        source_inconsistency = timestamps[idx_first_inconst:idx_last_const][0]
-        assert source_inconsistency <= first_inconsistent_timestamp, \
-            "Expected the timestamps to be arranged in descending order."
-
-        problematic_metrics_log = self._load_metric_log(metrics_log_pths[source_inconsistency])
-        nepochs_source_inconst = problematic_metrics_log.index.size
-        del problematic_metrics_log
-
-        last_consistent_chkpt = self._load_chkpt(chkpt_pths[last_consistent_timestamp])
-        nepochs_last_consistent = last_consistent_chkpt["epochs"]
-        del last_consistent_chkpt
-
-        if n_faulty_epochs != nepochs_source_inconst - nepochs_last_consistent:
-            _log.info(f"Found irrecoverably inconsistent data at {self.dtree.model_dir}.")
-            self._declare_invalid()
-        else:
-            # Try to fix inconsistencies in all checkpoints moving from this point onwards
-            timestamps = self.chkpt_timestamps
-            faulty_epochs = list(range(nepochs_last_consistent + 1, nepochs_last_consistent + n_faulty_epochs + 1))
-
-            for timestamp in timestamps[idx_first_inconst:]:
-                metrics_log = self._load_metric_log(metrics_log_pths[timestamp])
-                metrics_log = self._fix_metric_logs_faulty_epochs(metrics_log, faulty_epochs=faulty_epochs)
-                metrics_log.to_pickle(metrics_log_pths[timestamp])
-
-            self.faulty_epochs += faulty_epochs
-
-        return
-
-    def check_model_metric_data_integrity(self):
-        """
-        Performs the actual data integrity check for a single model config on behalf of
-        check_metric_data_integrity().
-        How it works:
-        1 - For each checkpoint, load the corresponding metric log, starting from the most recent.
-        2 - If no inconsistency is found, move to (7).
-        3 - If an inconsistency in the number of epochs is found, keep loading older checkpoints until they become
-            consistent again. Mark this timestamp as t_const and the oldest inconsistent one as t_inconst.
-        4 - Assume that the most recent metric log older than t_inconst is the one that caused the inconsistency.
-            Therefore, deleting the corresponding epochs should remove all inconsistency.
-        5 - Act on this assumption to try and fix all known inconsistent metric logs.
-        6 - Start from 1 again.
-        7 - If any inconsistencies were found, mark this model for cross-verification and delete all metric logs
-            without corresponding checkpoint files.
-        """
-
-        ## Part 1, look for faulty data
-        timestamps = self.chkpt_timestamps
-        first_inconsistent_timestamp = max(timestamps) + 1.
-        last_consistent_timestamp = -1
-        n_faulty_epochs = 0
-
-        # Iterate over all checkpoint/metrics log pairs by checkpoint timestamp and locate the more recent pair which
-        # is consistent and the oldest pair which is not consistent. Consistency is defined as having a matching number
-        # of registered epochs.
-        gen = self._iterate_corresponding_pairs_over_timestamps(timestamps=True, nepochs=True)
-        for chkpt, metrics_log, timestamp, nepochs_chkpt, nepochs_metrics in gen:
-            if nepochs_chkpt == nepochs_metrics:
-                last_consistent_timestamp = max(timestamp, last_consistent_timestamp)
-            elif nepochs_chkpt > nepochs_metrics:
-                raise RuntimeError(f"Unexpected inconsistency type encountered in {self.dtree.model_dir} at timestamp "
-                                   f"{timestamp}.")
-            else:
-                first_inconsistent_timestamp = min(timestamp, first_inconsistent_timestamp)
-                n_faulty_epochs = nepochs_metrics - nepochs_chkpt
-
-        if first_inconsistent_timestamp == -1.:
-            # No inconsistent pairs were found. This model's data is currently clean.
-            _log.debug(f"Data at {self.dtree.model_dir} verified to be consistent. Moving on to cleanup.")
-            self._cleanup()
-            return
-
-        elif last_consistent_timestamp == -1.:
-            # There is no clean data since we checked all available checkpoints and found no consistent pairs.
-            _log.debug(f"Found irrecoverably inconsistent data at {self.dtree.model_dir}.")
-            self._declare_invalid()
-            return
-
-        elif last_consistent_timestamp < first_inconsistent_timestamp:
-            # This is probably a data fault that can be recovered from. Most likely, a checkpoint file was corrupted
-            # and could not be read, so the training procedure loaded an older checkpoint but a newer metrics log and
-            # appended the new metrics to the latter.
-            self.found_faults = True
-            self._locate_faults(first_inconsistent_timestamp, last_consistent_timestamp, n_faulty_epochs)
-
-            # Do another pass of this procedure. This verifies if there are any more data faults and eventually cleans
-            # up any stray files before exiting.
-            self.check_model_metric_data_integrity()
-        else:
-            # This is some completely unexpected type of data corruption and we have no idea how to solve it.
-            _log.debug(f"Found irrecoverably inconsistent data at {self.dtree.model_dir}.")
-            self._declare_invalid()
-            return
-
-    def _cleanup(self):
-        """ If the cleanup flag is set, removes all metrics logs for which a corresponding checkpoint does not exist.
-        """
-
-        if not self.enable_cleanup:
-            return
-
-        all_metrics = self.metrics_log_pths
-        all_chkpts = self.chkpt_pths
-
-        for k, v in all_metrics.items():
-            if k not in all_chkpts:
-                _log.debug(f"Removing stray metrics log file {v}")
-                os.remove(v)
+    # def _locate_faults(self, first_inconsistent_timestamp: float, last_consistent_timestamp: float,
+    #                    n_faulty_epochs: int):
+    #     """ Attempts to locate a stray metrics log file that may have introduced inconsistencies in the logged data,
+    #     and retroactively removes the faulty data. """
+    #
+    #     chkpt_pths = self.chkpt_pths
+    #     metrics_log_pths = self.metrics_log_pths
+    #
+    #     timestamps = self.metrics_log_timestamps
+    #     idx_first_inconst = timestamps.index(first_inconsistent_timestamp)
+    #     idx_last_const = timestamps.index(last_consistent_timestamp)
+    #
+    #     assert idx_last_const > idx_first_inconst, \
+    #         "The first inconsistent pair cannot occur before the last consistent pair."
+    #
+    #     source_inconsistency = timestamps[idx_first_inconst:idx_last_const][0]
+    #     assert source_inconsistency <= first_inconsistent_timestamp, \
+    #         "Expected the timestamps to be arranged in descending order."
+    #
+    #     problematic_metrics_log = self._load_metric_log(metrics_log_pths[source_inconsistency])
+    #     nepochs_source_inconst = problematic_metrics_log.index.size
+    #     del problematic_metrics_log
+    #
+    #     last_consistent_chkpt = self._load_chkpt(chkpt_pths[last_consistent_timestamp])
+    #     nepochs_last_consistent = last_consistent_chkpt["epochs"]
+    #     del last_consistent_chkpt
+    #
+    #     if n_faulty_epochs != nepochs_source_inconst - nepochs_last_consistent:
+    #         _log.info(f"Found irrecoverably inconsistent data at {self.dtree.model_dir}.")
+    #         self._declare_invalid()
+    #     else:
+    #         # Try to fix inconsistencies in all checkpoints moving from this point onwards
+    #         timestamps = self.chkpt_timestamps
+    #         faulty_epochs = list(range(nepochs_last_consistent + 1, nepochs_last_consistent + n_faulty_epochs + 1))
+    #
+    #         for timestamp in timestamps[idx_first_inconst:]:
+    #             metrics_log = self._load_metric_log(metrics_log_pths[timestamp])
+    #             metrics_log = self._fix_metric_logs_faulty_epochs(metrics_log, faulty_epochs=faulty_epochs)
+    #             metrics_log.to_pickle(metrics_log_pths[timestamp])
+    #
+    #         self.faulty_epochs += faulty_epochs
+    #
+    #     return
+    #
+    # def check_model_metric_data_integrity(self):
+    #     """
+    #     Performs the actual data integrity check for a single model config on behalf of
+    #     check_metric_data_integrity().
+    #     How it works:
+    #     1 - For each checkpoint, load the corresponding metric log, starting from the most recent.
+    #     2 - If no inconsistency is found, move to (7).
+    #     3 - If an inconsistency in the number of epochs is found, keep loading older checkpoints until they become
+    #         consistent again. Mark this timestamp as t_const and the oldest inconsistent one as t_inconst.
+    #     4 - Assume that the most recent metric log older than t_inconst is the one that caused the inconsistency.
+    #         Therefore, deleting the corresponding epochs should remove all inconsistency.
+    #     5 - Act on this assumption to try and fix all known inconsistent metric logs.
+    #     6 - Start from 1 again.
+    #     7 - If any inconsistencies were found, mark this model for cross-verification and delete all metric logs
+    #         without corresponding checkpoint files.
+    #     """
+    #
+    #     ## Part 1, look for faulty data
+    #     timestamps = self.chkpt_timestamps
+    #     first_inconsistent_timestamp = max(timestamps) + 1.
+    #     last_consistent_timestamp = -1
+    #     n_faulty_epochs = 0
+    #
+    #     # Iterate over all checkpoint/metrics log pairs by checkpoint timestamp and locate the more recent pair which
+    #     # is consistent and the oldest pair which is not consistent. Consistency is defined as having a matching number
+    #     # of registered epochs.
+    #     gen = self._iterate_corresponding_pairs_over_timestamps(timestamps=True, nepochs=True)
+    #     for chkpt, metrics_log, timestamp, nepochs_chkpt, nepochs_metrics in gen:
+    #         if nepochs_chkpt == nepochs_metrics:
+    #             last_consistent_timestamp = max(timestamp, last_consistent_timestamp)
+    #         elif nepochs_chkpt > nepochs_metrics:
+    #             raise RuntimeError(f"Unexpected inconsistency type encountered in {self.dtree.model_dir} at timestamp "
+    #                                f"{timestamp}.")
+    #         else:
+    #             first_inconsistent_timestamp = min(timestamp, first_inconsistent_timestamp)
+    #             n_faulty_epochs = nepochs_metrics - nepochs_chkpt
+    #
+    #     if first_inconsistent_timestamp == -1.:
+    #         # No inconsistent pairs were found. This model's data is currently clean.
+    #         _log.debug(f"Data at {self.dtree.model_dir} verified to be consistent. Moving on to cleanup.")
+    #         self._cleanup()
+    #         return
+    #
+    #     elif last_consistent_timestamp == -1.:
+    #         # There is no clean data since we checked all available checkpoints and found no consistent pairs.
+    #         _log.debug(f"Found irrecoverably inconsistent data at {self.dtree.model_dir}.")
+    #         self._declare_invalid()
+    #         return
+    #
+    #     elif last_consistent_timestamp < first_inconsistent_timestamp:
+    #         # This is probably a data fault that can be recovered from. Most likely, a checkpoint file was corrupted
+    #         # and could not be read, so the training procedure loaded an older checkpoint but a newer metrics log and
+    #         # appended the new metrics to the latter.
+    #         self.found_faults = True
+    #         self._locate_faults(first_inconsistent_timestamp, last_consistent_timestamp, n_faulty_epochs)
+    #
+    #         # Do another pass of this procedure. This verifies if there are any more data faults and eventually cleans
+    #         # up any stray files before exiting.
+    #         self.check_model_metric_data_integrity()
+    #     else:
+    #         # This is some completely unexpected type of data corruption and we have no idea how to solve it.
+    #         _log.debug(f"Found irrecoverably inconsistent data at {self.dtree.model_dir}.")
+    #         self._declare_invalid()
+    #         return
+    #
+    # def _cleanup(self):
+    #     """ If the cleanup flag is set, removes all metrics logs for which a corresponding checkpoint does not exist.
+    #     """
+    #
+    #     if not self.enable_cleanup:
+    #         return
+    #
+    #     all_metrics = self.metrics_log_pths
+    #     all_chkpts = self.chkpt_pths
+    #
+    #     for k, v in all_metrics.items():
+    #         if k not in all_chkpts:
+    #             _log.debug(f"Removing stray metrics log file {v}")
+    #             os.remove(v)
 
 
 def check_metric_data_integrity(backup_dir: Path, basedir: Path, taskid: Optional[int] = None,
