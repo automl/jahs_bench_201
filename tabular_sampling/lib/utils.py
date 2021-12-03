@@ -226,22 +226,32 @@ class Checkpointer(object):
             self.elapsed_epochs = elapsed_epochs
             self.logger.debug(f"Checkpointed model training at f{str(output_file)}")
 
+    @classmethod
+    def _extract_runtime_from_filename(cls, f: Path) -> float:
+        return float(f.name.rstrip(".pkl.gz"))
+
+    @classmethod
+    def _get_sorted_chkpt_paths(cls, pth: Path, ascending: bool = True) -> Path:
+        latest = sorted(
+            pth.rglob("*.pt"),
+            key=lambda f: cls._extract_runtime_from_filename(f),
+            reverse=not ascending
+        )
+        return latest
+
     def _load_latest(self, map_location: Optional[Any] = None):
         """ Attempts to load a previously saved checkpoint in order to resume model training. If a checkpoint is
         successfully loaded, the model, optimizer and scheduler state dictionaries are appropriately loaded and the
         relevant values of runtime and elapsed_epochs are updated, else, the state dictionaries and other object
-        attributes are left untouched. """
+        attributes are left untouched.  If 'safe_load' is set to False, the most recent checkpoint that is readable
+        from disk is loaded. Be careful with this setting - it is possible for the loaded checkpoint data and metrics
+        data to be out of sync in such a scenario. It is set to True by default - i.e. if the latest checkpoint cannot
+        be loaded, an error is raised. """
 
-        def extract_runtime(f: Path) -> float:
-            return float(f.stem)
-
-        latest = sorted(
-            self.dir_tree.model_checkpoints_dir.rglob("*.pt"),
-            key=lambda f: extract_runtime(f),
-        )
+        latest = self._get_sorted_chkpt_paths(self.dir_tree.model_checkpoints_dir, ascending=False)
 
         state_dicts = None
-        for pth in latest[::-1]:
+        for pth in latest:
             try:
                 state_dicts = torch.load(pth, map_location=map_location)
             except Exception as e:
@@ -439,26 +449,41 @@ class MetricLogger(object):
         return float(f.name.rstrip(".pkl.gz"))
 
     @classmethod
-    def _get_latest_metric_path(cls, pth: Path) -> Path:
-        latest = max(
+    def _get_sorted_metric_paths(cls, pth: Path, ascending: bool = True) -> Path:
+        latest = sorted(
             pth.rglob("*.pkl.gz"),
             key=lambda f: cls._extract_runtime_from_filename(f),
-            default=None
+            reverse=not ascending
         )
         return latest
 
-    def resume_latest_saved_metrics(self, where: Optional[Path] = None):
+    def resume_latest_saved_metrics(self, where: Optional[Path] = None, safe_load: Optional[bool] = True):
         """ Used in conjunction with the corresponding method of Checkpointer to resume model training and evaluation
-        from where it was left off. """
+        from where it was left off. If 'safe_load' is set to False, the most recent metric data that is readable from
+        disk is loaded. Be careful with this setting - it is possible for the loaded checkpoint data and metrics data
+        to be out of sync in such a scenario. It is set to True by default - i.e. if the latest metrics DataFrame
+        cannot be loaded, an error is raised."""
 
         pth = where if where is not None else self.log_directory
-        latest = self._get_latest_metric_path(pth=pth)
+        latest = self._get_sorted_metric_paths(pth=pth, ascending=False)
 
-        if latest is None:
+        metric_df = None
+        for pth in latest:
+            try:
+                metric_df = pd.read_pickle(latest)
+            except Exception as e:
+                if safe_load:
+                    raise RuntimeError(f"Could not safely load metric DataFrame at {pth}") from e
+
+                self.logger.info(f"Found possibly corrupt metric DataFrame at {pth}, reverting to an earlier "
+                                 f"checkpoint.")
+            else:
+                break
+
+        if metric_df is None:
             self.logger.info(f"No valid pre-existing metric DataFrames found at {str(pth)}.")
             return
 
-        metric_df = pd.read_pickle(latest)
         # noinspection PyArgumentList
         self.metrics = {**self.metrics, **self._metric_set_df_handlers[self.set_type](metric_df)}
         self.elapsed_runtime = self._extract_runtime_from_filename(latest)

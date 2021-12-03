@@ -48,7 +48,7 @@ def benchmark(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Op
     run_task(**args)
 
     dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)
-    metric_pth = MetricLogger._get_latest_metric_path(pth=dtree.model_metrics_dir)
+    metric_pth = MetricLogger._get_sorted_metric_paths(pth=dtree.model_metrics_dir)
     df = pd.read_pickle(metric_pth)
 
     # Model metrics dataframe does not have a MultiIndex index - it's simply the epochs and their metrics!
