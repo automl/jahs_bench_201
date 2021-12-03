@@ -239,26 +239,41 @@ class Checkpointer(object):
         )
         return latest
 
-    def _load_latest(self, map_location: Optional[Any] = None):
+    @classmethod
+    def _load_checkpoint(cls, pths: Union[Path, List[Path]], safe_load: Optional[bool] = True,
+                         map_location: Optional[Any] = None) -> dict:
+        """ Attempts to load a checkpoint from either a single Path or a list of Paths, attempting each one in the
+        order they occur. If 'safe_load' is set to False, the first checkpoint in the list that is readable from disk
+        is loaded. It is set to True by default - i.e. if the first checkpoint cannot be loaded, an error is raised.
+        'map_location' has been provided for compatibility with GPUs. """
+
+        if isinstance(pths, Path):
+            pths = [pths]
+
+        state_dicts = None
+        for pth in pths:
+            try:
+                state_dicts = torch.load(pth, map_location=map_location)
+            except Exception as e:
+                if safe_load:
+                    raise RuntimeError(f"Could not safely load checkpoint at {pth}") from e
+                self.logger.info(f"Found possibly corrupt checkpoint at {pth}, reverting to an earlier checkpoint.")
+            else:
+                break
+
+        return state_dicts
+
+    def _load_latest(self, safe_load: Optional[bool] = True, map_location: Optional[Any] = None):
         """ Attempts to load a previously saved checkpoint in order to resume model training. If a checkpoint is
         successfully loaded, the model, optimizer and scheduler state dictionaries are appropriately loaded and the
         relevant values of runtime and elapsed_epochs are updated, else, the state dictionaries and other object
         attributes are left untouched.  If 'safe_load' is set to False, the most recent checkpoint that is readable
         from disk is loaded. Be careful with this setting - it is possible for the loaded checkpoint data and metrics
         data to be out of sync in such a scenario. It is set to True by default - i.e. if the latest checkpoint cannot
-        be loaded, an error is raised. """
+        be loaded, a RuntimeError is raised. 'map_location' has been provided for compatibility with GPUs. """
 
         latest = self._get_sorted_chkpt_paths(self.dir_tree.model_checkpoints_dir, ascending=False)
-
-        state_dicts = None
-        for pth in latest:
-            try:
-                state_dicts = torch.load(pth, map_location=map_location)
-            except Exception as e:
-                self.logger.info(f"Found possibly corrupt checkpoint at {pth}, reverting to an earlier checkpoint.")
-            else:
-                break
-
+        state_dicts = self._load_checkpoint(pths=latest, safe_load=safe_load, map_location=map_location)
 
         if state_dicts is None:
             self.logger.info(f"No valid checkpoints found at {self.dir_tree.model_checkpoints_dir}.")
@@ -449,13 +464,39 @@ class MetricLogger(object):
         return float(f.name.rstrip(".pkl.gz"))
 
     @classmethod
-    def _get_sorted_metric_paths(cls, pth: Path, ascending: bool = True) -> Path:
+    def _get_sorted_metric_paths(cls, pth: Path, ascending: bool = True) -> List[Path]:
         latest = sorted(
             pth.rglob("*.pkl.gz"),
             key=lambda f: cls._extract_runtime_from_filename(f),
             reverse=not ascending
         )
         return latest
+
+    @classmethod
+    def _load_metrics_log(cls, pths: Union[Path, List[Path]],
+                          safe_load: Optional[bool] = True) -> Optional[pd.DataFrame]:
+        """ Attempts to load a metrics log from either a single Path or a list of Paths, attempting each one in the
+        order they occur. If 'safe_load' is set to False, the first metrics log in the list that is readable from disk
+        is loaded. It is set to True by default - i.e. if the first metrics log cannot be loaded, a RuntimeError is
+        raised. """
+
+        if isinstance(pths, Path):
+            pths = [pths]
+
+        metric_df = None
+        for pth in pths:
+            try:
+                metric_df = pd.read_pickle(pth)
+            except Exception as e:
+                if safe_load:
+                    raise RuntimeError(f"Could not safely load metric DataFrame at {pth}") from e
+
+                self.logger.info(f"Found possibly corrupt metric DataFrame at {pth}, reverting to an earlier "
+                                 f"checkpoint.")
+            else:
+                break
+
+        return metric_df
 
     def resume_latest_saved_metrics(self, where: Optional[Path] = None, safe_load: Optional[bool] = True):
         """ Used in conjunction with the corresponding method of Checkpointer to resume model training and evaluation
@@ -466,19 +507,7 @@ class MetricLogger(object):
 
         pth = where if where is not None else self.log_directory
         latest = self._get_sorted_metric_paths(pth=pth, ascending=False)
-
-        metric_df = None
-        for pth in latest:
-            try:
-                metric_df = pd.read_pickle(latest)
-            except Exception as e:
-                if safe_load:
-                    raise RuntimeError(f"Could not safely load metric DataFrame at {pth}") from e
-
-                self.logger.info(f"Found possibly corrupt metric DataFrame at {pth}, reverting to an earlier "
-                                 f"checkpoint.")
-            else:
-                break
+        metric_df = self._load_metrics_log(pths=latest, safe_load=safe_load)
 
         if metric_df is None:
             self.logger.info(f"No valid pre-existing metric DataFrames found at {str(pth)}.")

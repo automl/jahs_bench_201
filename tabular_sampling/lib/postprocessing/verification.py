@@ -6,8 +6,9 @@ import logging
 import os
 import pickle
 from pathlib import Path
-from typing import Optional, Generator, Tuple,Union
+from typing import Optional, Generator, Tuple, Union, Iterable
 
+import pandas as pd
 import torch
 
 from tabular_sampling.lib.utils import DirectoryTree, Checkpointer, MetricLogger
@@ -135,8 +136,16 @@ def clean_corrupt_files(basedir: Path, taskid: Optional[int] = None, model_idx: 
         _verify_model_metrics(dtree, cleanup=cleanup)
 
 
-def verify_metric_data_integrity(basedir: Path, taskid: Optional[int] = None, model_idx: Optional[int] = None,
-                                 /, cleanup: Optional[bool] = False, map_location: Optional[Any] = None):
+def _check_metric_data_integrity(workdir: Path, chpts: Iterable[dict], metric_logs: Iterable[pd.DataFrame]):
+    """ Performs the actual data integrity check for a single model config on behalf of
+    check_metric_data_integrity(). """
+
+    pass
+
+
+def check_metric_data_integrity(workdir: Path, basedir: Path, taskid: Optional[int] = None,
+                                model_idx: Optional[int] = None, /, cleanup: Optional[bool] = False,
+                                map_location: Optional[Any] = None):
     """
     This utility checks each logged metric DataFrame's registered number of epochs against those of the checkpoint
     closest to its own timestamp. In most cases, the checkpoint will have an identical timestamp and both the
@@ -148,9 +157,25 @@ def verify_metric_data_integrity(basedir: Path, taskid: Optional[int] = None, mo
     by removing the false epochs, so the metric logs are modified and saved accordingly. If inconsistent false epochs
     are found, all checkpoints and metric logs after the last known timestamp at which the checkpoints and metric logs
     were correlated are marked as corrupt.
+
+    The directory 'workdir' is expected to be a write-enabled directory where the function call will save generated
+    outputs, such as summaries of suspected corrupt files.
     """
 
-    for dtree in iterate_model_tree(basedir=basedir, taskid=taskid, model_idx=model_idx, enumerate=False):
+    def load_chkpts(pths):
+        for p in pths:
+            yield Checkpointer._load_checkpoint(p, safe_load=True, map_location=map_location)
+
+    def load_metric_logs(pths):
+        for p in pths:
+            yield MetricLogger._load_metrics_log(p, safe_load=True)
+
+    for t, m, dtree in iterate_model_tree(basedir=basedir, taskid=taskid, model_idx=model_idx, enumerate=True):
         chkpt_pths = Checkpointer._get_sorted_chkpt_paths(dtree.model_checkpoints_dir, ascending=True)
         metric_pths = MetricLogger._get_sorted_metric_paths(dtree.model_metrics_dir, ascending=True)
+
+        chkpts = load_chkpts(chkpt_pths)
+        metric_logs = load_metric_logs(metric_pths)
+
+
 
