@@ -21,7 +21,7 @@ from typing import Dict, Iterable, Union, Optional, Any
 
 import pandas as pd
 
-from tabular_sampling.lib.constants import MetricDFIndexLevels
+from tabular_sampling.lib.core.constants import MetricDFIndexLevels
 from tabular_sampling.search_space.constants import OP_NAMES, EDGE_LIST
 
 _log = logging.getLogger(__name__)

@@ -11,7 +11,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional, Sequence, Iterator, Tuple
 
-from tabular_sampling.lib import constants
+from tabular_sampling.lib.core import constants
 from tabular_sampling.lib.postprocessing.metric_df_ops import estimate_remaining_runtime
 
 _log = logging.getLogger(__name__)

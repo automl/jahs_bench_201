@@ -13,9 +13,9 @@ import torch
 from naslib.search_spaces.core.graph import Graph
 from naslib.utils.utils import AttrDict, AverageMeter
 
-import tabular_sampling.lib.constants as constants
+import tabular_sampling.lib.core.constants as constants
 from tabular_sampling.search_space import NASB201HPOSearchSpace
-from .custom_nasb201_code import CosineAnnealingLR
+from tabular_sampling.lib.core.custom_nasb201_code import CosineAnnealingLR
 
 
 def get_training_config_help() -> dict:

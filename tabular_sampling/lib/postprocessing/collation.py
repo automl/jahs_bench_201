@@ -7,8 +7,8 @@ from typing import Optional, Sequence, Iterable
 
 import pandas as pd
 
-from tabular_sampling.lib import constants
-from tabular_sampling.lib.utils import DirectoryTree
+from tabular_sampling.lib.core import constants
+from tabular_sampling.lib.core.utils import DirectoryTree
 
 _log = logging.getLogger(__name__)
 metric_df_index_levels = [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value,

@@ -5,9 +5,8 @@ import shutil
 from typing import Optional, Union
 
 from tabular_sampling.distributed_nas_sampling import run_task
-from tabular_sampling.lib.constants import training_config, Datasets, MetricDFIndexLevels
-from tabular_sampling.lib.utils import DirectoryTree, MetricLogger, AttrDict
-from tabular_sampling.lib.postprocessing.metric_df_ops import load_metric_df
+from tabular_sampling.lib.core.constants import Datasets
+from tabular_sampling.lib.core.utils import DirectoryTree, MetricLogger, AttrDict
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.WARNING)

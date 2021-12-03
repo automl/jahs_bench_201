@@ -82,6 +82,7 @@ if __name__ == "__main__":
 
     nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
     runtimes = metric_ops.get_runtimes(basedir=None, df=df, reduce_epochs=True, extra_durations=None)
+    # TODO: Separate out configs entirely to avoid repeated checks for which dataframes do and do not have configs cols
     runtimes = runtimes.join([configs])
     remaining_runtimes = metric_ops.estimate_remaining_runtime(basedir=None, df=df, max_epochs=200)
     remaining_runtimes = remaining_runtimes.join([configs])
@@ -95,5 +96,5 @@ if __name__ == "__main__":
     remaining_runtimes.to_pickle(outdir / "remaining_runtimes.pkl.gz")
     acc_200epochs.to_pickle(outdir / "acc_200epochs.pkl.gz")
     acc_all_epochs.to_pickle(outdir / "acc_all_epochs.pkl.gz")
-    loss_200epochs.to_pickle(outdir / "acc_200epochs.pkl.gz")
-    loss_all_epochs.to_pickle(outdir / "acc_all_epochs.pkl.gz")
+    loss_200epochs.to_pickle(outdir / "loss_200epochs.pkl.gz")
+    loss_all_epochs.to_pickle(outdir / "loss_all_epochs.pkl.gz")

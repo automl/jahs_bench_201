@@ -35,11 +35,10 @@ import numpy as np
 import torch
 from naslib.utils.utils import AttrDict
 
-from tabular_sampling.lib.constants import Datasets, standard_task_metrics
-from tabular_sampling.lib.constants import training_config as _training_config
-from tabular_sampling.lib import utils
-from tabular_sampling.lib import datasets as dataset_lib
-from tabular_sampling.lib.procs import train
+from tabular_sampling.lib.core.constants import Datasets, standard_task_metrics
+from tabular_sampling.lib.core.constants import training_config as _training_config
+from tabular_sampling.lib.core import datasets as dataset_lib, utils
+from tabular_sampling.lib.core.procs import train
 from tabular_sampling.search_space import NASB201HPOSearchSpace
 
 # Randomly generated entropy source, to remain fixed across experiments.

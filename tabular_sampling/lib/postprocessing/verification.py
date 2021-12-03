@@ -11,7 +11,7 @@ from typing import Optional, Generator, Tuple, Union, Iterable
 import pandas as pd
 import torch
 
-from tabular_sampling.lib.utils import DirectoryTree, Checkpointer, MetricLogger
+from tabular_sampling.lib.core.utils import DirectoryTree, Checkpointer, MetricLogger
 
 _log = logging.getLogger(__name__)
 

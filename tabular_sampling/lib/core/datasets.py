@@ -2,15 +2,15 @@ import json
 from copy import deepcopy
 from pathlib import Path
 from functools import partial
-from typing import Any, Callable, Sequence, Optional
+from typing import Callable, Sequence, Optional
 
 import numpy as np
 import torch
 from naslib.utils.utils import AttrDict, Cutout
 from torchvision import datasets as dset, transforms as transforms
 
-from tabular_sampling.lib import constants as constants
-from tabular_sampling.lib.aug_lib import TrivialAugment
+from tabular_sampling.lib.core import constants as constants
+from tabular_sampling.lib.core.aug_lib import TrivialAugment
 
 from icgen.vision_dataset import ICVisionDataset
 
