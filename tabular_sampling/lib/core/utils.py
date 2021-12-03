@@ -228,7 +228,7 @@ class Checkpointer(object):
 
     @classmethod
     def _extract_runtime_from_filename(cls, f: Path) -> float:
-        return float(f.name.rstrip(".pkl.gz"))
+        return float(f.name.rstrip(".pt"))
 
     @classmethod
     def _get_sorted_chkpt_paths(cls, pth: Path, ascending: bool = True) -> Path:
@@ -241,7 +241,8 @@ class Checkpointer(object):
 
     @classmethod
     def _load_checkpoint(cls, pths: Union[Path, List[Path]], safe_load: Optional[bool] = True,
-                         map_location: Optional[Any] = None) -> dict:
+                         map_location: Optional[Any] = None, get_path: bool = False) -> \
+            Union[Optional[dict], Tuple[Optional[dict], Path]]:
         """ Attempts to load a checkpoint from either a single Path or a list of Paths, attempting each one in the
         order they occur. If 'safe_load' is set to False, the first checkpoint in the list that is readable from disk
         is loaded. It is set to True by default - i.e. if the first checkpoint cannot be loaded, an error is raised.
@@ -251,6 +252,7 @@ class Checkpointer(object):
             pths = [pths]
 
         state_dicts = None
+        pth = None
         for pth in pths:
             try:
                 state_dicts = torch.load(pth, map_location=map_location)
@@ -261,7 +263,7 @@ class Checkpointer(object):
             else:
                 break
 
-        return state_dicts
+        return (state_dicts, pth) if get_path else state_dicts
 
     def _load_latest(self, safe_load: Optional[bool] = True, map_location: Optional[Any] = None):
         """ Attempts to load a previously saved checkpoint in order to resume model training. If a checkpoint is
@@ -273,7 +275,8 @@ class Checkpointer(object):
         be loaded, a RuntimeError is raised. 'map_location' has been provided for compatibility with GPUs. """
 
         latest = self._get_sorted_chkpt_paths(self.dir_tree.model_checkpoints_dir, ascending=False)
-        state_dicts = self._load_checkpoint(pths=latest, safe_load=safe_load, map_location=map_location)
+        state_dicts, pth = self._load_checkpoint(pths=latest, safe_load=safe_load, map_location=map_location,
+                                                  get_path=True)
 
         if state_dicts is None:
             self.logger.info(f"No valid checkpoints found at {self.dir_tree.model_checkpoints_dir}.")
@@ -291,7 +294,7 @@ class Checkpointer(object):
         np.random.set_state(state_dicts["numpy_rng_state"])
         random.setstate(state_dicts["python_rng_state"])
         self.elapsed_epochs = state_dicts["epochs"]
-        self.runtime = extract_runtime(pth)
+        self.runtime = self._extract_runtime_from_filename(pth)
         self.logger.info(f"Loaded existing checkpoint from {str(pth)}")
 
 
@@ -474,7 +477,8 @@ class MetricLogger(object):
 
     @classmethod
     def _load_metrics_log(cls, pths: Union[Path, List[Path]],
-                          safe_load: Optional[bool] = True) -> Optional[pd.DataFrame]:
+                          safe_load: Optional[bool] = True, get_path: bool = False) -> \
+            Union[Optional[pd.DataFrame], Tuple[Optional[pd.DataFrame], Path]]:
         """ Attempts to load a metrics log from either a single Path or a list of Paths, attempting each one in the
         order they occur. If 'safe_load' is set to False, the first metrics log in the list that is readable from disk
         is loaded. It is set to True by default - i.e. if the first metrics log cannot be loaded, a RuntimeError is
@@ -484,6 +488,7 @@ class MetricLogger(object):
             pths = [pths]
 
         metric_df = None
+        pth = None
         for pth in pths:
             try:
                 metric_df = pd.read_pickle(pth)
@@ -496,7 +501,7 @@ class MetricLogger(object):
             else:
                 break
 
-        return metric_df
+        return (metric_df, pth) if get_path else metric_df
 
     def resume_latest_saved_metrics(self, where: Optional[Path] = None, safe_load: Optional[bool] = True):
         """ Used in conjunction with the corresponding method of Checkpointer to resume model training and evaluation
@@ -507,15 +512,18 @@ class MetricLogger(object):
 
         pth = where if where is not None else self.log_directory
         latest = self._get_sorted_metric_paths(pth=pth, ascending=False)
-        metric_df = self._load_metrics_log(pths=latest, safe_load=safe_load)
+        metric_df, dfpth = self._load_metrics_log(pths=latest, safe_load=safe_load, get_path=True)
 
         if metric_df is None:
             self.logger.info(f"No valid pre-existing metric DataFrames found at {str(pth)}.")
             return
 
         # noinspection PyArgumentList
-        self.metrics = {**self.metrics, **self._metric_set_df_handlers[self.set_type](metric_df)}
-        self.elapsed_runtime = self._extract_runtime_from_filename(latest)
+        loaded_metrics = self._metric_set_df_handlers[self.set_type](metric_df)
+        for k in self.metrics.keys():
+            self.metrics[k] = loaded_metrics[k]
+
+        self.elapsed_runtime = self._extract_runtime_from_filename(dfpth)
 
 
 def attrdict_factory(metrics: Optional[List[str]] = None, template: Callable = AverageMeter) -> AttrDict:

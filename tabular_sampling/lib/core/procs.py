@@ -317,7 +317,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         model_metrics.diagnostic.cpu_percent.append(psutil.cpu_percent())
         model_metrics.diagnostic.memory_ram.append(psutil.virtual_memory().available)
         model_metrics.diagnostic.memory_swap.append(psutil.swap_memory().free)
-        model_metrics_logger.log(elapsed_runtime=effective_elapsed_runtime, force=last_epoch)
+        model_metrics_logger.log(elapsed_runtime=effective_elapsed_runtime, force=first_epoch or last_epoch)
 
     if debug:
         tb_metrics = AttrDict(
