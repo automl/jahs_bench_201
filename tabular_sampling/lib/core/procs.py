@@ -215,21 +215,25 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
 
     ## Initialize checkpoint function and metric logger, load existing checkpoints and metrics
     old_chkpt_runtime = 0.
-    old_chkpt_epochs = -1
+    old_chkpt_epoch_idx = -1
+    timer = utils.SynchroTimer(ping_interval_time=train_config.checkpoint_interval_seconds,
+                               ping_interval_epochs=train_config.checkpoint_interval_epochs)
     if not train_config.disable_checkpointing:
-        checkpoint = utils.Checkpointer(
-            model=model, optimizer=optimizer, scheduler=scheduler,
-            interval_seconds=train_config.checkpoint_interval_seconds,
-            interval_epochs=train_config.checkpoint_interval_epochs, dir_tree=dir_tree,
-            logger=logger, map_location=device)
+        checkpoint = utils.Checkpointer(model=model, optimizer=optimizer, scheduler=scheduler, dir_tree=dir_tree,
+                                        logger=logger, map_location=device, timer=timer)
         old_chkpt_runtime = checkpoint.runtime
-        old_chkpt_epochs = checkpoint.elapsed_epochs
+        old_chkpt_epoch_idx = checkpoint.elapsed_epochs
 
-    model_metrics_logger = utils.MetricLogger(
-        dir_tree=dir_tree, metrics=model_metrics,
-        log_interval=None if train_config.disable_checkpointing else train_config.checkpoint_interval_seconds,
-        set_type=utils.MetricLogger.MetricSet.model, logger=logger
-    )
+    model_metrics_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=model_metrics,
+                                              set_type=utils.MetricLogger.MetricSet.model, logger=logger, timer=timer)
+
+    if old_chkpt_runtime != model_metrics_logger.elapsed_runtime:
+        raise RuntimeError(f"The Checkpoint and Metrics Log are out of sync. The latest checkpoint has the timestamp "
+                           f"{old_chkpt_runtime} while the latest metrics log has the timestamp "
+                           f"{model_metrics_logger.elapsed_runtime}. Use the data integrity verification tools to "
+                           f"resolve this. Note that this may cause some loss of data.")
+
+    timer.adjust(time=old_chkpt_runtime, epochs=old_chkpt_epoch_idx)
 
     flops = get_model_flops(model=model, input_shape=min_shape, transfer_devices=transfer_devices, device=device)
 
@@ -245,7 +249,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
 
     diverged = False
 
-    for e in range(old_chkpt_epochs + 1, train_config.epochs):
+    for e in range(old_chkpt_epoch_idx + 1, train_config.epochs):
         scheduler.update(e, 0.0)
         ## Handle training set
         dataloader = train_queue
@@ -302,12 +306,9 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         effective_elapsed_runtime = time.time() - start_time + old_chkpt_runtime
         first_epoch = e == 0
         last_epoch = e == train_config.epochs - 1
+        timer.update(time=effective_elapsed_runtime, epochs=e, force=first_epoch or last_epoch)
         if not train_config.disable_checkpointing:
-            checkpoint(
-                runtime=effective_elapsed_runtime,
-                elapsed_epochs=e,
-                force_checkpoint=first_epoch or last_epoch
-            )
+            checkpoint()
 
         # No need to calculate this again everytime, changes reflect checkpointing-relevant differences.
         model_metrics.diagnostic.FLOPS.append(flops)
@@ -317,7 +318,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         model_metrics.diagnostic.cpu_percent.append(psutil.cpu_percent())
         model_metrics.diagnostic.memory_ram.append(psutil.virtual_memory().available)
         model_metrics.diagnostic.memory_swap.append(psutil.swap_memory().free)
-        model_metrics_logger.log(elapsed_runtime=effective_elapsed_runtime, force=first_epoch or last_epoch)
+        model_metrics_logger.log()
 
     if debug:
         tb_metrics = AttrDict(

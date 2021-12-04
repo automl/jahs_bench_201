@@ -24,6 +24,7 @@ global seeds for numpy/torch/random.
 import argparse
 import json
 import logging
+import os
 import traceback
 import time
 from pathlib import Path
@@ -161,9 +162,13 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
 
     logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
     task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
-    task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
-                                            set_type=utils.MetricLogger.MetricSet.task, logger=logger)
+
+    # The timer-based interface is necessary to synchronize the model metric logger and checkpointer later.
+    tasktimer = utils.SynchroTimer()  # This timer must be set manually, but it still uses model_idx as time
+    task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics,
+                                            set_type=utils.MetricLogger.MetricSet.task, logger=logger, timer=tasktimer)
     n_known_samples = len(task_metrics.model_idx)
+    tasktimer.adjust(time=n_known_samples)
 
     task_config = {
         "train_config": train_config,
@@ -216,7 +221,9 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
             task_metrics.model_config.append(model_config)
             task_metrics.global_seed.append(curr_global_seed)
             task_metrics.size_MB.append(naslib_utils.count_parameters_in_MB(model))
-            task_metric_logger.log(elapsed_runtime=model_idx, force=True)
+
+            tasktimer.update(time=model_idx, force=True)
+            task_metric_logger.log()
 
         if generate_sampling_profile:
             time.sleep(1)
@@ -225,6 +232,10 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
         ## Actual model training and evaluation
         try:
             dir_tree.model_idx = model_idx
+
+            if dir_tree.model_error_description_file.exists():
+                os.remove(dir_tree.model_error_description_file)
+
             naslib_utils.set_seed(curr_global_seed)
             data_loaders, min_shape = dataset_lib.get_dataloaders(
                 dataset=dataset, batch_size=train_config.batch_size, cutout=0, split=train_config.split,

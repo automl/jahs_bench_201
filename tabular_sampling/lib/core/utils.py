@@ -3,7 +3,7 @@ import logging
 import random
 from itertools import repeat, cycle
 from pathlib import Path
-from typing import Dict, Union, Any, Optional, Iterable, Callable, List, Tuple
+from typing import Dict, Union, Any, Optional, Iterable, Callable, List, Tuple, Hashable
 
 import ConfigSpace
 import naslib.utils.utils as naslib_utils
@@ -183,6 +183,74 @@ class DirectoryTree(object):
         return None if not self.task_models_dir.exists() else [d for d in self.task_models_dir.iterdir() if d.is_dir()]
 
 
+class SynchroTimer:
+    """ A very simply class whose sole purpose is to provide a share-able object and interface so that multiple other
+    pieces of code (such as Checkpointer and MetricLogger instances) can consult the same timing related logic. It
+    handles the preparation of a signal based on the configuration of time/epoch frequency. Listeners that have been
+    registered with a SynchroTimer object can then query it anytime to know if the signal has been prepared. This is
+    by no means intended to be used for multi-process signal passing! """
+
+    elapsed_time: float
+    elapsed_epochs: int
+    ping_interval_time: float
+    ping_interval_epochs: float
+    _signal: bool
+    _listeners: Dict[Any, bool]
+
+    def __init__(self, ping_interval_time: float = None, ping_interval_epochs: float = None):
+        """ Setting either of the two interval types to None disables updates to the signal logic based on that
+        property. It is thus possible to create a SynchroTimer object which can only generate signals at arbitrary
+        intervals when manually asked to do so (see SynchroTimer.update()). """
+        self.ping_interval_time = ping_interval_time
+        self.ping_interval_epochs = ping_interval_epochs
+        self._listeners = {}
+        self._signal = False
+
+    def adjust(self, time: Optional[float] = None, epochs: Optional[int] = None):
+        """ Sets the elapsed time and epochs without causing a signal to be generated. """
+        self.elapsed_time = time
+        self.elapsed_epochs = epochs
+
+    def register_new_listener(self) -> Hashable:
+        """ Allows SynchroTimer to know how many access points are listening to its signals and, in turn, ensure that
+        each listener receives each unique instance of a signal only once. """
+        id = len(self._listeners.keys()) + 1
+        self._listeners[id] = self._signal
+        return id
+
+    def _update_signals_(self):
+        """ Prepares signals for all _listeners. """
+        for l in self._listeners.keys():
+            self._listeners[l] = self._signal
+
+    def update(self, time: Optional[float] = None, epochs: Optional[int] = None, force: Optional[bool] = False):
+        """ Given an input of time/epochs or an overriding flag 'force', determines whether a signal should be
+        prepared for the listeners or not. Even if ping_interval_time or ping_interval_epoch was set to None,
+        the time and epochs can still be specified here to keep track of them. In such a case, however, they will not
+        cause the timer's signal to be set. """
+
+        time_signal = False if self.ping_interval_time is None \
+            else (time - self.elapsed_time) >= self.ping_interval_time
+
+        epoch_signal = False if self.ping_interval_epochs is None \
+            else (epochs - self.elapsed_epochs) >= self.ping_interval_epochs
+
+        self._signal = time_signal or epoch_signal or force
+        self._update_signals_()
+        self.elapsed_time = time
+        self.elapsed_epochs = epochs
+
+    def ping(self, id: Hashable):
+        """ Any listener can call this function along with its registered ID to query the signal. """
+
+        if id not in self._listeners:
+            raise KeyError(f"Unrecognized listener ID {id}.")
+        signal = self._listeners[id]
+
+        # Either the signal was already False and remains unchanged, or was True and has now been consumed.
+        self._listeners[id] = False
+        return signal
+
 class Checkpointer(object):
     """
     Essentially a stateful-function factory for checkpointing model training at discrete intervals of time and epochs.
@@ -192,23 +260,23 @@ class Checkpointer(object):
     """
 
     def __init__(self, model: Graph, optimizer: torch.optim.Optimizer, scheduler: CosineAnnealingLR,
-                 interval_seconds: int, interval_epochs: int, dir_tree: DirectoryTree, logger: logging.Logger = None,
-                 map_location=None):
+                 dir_tree: DirectoryTree, logger: logging.Logger = None, map_location=None,
+                 timer: Optional[SynchroTimer] = None):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.interval_seconds = interval_seconds
-        self.interval_epochs = interval_epochs
         self.dir_tree = dir_tree
         self.runtime = 0.
         self.elapsed_epochs = -1
         self.logger = logger if logger is not None else logging.getLogger(__name__)
+        self.timer = timer
         logger.debug(f"Successfully initialized checkpointer.")
         self._load_latest(map_location)
 
-    def __call__(self, runtime: float, elapsed_epochs: int, force_checkpoint: bool = False):
-        if (runtime - self.runtime) >= self.interval_seconds \
-                or (elapsed_epochs - self.elapsed_epochs) >= self.interval_epochs or force_checkpoint:
+    def __call__(self, force_checkpoint: bool = False):
+        if self._signal or force_checkpoint:
+            runtime = self.timer.elapsed_time
+            elapsed_epochs = self.timer.elapsed_epochs
             output_file = self.dir_tree.model_checkpoints_dir / f"{runtime}.pt"
             torch.save(
                 {
@@ -225,6 +293,24 @@ class Checkpointer(object):
             self.runtime = runtime
             self.elapsed_epochs = elapsed_epochs
             self.logger.debug(f"Checkpointed model training at f{str(output_file)}")
+
+    @property
+    def timer(self) -> SynchroTimer:
+        return self._timer
+
+    @timer.setter
+    def timer(self, new_timer: SynchroTimer):
+        if new_timer is None:
+            self._timer = None
+        else:
+            assert isinstance(new_timer, SynchroTimer), \
+                "Timer must be either an instance of the class SynchroTimer or None"
+            self._timer = new_timer
+            self._timer_id = self._timer.register_new_listener()
+
+    @property
+    def _signal(self):
+        return self.timer.ping(self._timer_id)
 
     @classmethod
     def _extract_runtime_from_filename(cls, f: Path) -> float:
@@ -298,7 +384,6 @@ class Checkpointer(object):
         self.logger.info(f"Loaded existing checkpoint from {str(pth)}")
 
 
-# TODO: Add robustness against loading corrupted metric dataframes
 class MetricLogger(object):
     """
     Holds a set of metrics, information about where they are to be logged, the frequency at which they should be
@@ -313,15 +398,33 @@ class MetricLogger(object):
         task = enum.auto()
         default = enum.auto()
 
-    def __init__(self, dir_tree: DirectoryTree, metrics: dict, log_interval: Optional[int] = None,
-                 set_type: MetricSet = MetricSet.default, logger: logging.Logger = None):
+    def __init__(self, dir_tree: DirectoryTree, metrics: dict, set_type: MetricSet = MetricSet.default,
+                 logger: logging.Logger = None, timer: Optional[SynchroTimer] = None):
         self.dir_tree = dir_tree
         self.metrics = metrics
-        self.log_interval = log_interval
         self.set_type = set_type
         self.logger = logger if logger is not None else logging.getLogger(__name__)
         self.elapsed_runtime = 0.
+        self.timer = timer
         self.resume_latest_saved_metrics()
+
+    @property
+    def timer(self) -> SynchroTimer:
+        return self._timer
+
+    @timer.setter
+    def timer(self, new_timer: SynchroTimer):
+        if new_timer is None:
+            self._timer = None
+        else:
+            assert isinstance(new_timer, SynchroTimer), \
+                "Timer must be either an instance of the class SynchroTimer or None"
+            self._timer = new_timer
+            self._timer_id = self._timer.register_new_listener()
+
+    @property
+    def _signal(self):
+        return self.timer.ping(self._timer_id)
 
     @classmethod
     def _nested_dict_to_df(cls, nested: Union[dict, Any]) -> pd.DataFrame:
@@ -454,8 +557,9 @@ class MetricLogger(object):
     def log_directory(self):
         return getattr(self.dir_tree, self._metric_set_to_log_directory[self.set_type])
 
-    def log(self, elapsed_runtime: float, force: bool = False, where: Optional[Path] = None):
-        if (self.log_interval is not None and elapsed_runtime - self.elapsed_runtime > self.log_interval) or force:
+    def log(self, force: bool = False, where: Optional[Path] = None):
+        if self._signal or force:
+            elapsed_runtime = self.timer.elapsed_time
             df = self._generate_df()
             pth = where if where is not None else self.log_directory
             df.to_pickle(pth / f"{elapsed_runtime}.pkl.gz")
