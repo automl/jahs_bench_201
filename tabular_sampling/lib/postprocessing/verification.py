@@ -326,8 +326,13 @@ class MetricDataIntegrityChecker:
                 else:
                     inconsistent_pairs.append(timestamp)
 
-        first_inconsistent_timestamp = max(all_timestamps) + 1. if not inconsistent_pairs else min(inconsistent_pairs)
-        last_consistent_timestamp = -1. if not consistent_pairs else max(consistent_pairs)
+        _log.debug(f"Discovered {len(all_timestamps)} timestamps to verify in {self.dtree.model_dir}.")
+        if inconsistent_pairs:
+            first_inconsistent_timestamp = min(inconsistent_pairs)
+            _log.debug(f"Discovered the first inconsistent pair at timestamp {first_inconsistent_timestamp}")
+        else:
+            first_inconsistent_timestamp = max(all_timestamps) + 1.
+            _log.debug(f"Discovered no inconsistent pairs of checkpoints and metrics logs.")
 
         # All data after first_inconst is corrupt, including any corresponding pairs
         # All strays should be deleted
@@ -344,6 +349,7 @@ class MetricDataIntegrityChecker:
         chkpt_pths = self.chkpt_pths
         metrics_log_pths = self.metrics_log_pths
 
+        _log.debug(f"Attempting to infer {len(to_be_inferred)} metric logs.")
         for t in to_be_inferred:
             closest = [pairt for pairt in existing_pairs if t < pairt]
             if closest:
@@ -359,6 +365,7 @@ class MetricDataIntegrityChecker:
 
         backup_tree = DirectoryTree(basedir=backup_dir, taskid=self.dtree.taskid, model_idx=self.dtree.model_idx,
                                     read_only=False)
+        _log.debug(f"Moving {len(to_be_deleted)} checkpoints/metrics logs to the backup directory.")
         for t in to_be_deleted:
             if t in chkpt_pths:
                 shutil.move(src=chkpt_pths[t], dst=backup_tree.model_checkpoints_dir / chkpt_pths[t].name)
@@ -526,7 +533,11 @@ if __name__ == "__main__":
     _log.setLevel(logging.DEBUG)
 
     test_pth = Path("/home/archit/thesis/experiments/test")
-    dtree = DirectoryTree(basedir=test_pth, taskid=0, model_idx=1)
+    tree_kwargs = {"basedir": test_pth, "taskid": 2, "model_idx": 2}
+
+    dtree = DirectoryTree(**tree_kwargs)
+    # corrupt = True
+    corrupt = False
     original_chkpts = Checkpointer._get_sorted_chkpt_paths(dtree.model_checkpoints_dir, ascending=True)
     original_metric_logs = MetricLogger._get_sorted_metric_paths(dtree.model_metrics_dir, ascending=True)
 
@@ -561,8 +572,9 @@ if __name__ == "__main__":
             corrupted.to_pickle(mlog)
 
     clean_corrupt_files(test_pth, 0, 1, cleanup=True)
-    introduce_fault(1, 2)
+    if corrupt:
+        introduce_fault(1, 2)
     backupdir = test_pth / "backup_dir"
-    check_metric_data_integrity(backup_dir=backupdir, basedir=test_pth, taskid=0, model_idx=1)
+    check_metric_data_integrity(backup_dir=backupdir, **tree_kwargs)
 
 
