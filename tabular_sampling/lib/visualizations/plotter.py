@@ -309,8 +309,14 @@ def mean_std(data: pd.DataFrame, indices: List[str], xaxis_level: str, suptitle:
                 ax.set_title(f"{indices[1]}={clabel}", fontdict=dict(fontsize=label_fontsize))
 
             # Left-most column only
-            if cidx == 0:
-                ax.set_ylabel(f"{indices[2]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
+            # if cidx == 0:
+            #     ax.set_ylabel(f"{indices[2]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
+
+            # Right-most column only
+            if cidx == ncols - 1 and nind == 3:
+                alt_ax: plt.Axes = ax.twinx()
+                alt_ax.set_ylabel(f"{indices[2]}={rlabel}", labelpad=10, fontdict=dict(fontsize=label_fontsize))
+                alt_ax.yaxis.set_ticks([])
 
             # This ensures that we don't miss any labels because different subplots had different subsets of labels.
             h, l = ax.get_legend_handles_labels()
