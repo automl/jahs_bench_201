@@ -1,9 +1,11 @@
 import argparse
+import shutil
 from enum import Enum
 import logging
 from pathlib import Path
 import pandas as pd
 import sys
+import time
 from typing import Optional, Union, Generator, Tuple
 
 from tabular_sampling.lib.core import utils
@@ -12,6 +14,10 @@ from tabular_sampling.lib.postprocessing import verification
 
 _log = logging.getLogger(__name__)
 fidelity_parameters = ["N", "W", "Resolution"]
+worker_chkpt_subdir = "worker_chkpts"
+cleanup_chkpt_name = "cleanup_progress.pkl.gz"
+prune_chkpt_name = "prune_progress.pkl.gz"
+verify_chkpt_name = "verify_progress.pkl.gz"
 
 def generate_worker_portfolio(workerid: int, nworkers: int, configs_pth: Path) -> pd.DataFrame:
     configs: pd.DataFrame = pd.read_pickle(configs_pth)
@@ -47,33 +53,95 @@ def _iterate_portfolio(portfolio: pd.DataFrame) -> Generator[Tuple[Tuple[int, in
         yield model_id, portfolio.loc[current_config, :]
 
 
-def basedir_from_fidelity(config: pd.Series):
-    basedir = Path("-".join(["-".join([f, str(config[f])]) for f in fidelity_parameters])) / "tasks"
-    return basedir
+def subdir_from_fidelity(config: pd.Series):
+    subdir = Path("-".join(["-".join([f, str(config[f])]) for f in fidelity_parameters])) / "tasks"
+    return subdir
 
 
-def clean_data(portfolio: pd.DataFrame, rootdir: Path):
+def clean_data(portfolio: pd.DataFrame, rootdir: Path, worker_chkpt_dir: Path, budget: int):
 
     _log.info(f"Performing clean up operation on data stored in root directory {rootdir}.")
 
+    ## Prepare checkpoint
+    chkpt_filename = worker_chkpt_dir / cleanup_chkpt_name
+    if chkpt_filename.exists():
+        done = pd.read_pickle(chkpt_filename)
+    else:
+        done = pd.Series(False, index=portfolio.index).reorder_levels(
+            [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value])
+        done.to_pickle(chkpt_filename)
+
+    ## Estimated time budget requirement
+    max_time = 0.
+    start = time.time()
     for (taskid, model_idx), config in _iterate_portfolio(portfolio):
-        basedir = basedir_from_fidelity(config)
-        _log.debug(f"Performing clean up for task {taskid}, model {model_idx} in directory tree at {basedir}.")
-        verification.clean_corrupt_files(rootdir / basedir, taskid=taskid, model_idx=model_idx, cleanup=True)
+        if budget < 1.2 * max_time:
+            break
 
-    _log.info("Finished clean up operation.")
+        if done[(taskid, model_idx)]:
+            continue
+
+        subdir = subdir_from_fidelity(config)
+        _log.debug(f"Performing clean up for task {taskid}, model {model_idx} in directory tree at {subdir}.")
+        verification.clean_corrupt_files(rootdir / subdir, taskid=taskid, model_idx=model_idx, cleanup=True)
+
+        ## Safely update checkpoint
+        done[(taskid, model_idx)] = True
+        shutil.copyfile(chkpt_filename, f"{chkpt_filename}.bak")
+        done.to_pickle(chkpt_filename)
+
+        ## Update duration estimate
+        end = time.time()
+        duration = end - start
+        max_time = max(max_time, end - start)
+        budget -= duration
+        start = end
+
+    _log.info(f"Finished clean up operation, max operation time: {max_time} seconds.")
 
 
-def prune_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path):
+def prune_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_chkpt_dir: Path, budget: int):
 
     _log.info(f"Performing data pruning operation on data stored in root directory {rootdir}.")
 
+    ## Prepare checkpoint
+    chkpt_filename = worker_chkpt_dir / prune_chkpt_name
+    if chkpt_filename.exists():
+        done = pd.read_pickle(chkpt_filename)
+    else:
+        done = pd.Series(False, index=portfolio.index).reorder_levels(
+            [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value])
+        done.to_pickle(chkpt_filename)
+
+    ## Estimated time budget requirement
+    max_time = 0.
+    start = time.time()
     for (taskid, model_idx), config in _iterate_portfolio(portfolio):
-        basedir = basedir_from_fidelity(config)
+        if budget < 1.2 * max_time:
+            break
+
+        if done[(taskid, model_idx)]:
+            continue
+
+        subdir = subdir_from_fidelity(config)
         _log.debug(f"Pruning out-of-sync data for task {taskid}, model {model_idx} in directory tree at "
-                   f"{rootdir / basedir}.")
-        verification.check_metric_data_integrity(backup_dir=backupdir / basedir, basedir=rootdir / basedir,
+                   f"{rootdir / subdir}.")
+        verification.check_metric_data_integrity(backup_dir=backupdir / subdir, basedir=rootdir / subdir,
                                                  taskid=taskid, model_idx=model_idx, cleanup=True)
+
+        ## Safely update checkpoint
+        done[(taskid, model_idx)] = True
+        shutil.copyfile(chkpt_filename, f"{chkpt_filename}.bak")
+        done.to_pickle(chkpt_filename)
+
+        ## Update duration estimate
+        end = time.time()
+        duration = end - start
+        max_time = max(max_time, end - start)
+        budget -= duration
+        start = end
+
+    _log.info(f"Finished pruning operation, max operation time: {max_time} seconds.")
 
 
 def verify_data_integrity(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, nepochs: int):
@@ -115,7 +183,7 @@ def argument_parser():
                         help="An offset from 0 for this worker within the current job's allocation of workers. This "
                              "does NOT correspond to a single 'taskid' but rather the portfolio of configurations that "
                              "this worker will evaluate.")
-    parser.add_argument("--workerid_offset", type=int, default=0,
+    parser.add_argument("--workerid-offset", type=int, default=0,
                         help="An additional fixed offset from 0 for this worker that, combined with the value of "
                              "'--worker', gives the overall worker ID in the context of a job that has been split into "
                              "multiple smaller parts.")
@@ -137,6 +205,9 @@ def argument_parser():
                              "be in sync, the first 4 checkpoints will each be loaded up, the model trained for "
                              "'nepochs' epochs, and the corresponding entries in the last 4 metrics logs will be "
                              "cross-checked.")
+    parser.add_argument("--budget", type=int,
+                        help="Time budget for each worker in seconds. This is used to approximate whether or not a "
+                             "worker has enough time to perform one more operation without any risk to any data.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
 
     return parser
@@ -162,15 +233,21 @@ if __name__ == "__main__":
         _log.setLevel(logging.DEBUG)
         verification._log.setLevel(logging.DEBUG)
 
+    if not args.rootdir.exists():
+        raise RuntimeError(f"The given root directory {args.rootdir} does not exist.")
+
     workerid = args.workerid_offset + args.workerid
     portfolio = generate_worker_portfolio(workerid=workerid, nworkers=args.nworkers, configs_pth=args.configs)
+    worker_chkpt_dir: Path = args.rootdir / worker_chkpt_subdir / str(workerid)
+    worker_chkpt_dir.mkdir(exist_ok=True, parents=True)
 
     _log.info(f"Beginning worker {workerid + 1}/{args.nworkers}.")
 
     if args.mode == modes_of_operation[0]:
-        clean_data(portfolio, rootdir=args.rootdir)
+        clean_data(portfolio, rootdir=args.rootdir, worker_chkpt_dir=worker_chkpt_dir, budget=args.budget)
     elif args.mode == modes_of_operation[1]:
-        prune_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir)
+        prune_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
+                   budget=args.budget)
     else:
         raise NotImplementedError(f"No existing implementation for mode {args.mode}.")
 
