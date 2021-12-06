@@ -58,7 +58,7 @@ def subdir_from_fidelity(config: pd.Series):
     return subdir
 
 
-def clean_data(portfolio: pd.DataFrame, rootdir: Path, worker_chkpt_dir: Path, budget: int):
+def clean_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_chkpt_dir: Path, budget: int):
 
     _log.info(f"Performing clean up operation on data stored in root directory {rootdir}.")
 
@@ -83,7 +83,8 @@ def clean_data(portfolio: pd.DataFrame, rootdir: Path, worker_chkpt_dir: Path, b
 
         subdir = subdir_from_fidelity(config)
         _log.debug(f"Performing clean up for task {taskid}, model {model_idx} in directory tree at {subdir}.")
-        verification.clean_corrupt_files(rootdir / subdir, taskid=taskid, model_idx=model_idx, cleanup=True)
+        verification.clean_corrupt_files(basedir=rootdir / subdir, taskid=taskid, model_idx=model_idx, cleanup=True,
+                                         backupdir=backupdir / subdir)
 
         ## Safely update checkpoint
         done[(taskid, model_idx)] = True
@@ -244,7 +245,8 @@ if __name__ == "__main__":
     _log.info(f"Beginning worker {workerid + 1}/{args.nworkers}.")
 
     if args.mode == modes_of_operation[0]:
-        clean_data(portfolio, rootdir=args.rootdir, worker_chkpt_dir=worker_chkpt_dir, budget=args.budget)
+        clean_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
+                   budget=args.budget)
     elif args.mode == modes_of_operation[1]:
         prune_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
                    budget=args.budget)

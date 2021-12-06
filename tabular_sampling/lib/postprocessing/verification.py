@@ -35,18 +35,20 @@ def _verify_chkpt(pth: Path, map_location: Optional[Any] = None):
         return True
 
 
-def _verify_model_chkpts(dtree: DirectoryTree, cleanup: Optional[bool] = False, map_location: Optional[Any] = None):
+def _verify_model_chkpts(dtree: DirectoryTree, cleanup: Optional[bool] = False, backuptree: DirectoryTree = None,
+                         map_location: Optional[Any] = None):
     """ Given a DirectoryTree which has been initialized with a particular taskid and model_idx, verifies the
     integrity of all checkpoints under this model. 'map_location' has been provided for compatibility with GPUs. """
 
     assert dtree.taskid is not None, "The directory tree has not been initialzed with a taskid."
     assert dtree.model_idx is not None, "The directory tree has not been initialzed with a model index."
+    assert cleanup and (backuptree is not None), "If cleanup has been enabled, a backup directory tree must be given."
 
     chkpt_pths = Checkpointer._get_sorted_chkpt_paths(dtree.model_checkpoints_dir)
     for pth in chkpt_pths:
         check = _verify_chkpt(pth)
         if not check and cleanup:
-            os.remove(pth)
+            shutil.move(pth, backuptree.model_checkpoints_dir / pth.name)
             (dtree.model_dir / MODIFIED_FLAG_FILENAME).touch()
 
 
@@ -67,18 +69,19 @@ def _verify_metrics_log(pth: Path):
         return True
 
 
-def _verify_model_metrics(dtree: DirectoryTree, cleanup: Optional[bool] = False):
+def _verify_model_metrics(dtree: DirectoryTree, cleanup: Optional[bool] = False, backuptree: DirectoryTree = None):
     """ Given a DirectoryTree which has been initialized with a particular taskid and model_idx, verifies the
     integrity of all metric DataFrames under this model. """
 
     assert dtree.taskid is not None, "The directory tree has not been initialzed with a taskid."
     assert dtree.model_idx is not None, "The directory tree has not been initialzed with a model index."
+    assert cleanup and (backuptree is not None), "If cleanup has been enabled, a backup directory tree must be given."
 
     metric_pths = MetricLogger._get_sorted_metric_paths(dtree.model_metrics_dir)
     for pth in metric_pths:
         check = _verify_metrics_log(pth)
         if not check and cleanup:
-            os.remove(pth)
+            shutil.move(pth, backuptree.model_checkpoints_dir / pth.name)
             (dtree.model_dir / MODIFIED_FLAG_FILENAME).touch()
 
 
@@ -126,7 +129,8 @@ def iterate_model_tree(basedir: Path, taskid: Optional[int] = None, model_idx: O
 
 
 def clean_corrupt_files(basedir: Path, taskid: Optional[int] = None, model_idx: Optional[int] = None,
-                        cleanup: Optional[bool] = False, map_location: Optional[Any] = None):
+                        cleanup: Optional[bool] = False, backupdir: Optional[Path] = None,
+                        map_location: Optional[Any] = None):
     """
     Attempts to read each checkpoint and metric dataframe file and deletes any that cannot be read. If only 'basedir'
     is given, all tasks and their models found at this base directory will be cleaned. If a taskid is also specified,
@@ -137,9 +141,15 @@ def clean_corrupt_files(basedir: Path, taskid: Optional[int] = None, model_idx: 
     False. 'map_location' has been provided for compatibility with GPUs.
     """
 
+    if cleanup:
+        assert backupdir is not None, "When cleanup is enabled, a backup directory must be given."
+
     for dtree in iterate_model_tree(basedir=basedir, taskid=taskid, model_idx=model_idx, enumerate=False):
-        _verify_model_chkpts(dtree, cleanup=cleanup, map_location=map_location)
-        _verify_model_metrics(dtree, cleanup=cleanup)
+        if cleanup:
+            backuptree = DirectoryTree(basedir=backupdir, taskid=dtree.taskid, model_idx=dtree.model_idx)
+
+        _verify_model_chkpts(dtree, cleanup=cleanup, backuptree=backuptree, map_location=map_location)
+        _verify_model_metrics(dtree, cleanup=cleanup, backuptree=backuptree)
 
 
 class MetricDataIntegrityChecker:
@@ -586,10 +596,10 @@ if __name__ == "__main__":
 
     # introduce_fault(3, 3)
 
-    clean_corrupt_files(test_pth, 0, 1, cleanup=True)
+    backupdir = test_pth / "backup_dir"
+    clean_corrupt_files(test_pth, 0, 1, cleanup=True, backupdir=backupdir)
     if corrupt:
         introduce_fault(1, 2)
-    backupdir = test_pth / "backup_dir"
     check_metric_data_integrity(backup_dir=backupdir, **tree_kwargs)
 
 
