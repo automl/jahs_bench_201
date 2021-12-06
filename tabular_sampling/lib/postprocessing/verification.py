@@ -123,9 +123,12 @@ def iterate_model_tree(basedir: Path, taskid: Optional[int] = None, model_idx: O
 
         for m in model_dirs:
             dtree.model_idx = int(m.stem)
-            new_tree = DirectoryTree(basedir=dtree.basedir, taskid=dtree.taskid, model_idx=dtree.model_idx,
-                                     read_only=dtree.read_only)
-            yield (t, m, new_tree) if enumerate else new_tree
+            # new_tree = DirectoryTree(basedir=dtree.basedir, taskid=dtree.taskid, model_idx=dtree.model_idx,
+            #                          read_only=dtree.read_only)
+            yield (t, m, dtree) if enumerate else dtree
+            dtree.model_idx = None
+
+        dtree.taskid = None
 
 
 def clean_corrupt_files(basedir: Path, taskid: Optional[int] = None, model_idx: Optional[int] = None,
@@ -143,10 +146,13 @@ def clean_corrupt_files(basedir: Path, taskid: Optional[int] = None, model_idx: 
 
     if cleanup:
         assert backupdir is not None, "When cleanup is enabled, a backup directory must be given."
+        backupdir.mkdir(exist_ok=True, parents=True)
+        backuptree = DirectoryTree(basedir=backupdir)
 
     for dtree in iterate_model_tree(basedir=basedir, taskid=taskid, model_idx=model_idx, enumerate=False):
         if cleanup:
-            backuptree = DirectoryTree(basedir=backupdir, taskid=dtree.taskid, model_idx=dtree.model_idx)
+            backuptree.taskid = dtree.taskid
+            backuptree.model_idx = dtree.model_idx
 
         _verify_model_chkpts(dtree, cleanup=cleanup, backuptree=backuptree, map_location=map_location)
         _verify_model_metrics(dtree, cleanup=cleanup, backuptree=backuptree)

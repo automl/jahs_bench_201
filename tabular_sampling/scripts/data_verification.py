@@ -14,6 +14,7 @@ from tabular_sampling.lib.postprocessing import verification
 
 _log = logging.getLogger(__name__)
 fidelity_parameters = ["N", "W", "Resolution"]
+fidelity_to_str = {"N": lambda x: str(int(x)), "W": lambda x: str(int(x)), "Resolution": lambda x: str(x)}
 worker_chkpt_subdir = "worker_chkpts"
 cleanup_chkpt_name = "cleanup_progress.pkl.gz"
 prune_chkpt_name = "prune_progress.pkl.gz"
@@ -54,7 +55,7 @@ def _iterate_portfolio(portfolio: pd.DataFrame) -> Generator[Tuple[Tuple[int, in
 
 
 def subdir_from_fidelity(config: pd.Series):
-    subdir = Path("-".join(["-".join([f, str(config[f])]) for f in fidelity_parameters])) / "tasks"
+    subdir = Path("-".join(["-".join([f, fidelity_to_str[f](config[f])]) for f in fidelity_parameters])) / "tasks"
     return subdir
 
 
