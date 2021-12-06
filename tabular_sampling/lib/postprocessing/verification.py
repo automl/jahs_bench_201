@@ -24,7 +24,7 @@ def _verify_chkpt(pth: Path, map_location: Optional[Any] = None):
 
     try:
         _ = torch.load(pth, map_location=map_location)
-    except RuntimeError as e:
+    except (RuntimeError, EOFError) as e:
         _log.debug(f"Found corrupt checkpoint: {pth}\nError type: {type(e)}\nError description: {str(e)}")
         return False
     except Exception as e:
@@ -58,7 +58,7 @@ def _verify_metrics_log(pth: Path):
 
     try:
         _ = pd.read_pickle(pth)
-    except pickle.PickleError as e:
+    except (pickle.PickleError, EOFError) as e:
         _log.debug(f"Found corrupt metrics log: {pth}\nError type: {type(e)}\nError description: {str(e)}")
         return False
     except Exception as e:
@@ -345,6 +345,10 @@ class MetricDataIntegrityChecker:
                 else:
                     inconsistent_pairs.append(timestamp)
 
+        if len(all_timestamps) == 0:
+            _log.debug(f"No timestamps to verify in {self.dtree.model_dir}.")
+            return
+
         _log.debug(f"Discovered {len(all_timestamps)} timestamps to verify in {self.dtree.model_dir}.")
         if inconsistent_pairs:
             first_inconsistent_timestamp = min(inconsistent_pairs)
@@ -371,6 +375,7 @@ class MetricDataIntegrityChecker:
         modified = False
 
         _log.debug(f"Attempting to infer {len(to_be_inferred)} metric logs.")
+        inferred = 0
         for t in to_be_inferred:
             closest = [pairt for pairt in existing_pairs if t < pairt]
             if closest:
@@ -384,17 +389,24 @@ class MetricDataIntegrityChecker:
             new_log = closest_metrics_log.iloc[:required_epochs]
             new_log.to_pickle(self.dtree.model_metrics_dir / f"{t}.pkl.gz")
             modified = True
+            inferred += 1
+
+        _log.info(f"Inferred {inferred} metrics logs from model {self.dtree.model_dir}.")
 
         backup_tree = DirectoryTree(basedir=backup_dir, taskid=self.dtree.taskid, model_idx=self.dtree.model_idx,
                                     read_only=True)
         _log.debug(f"Moving {len(to_be_deleted)} checkpoints/metrics logs to the backup directory "
                    f"{backup_tree.model_dir}.")
+        deleted = 0
         for t in to_be_deleted:
             if t in chkpt_pths:
                 shutil.move(src=chkpt_pths[t], dst=backup_tree.model_checkpoints_dir / chkpt_pths[t].name)
             if t in metrics_log_pths:
                 shutil.move(src=metrics_log_pths[t], dst=backup_tree.model_metrics_dir / metrics_log_pths[t].name)
             modified = True
+            deleted += 0
+
+        _log.info(f"Deleted {deleted} invalid metrics logs/checkpoints from model {self.dtree.model_dir}.")
 
         if modified:
             (self.dtree.model_dir / MODIFIED_FLAG_FILENAME).touch()

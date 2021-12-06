@@ -70,13 +70,22 @@ def prepare_for_verification(rootdir: Path, backupdir: Path):
     for basedir in available_dirs:
         backup_subdir = backupdir / basedir.parent.name / "tasks"
         backup_subdir.mkdir(exist_ok=True, parents=True)
-        backuptree = utils.DirectoryTree(basedir=backup_subdir)
+        try:
+            backuptree = utils.DirectoryTree(basedir=backup_subdir)
+        except FileExistsError:
+            continue
         _log.debug(f"Preparing directory tree in {backuptree.basedir}.")
         for dtree in verification.iterate_model_tree(basedir=basedir, enumerate=False):
-            backuptree.taskid = dtree.taskid
-            backuptree.model_idx = dtree.model_idx
+            try:
+                backuptree.taskid = dtree.taskid
+            except FileExistsError:
+                pass
+            try:
+                backuptree.model_idx = dtree.model_idx
+            except FileExistsError:
+                pass
 
-    _log.info("Finished creating back directory structure.")
+    _log.info("Finished creating backup directory structure.")
 
 
 
@@ -85,9 +94,15 @@ def clean_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_c
 
     ## Prepare checkpoint
     chkpt_filename = worker_chkpt_dir / cleanup_chkpt_name
+    done = None
     if chkpt_filename.exists():
-        done = pd.read_pickle(chkpt_filename)
-    else:
+        try:
+            done = pd.read_pickle(chkpt_filename)
+        except Exception as e:
+            _log.info(f"Ran into an error while trying to read {chkpt_filename}: {str(e)}")
+            done = None
+
+    if done is None:
         done = pd.Series(False, index=portfolio.index).reorder_levels(
             [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value])
         done.to_pickle(chkpt_filename)
@@ -99,7 +114,7 @@ def clean_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_c
         if budget < 1.2 * max_time:
             break
 
-        if done[(taskid, model_idx)]:
+        if (taskid, model_idx) in done.index and done[(taskid, model_idx)]:
             continue
 
         subdir = subdir_from_fidelity(config)
@@ -127,9 +142,15 @@ def prune_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_c
 
     ## Prepare checkpoint
     chkpt_filename = worker_chkpt_dir / prune_chkpt_name
+    done = None
     if chkpt_filename.exists():
-        done = pd.read_pickle(chkpt_filename)
-    else:
+        try:
+            done = pd.read_pickle(chkpt_filename)
+        except Exception as e:
+            _log.info(f"Ran into an error while trying to read {chkpt_filename}: {str(e)}")
+            done = None
+
+    if done is None:
         done = pd.Series(False, index=portfolio.index).reorder_levels(
             [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value])
         done.to_pickle(chkpt_filename)
@@ -141,7 +162,7 @@ def prune_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_c
         if budget < 1.2 * max_time:
             break
 
-        if done[(taskid, model_idx)]:
+        if (taskid, model_idx) in done.index and done[(taskid, model_idx)]:
             continue
 
         subdir = subdir_from_fidelity(config)
