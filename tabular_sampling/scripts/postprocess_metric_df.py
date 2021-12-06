@@ -73,23 +73,23 @@ if __name__ == "__main__":
     nepochs_all = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=-1)
 
     acc_all_epochs = metric_ops.get_accuracies(basedir=None, df=df, include_validation=True)
-    acc_all_epochs = acc_all_epochs.join([configs])
+    # acc_all_epochs = acc_all_epochs.join([configs])
     acc_200epochs = acc_all_epochs.loc[nepochs_200.index]
 
     loss_all_epochs = metric_ops.get_losses(basedir=None, df=df, include_validation=True)
-    loss_all_epochs = loss_all_epochs.join([configs])
+    # loss_all_epochs = loss_all_epochs.join([configs])
     loss_200epochs = loss_all_epochs.loc[nepochs_200.index]
 
     nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
     runtimes = metric_ops.get_runtimes(basedir=None, df=df, reduce_epochs=True, extra_durations=None)
-    # TODO: Separate out configs entirely to avoid repeated checks for which dataframes do and do not have configs cols
-    runtimes = runtimes.join([configs])
+    # runtimes = runtimes.join([configs])
     remaining_runtimes = metric_ops.estimate_remaining_runtime(basedir=None, df=df, max_epochs=200)
-    remaining_runtimes = remaining_runtimes.join([configs])
+    # remaining_runtimes = remaining_runtimes.join([configs])
 
     outdir = basedir / "postproc" if args.outdir is None else args.outdir.resolve()
     outdir.mkdir(exist_ok=True, parents=False)
 
+    configs.to_pickle(outdir / "configs.pkl.gz")
     nsamples.to_pickle(outdir / "nsamples.pkl.gz")
     runtimes.to_pickle(outdir / "runtimes.pkl.gz")
     nepochs_all.to_pickle(outdir / "nepochs.pkl.gz")
