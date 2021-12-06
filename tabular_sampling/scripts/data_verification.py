@@ -1,15 +1,15 @@
 import argparse
-import shutil
-from enum import Enum
 import logging
-from pathlib import Path
-import pandas as pd
+import shutil
 import sys
 import time
-from typing import Optional, Union, Generator, Tuple
+from pathlib import Path
+from typing import Generator, Tuple
 
-from tabular_sampling.lib.core import utils
+import pandas as pd
+
 from tabular_sampling.lib.core import constants
+from tabular_sampling.lib.core import utils
 from tabular_sampling.lib.postprocessing import verification
 
 _log = logging.getLogger(__name__)
@@ -19,6 +19,9 @@ worker_chkpt_subdir = "worker_chkpts"
 cleanup_chkpt_name = "cleanup_progress.pkl.gz"
 prune_chkpt_name = "prune_progress.pkl.gz"
 verify_chkpt_name = "verify_progress.pkl.gz"
+
+modes_of_operation = ["prepare", "cleanup", "prune", "verify"]
+
 
 def generate_worker_portfolio(workerid: int, nworkers: int, configs_pth: Path) -> pd.DataFrame:
     configs: pd.DataFrame = pd.read_pickle(configs_pth)
@@ -59,8 +62,25 @@ def subdir_from_fidelity(config: pd.Series):
     return subdir
 
 
-def clean_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_chkpt_dir: Path, budget: int):
+def prepare_for_verification(rootdir: Path, backupdir: Path):
 
+    _log.info("Preparing backup directory structure.")
+
+    available_dirs = [d / "tasks" for d in rootdir.iterdir() if (d / "tasks").exists()]
+    for basedir in available_dirs:
+        backup_subdir = backupdir / basedir.parent.name / "tasks"
+        backup_subdir.mkdir(exist_ok=True, parents=True)
+        backuptree = utils.DirectoryTree(basedir=backup_subdir)
+        _log.debug(f"Preparing directory tree in {backuptree.basedir}.")
+        for dtree in verification.iterate_model_tree(basedir=basedir, enumerate=False):
+            backuptree.taskid = dtree.taskid
+            backuptree.model_idx = dtree.model_idx
+
+    _log.info("Finished creating back directory structure.")
+
+
+
+def clean_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_chkpt_dir: Path, budget: int):
     _log.info(f"Performing clean up operation on data stored in root directory {rootdir}.")
 
     ## Prepare checkpoint
@@ -103,7 +123,6 @@ def clean_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_c
 
 
 def prune_data(portfolio: pd.DataFrame, rootdir: Path, backupdir: Path, worker_chkpt_dir: Path, budget: int):
-
     _log.info(f"Performing data pruning operation on data stored in root directory {rootdir}.")
 
     ## Prepare checkpoint
@@ -150,27 +169,25 @@ def verify_data_integrity(portfolio: pd.DataFrame, rootdir: Path, backupdir: Pat
     pass
 
 
-modes_of_operation = ["cleanup", "prune", "verify"]
-
-
 def argument_parser():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("mode", choices=modes_of_operation,
-                        help="Mode of operation for this script. There are three main modes of operation: 'cleanup', "
-                             "'prune' and 'verify'. In most use-cases, this script should be run in each of these "
-                             "modes exactly in the order of their appearance above. 'cleanup' performs a very simple "
-                             "and quick check to remove all checkpoints and metrics logs that are unreadable. 'prune' "
-                             "is more involved that 'cleanup' and checks the checkpoints and metrics logs for "
-                             "consistency. Any such pairs of files that are found to not be in sync with each other, "
-                             "as well as subsequent pairs that would be affected, are removed. If either of these two "
-                             "operations results in changes to the stored data, the respective model's directory is "
-                             "marked as needing verification. In such a case, the 'verify' mode of this script comes "
-                             "into play. It loads each checkpoint as well as the next metrics log in chronologically "
-                             "ascending order, performs 'nepochs' evaluations from that checkpoint onwards, and "
-                             "compares the generated data against the logged metrics data to verify whether or not "
-                             "this checkpoint and metric log are valid. If an inconsistency is found, all data files "
-                             "starting from the faulty checkpoint are removed.")
+                        help="Mode of operation for this script. There are four modes of operation: 'prepare', "
+                             "'cleanup', 'prune' and 'verify'. In most use-cases, this script should be run in each of "
+                             "these modes exactly in the order of their appearance above. 'prepare' runs a series of "
+                             "preparatory procedures, such as creating the backup directory tree. 'cleanup' performs a "
+                             "very simple and quick check to remove all checkpoints and metrics logs that are "
+                             "unreadable. 'prune' is more involved that 'cleanup' and checks the checkpoints and "
+                             "metrics logs for consistency. Any such pairs of files that are found to not be in sync "
+                             "with each other, as well as subsequent pairs that would be affected, are removed. If "
+                             "either of these two operations results in changes to the stored data, the respective "
+                             "model's directory is marked as needing verification. In such a case, the 'verify' mode "
+                             "of this script comes into play. It loads each checkpoint as well as the next metrics "
+                             "log in chronologically ascending order, performs 'nepochs' evaluations from that "
+                             "checkpoint onwards, and compares the generated data against the logged metrics data to "
+                             "verify whether or not this checkpoint and metric log are valid. If an inconsistency is "
+                             "found, all data files starting from the faulty checkpoint are removed.")
     parser.add_argument("--rootdir", type=Path, default=Path().cwd(),
                         help="Path to the root directory where all the tasks' output was stored. Task-specific "
                              "sub-directories will be created here if needed. Note that this is NOT the same as the "
@@ -246,9 +263,11 @@ if __name__ == "__main__":
     _log.info(f"Beginning worker {workerid + 1}/{args.nworkers}.")
 
     if args.mode == modes_of_operation[0]:
+        prepare_for_verification(rootdir=args.rootdir, backupdir=args.backupdir)
+    elif args.mode == modes_of_operation[1]:
         clean_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
                    budget=args.budget)
-    elif args.mode == modes_of_operation[1]:
+    elif args.mode == modes_of_operation[2]:
         prune_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
                    budget=args.budget)
     else:

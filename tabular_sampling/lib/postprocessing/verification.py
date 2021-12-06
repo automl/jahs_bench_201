@@ -147,7 +147,7 @@ def clean_corrupt_files(basedir: Path, taskid: Optional[int] = None, model_idx: 
     if cleanup:
         assert backupdir is not None, "When cleanup is enabled, a backup directory must be given."
         backupdir.mkdir(exist_ok=True, parents=True)
-        backuptree = DirectoryTree(basedir=backupdir)
+        backuptree = DirectoryTree(basedir=backupdir, read_only=True)
 
     for dtree in iterate_model_tree(basedir=basedir, taskid=taskid, model_idx=model_idx, enumerate=False):
         if cleanup:
@@ -386,7 +386,7 @@ class MetricDataIntegrityChecker:
             modified = True
 
         backup_tree = DirectoryTree(basedir=backup_dir, taskid=self.dtree.taskid, model_idx=self.dtree.model_idx,
-                                    read_only=False)
+                                    read_only=True)
         _log.debug(f"Moving {len(to_be_deleted)} checkpoints/metrics logs to the backup directory "
                    f"{backup_tree.model_dir}.")
         for t in to_be_deleted:
