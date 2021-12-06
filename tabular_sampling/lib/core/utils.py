@@ -317,7 +317,7 @@ class Checkpointer(object):
         return float(f.name.rstrip(".pt"))
 
     @classmethod
-    def _get_sorted_chkpt_paths(cls, pth: Path, ascending: bool = True) -> Path:
+    def _get_sorted_chkpt_paths(cls, pth: Path, ascending: bool = True) -> List[Path]:
         latest = sorted(
             pth.rglob("*.pt"),
             key=lambda f: cls._extract_runtime_from_filename(f),

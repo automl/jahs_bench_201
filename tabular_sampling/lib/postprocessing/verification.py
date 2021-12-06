@@ -16,6 +16,7 @@ from tabular_sampling.lib.core.utils import DirectoryTree, Checkpointer, MetricL
 
 _log = logging.getLogger(__name__)
 
+MODIFIED_FLAG_FILENAME = "verification_needed"
 
 def _verify_chkpt(pth: Path, map_location: Optional[Any] = None):
     """ Attempt to load a single checkpoint file specified by the given path. Returns True if the file can be read
@@ -46,6 +47,7 @@ def _verify_model_chkpts(dtree: DirectoryTree, cleanup: Optional[bool] = False, 
         check = _verify_chkpt(pth)
         if not check and cleanup:
             os.remove(pth)
+            (dtree.model_dir / MODIFIED_FLAG_FILENAME).touch()
 
 
 def _verify_metrics_log(pth: Path):
@@ -77,6 +79,7 @@ def _verify_model_metrics(dtree: DirectoryTree, cleanup: Optional[bool] = False)
         check = _verify_metrics_log(pth)
         if not check and cleanup:
             os.remove(pth)
+            (dtree.model_dir / MODIFIED_FLAG_FILENAME).touch()
 
 
 def iterate_model_tree(basedir: Path, taskid: Optional[int] = None, model_idx: Optional[int] = None,
@@ -349,6 +352,8 @@ class MetricDataIntegrityChecker:
         chkpt_pths = self.chkpt_pths
         metrics_log_pths = self.metrics_log_pths
 
+        modified = False
+
         _log.debug(f"Attempting to infer {len(to_be_inferred)} metric logs.")
         for t in to_be_inferred:
             closest = [pairt for pairt in existing_pairs if t < pairt]
@@ -362,15 +367,21 @@ class MetricDataIntegrityChecker:
             closest_metrics_log = self._load_metric_log(metrics_log_pths[closest])
             new_log = closest_metrics_log.iloc[:required_epochs]
             new_log.to_pickle(self.dtree.model_metrics_dir / f"{t}.pkl.gz")
+            modified = True
 
         backup_tree = DirectoryTree(basedir=backup_dir, taskid=self.dtree.taskid, model_idx=self.dtree.model_idx,
                                     read_only=False)
-        _log.debug(f"Moving {len(to_be_deleted)} checkpoints/metrics logs to the backup directory.")
+        _log.debug(f"Moving {len(to_be_deleted)} checkpoints/metrics logs to the backup directory "
+                   f"{backup_tree.model_dir}.")
         for t in to_be_deleted:
             if t in chkpt_pths:
                 shutil.move(src=chkpt_pths[t], dst=backup_tree.model_checkpoints_dir / chkpt_pths[t].name)
             if t in metrics_log_pths:
                 shutil.move(src=metrics_log_pths[t], dst=backup_tree.model_metrics_dir / metrics_log_pths[t].name)
+            modified = True
+
+        if modified:
+            (self.dtree.model_dir / MODIFIED_FLAG_FILENAME).touch()
 
 
         # TODO: Add stage 2 verification
@@ -516,6 +527,7 @@ def check_metric_data_integrity(backup_dir: Path, basedir: Path, taskid: Optiona
     were correlated are marked as corrupt.
     """
 
+    backup_dir.mkdir(exist_ok=True, parents=True)
     MetricDataIntegrityChecker._map_location = map_location
     for t, m, dtree in iterate_model_tree(basedir=basedir, taskid=taskid, model_idx=model_idx, enumerate=True):
         checker = MetricDataIntegrityChecker(dtree, enable_cleanup=cleanup)
@@ -534,6 +546,7 @@ if __name__ == "__main__":
 
     test_pth = Path("/home/archit/thesis/experiments/test")
     tree_kwargs = {"basedir": test_pth, "taskid": 2, "model_idx": 2}
+    # tree_kwargs = {"basedir": test_pth / "N-1-W-4-Resolution-0.25/tasks", "taskid": 0, "model_idx": 1}
 
     dtree = DirectoryTree(**tree_kwargs)
     # corrupt = True
@@ -544,8 +557,8 @@ if __name__ == "__main__":
 
     def introduce_fault(i: int, n: int):
         """ Introduce intentional and controlled data faults in the metric logs. Introduces a new metric log in between
-        indices i and i+1, copying over the last 'n' epochs of data from the log at index i into this log. Then, re-writes
-        all subsequent logs to mimic this data fault. """
+        indices i and i+1, copying over the last 'n' epochs of data from the log at index i into this log. Then,
+        re-writes all subsequent logs to mimic this data fault. """
 
         base_log = MetricLogger._load_metrics_log(original_metric_logs[i])
         new_timestamp = sum([MetricLogger._extract_runtime_from_filename(original_metric_logs[i]),
@@ -570,6 +583,8 @@ if __name__ == "__main__":
             corrupted = corrupt_log(original)
             assert corrupted.index.size - original.index.size == n, "Corruption did not work properly."
             corrupted.to_pickle(mlog)
+
+    # introduce_fault(3, 3)
 
     clean_corrupt_files(test_pth, 0, 1, cleanup=True)
     if corrupt:
