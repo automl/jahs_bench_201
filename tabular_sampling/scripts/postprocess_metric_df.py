@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 import sys
 
+from tabular_sampling.lib.core.constants import fidelity_params
 from tabular_sampling.lib.postprocessing import metric_df_ops as metric_ops, _log as pproc_log
 
 _log = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ if __name__ == "__main__":
 
     df = metric_ops.load_metric_df(basedir=basedir)
 
-    fidelity_confs = [("model_config", f) for f in metric_ops.fidelity_params]
+    fidelity_confs = [("model_config", f) for f in fidelity_params]
     configs = metric_ops.get_configs(basedir=None, df=df)
 
     nepochs_200 = metric_ops.get_nepochs(basedir=None, df=df, filter_epochs=200)
@@ -80,7 +81,7 @@ if __name__ == "__main__":
     # loss_all_epochs = loss_all_epochs.join([configs])
     loss_200epochs = loss_all_epochs.loc[nepochs_200.index]
 
-    nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=metric_ops.fidelity_params)
+    nsamples = metric_ops.get_nsamples(basedir=None, df=df, groupby=fidelity_confs, index=fidelity_params)
     runtimes = metric_ops.get_runtimes(basedir=None, df=df, reduce_epochs=True, extra_durations=None)
     # runtimes = runtimes.join([configs])
     remaining_runtimes = metric_ops.estimate_remaining_runtime(basedir=None, df=df, max_epochs=200)

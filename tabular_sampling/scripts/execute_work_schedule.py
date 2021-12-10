@@ -151,6 +151,7 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
     logger = naslib_logging.setup_logger(str(dir_tree.model_dir / f"resume.log"))
 
     task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
+    # TODO: Update to use SynchroTimer
     _ = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
                            set_type=utils.MetricLogger.MetricSet.task, logger=logger)  # Used to load metrics from disk
     global_seed, model_config = load_model_config(task_metrics, model_idx)

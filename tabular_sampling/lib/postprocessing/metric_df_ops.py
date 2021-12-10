@@ -27,7 +27,6 @@ from tabular_sampling.search_space.constants import OP_NAMES, EDGE_LIST
 _log = logging.getLogger(__name__)
 
 model_ids_by = [MetricDFIndexLevels.taskid.value, MetricDFIndexLevels.modelid.value]
-fidelity_params = ("N", "W", "Resolution")
 
 
 # fidelity_params=("N", "W")

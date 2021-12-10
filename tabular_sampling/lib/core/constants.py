@@ -66,4 +66,6 @@ standard_model_dataset_metrics = ["duration", "data_load_duration", "forward_dur
 extra_model_training_metrics = ["backprop_duration"]
 standard_model_diagnostic_metrics = ["FLOPS", "latency", "runtime", "cpu_percent", "memory_ram", "memory_swap"]
 
+fidelity_types = {"N": int, "W": int, "Resolution": float}
+fidelity_params = tuple(fidelity_types.keys())
 # TODO: Move more constants here so as to save the effort of re-typing and re-checking, say, string values, repeatedly.
