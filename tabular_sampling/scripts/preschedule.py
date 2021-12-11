@@ -18,7 +18,9 @@ from tabular_sampling.clusterlib import prescheduler as sched_utils
 from tabular_sampling.lib.postprocessing.metric_df_ops import get_configs
 
 _log = logging.getLogger(__name__)
-
+prescheduler_estimates_dirname = "prescheduler"
+basedirs_filename = "basedirs.pkl.gz"
+profile_filename = "sampling_profile.pkl.gz"
 
 def _handle_debug(args):
     if args.debug:
@@ -30,11 +32,34 @@ def _handle_debug(args):
 
 
 def estimate_requirements(args):
-    pass
+    # TODO: Complete and standardize this procedure. For now, use manually generated estimates.
+    raise NotImplementedError("This functionality will be properly built and re-structured at a later date.")
 
 
 def init_directory_tree(args):
-    pass
+    _handle_debug(args)
+    _log.debug("Starting sub-program: initialize directory tree.")
+    estimates_dir: Path = args.rootdir / prescheduler_estimates_dirname
+
+    if not estimates_dir.exists():
+        _log.error(f"The prescheduler estimates directory {estimates_dir} was not found.")
+        sys.exit(-1)
+
+    profile_file = estimates_dir / profile_filename
+    try:
+        profile: pd.DataFrame = pd.read_pickle(profile_file)
+        basedirs: pd.Series = profile.job_config["basedir"]
+    except Exception as e:
+        raise RuntimeError(f"Failed to read the directory structure from {profile_file}.") from e
+
+    if basedirs is None:
+        _log.error(f"No data found in {basedirs_file}.")
+        sys.exit(-1)
+
+    sched_utils.prepare_directory_structure(basedirs=basedirs, rootdir=args.rootdir)
+    _log.debug("Finished sub-program: initialize directory tree.")
+
+
 
 
 def generate_jobs(args):
@@ -72,12 +97,13 @@ def generate_jobs(args):
     for _ in workers[::job_config.workers_per_job]:
         jobid = next(ctr)
         job_name = f"resume_{jobid}"
-        jobdir = str(args.slurm_dir)
+        # TODO: Change 'job_dir' to 'rootdir' in all relevant locations
+        rootdir = str(args.rootdir)
         job_str = job_template.substitute(
-            jobdir=jobdir, scriptdir=args.script_dir, job_name=job_name, **job_config.template_kwargs
+            jobdir=rootdir, scriptdir=args.script_dir, job_name=job_name, **job_config.template_kwargs
         )
         srun_str = config_template.substitute(
-            rootdir=jobdir, workerid_offset=workerid_offset, portfolio_dir=str(args.portfolio_dir),
+            rootdir=rootdir, workerid_offset=workerid_offset, portfolio_dir=str(args.portfolio_dir),
             epochs=str(args.epochs)
         )
 
@@ -95,14 +121,17 @@ def argument_parser():
     parser = argparse.ArgumentParser()
 
     subparsers = parser.add_subparsers(
-        title="Sub-commands", description="Pre-scheduling consists of three broad steps - 1. estimate: the resource "
-                                          "requirements, 2. initialize: the directory tree, 3. generate: new bundled "
-                                          "jobs. Steps 1 and 3 may be repeated as more data becomes available.")
+        title="Sub-commands", description="Pre-scheduling consists of three broad steps: 1. estimate- estimate the "
+                                          "resource requirements and sampling procedure, 2. initialize: initialize the "
+                                          "directory tree for the estimated sampling procedure, 3. generate: new "
+                                          "bundled jobs to handle the actual evaluation. Steps 1 and 3 may be repeated "
+                                          "as more data becomes available.")
 
     subparser_est = subparsers.add_parser("estimate", aliases=["est"],
                                           help="Use the available metric data and desired computation parameters to "
                                                "estimate how many resources will be required for the desired "
-                                               "evaluations.")
+                                               "evaluations as well as how the sampling procedure should be "
+                                               "distributed to optimize resource utilization.")
     subparser_est.set_defaults(func=estimate_requirements)
 
     subparser_init = subparsers.add_parser("initialize", aliases=["init"],
@@ -156,9 +185,9 @@ def argument_parser():
                              "portfolio of configurations to evaluate.")
     subparser_gen.add_argument("--script_dir", type=Path, help="This is the directory where the generated job scripts will be "
                                                         "stored.")
-    subparser_gen.add_argument("--slurm_dir", type=Path,
+    subparser_gen.add_argument("--rootdir", type=Path,
                         help="This is the directory where the outputs of the jobs will be stored i.e. WORK. The base "
-                             "directory for each DirectoryTree will be '<slurm_dir>/<fidelity_dir>/tasks', where "
+                             "directory for each DirectoryTree will be '<rootdir>/<fidelity_dir>/tasks', where "
                              "'fidelity_dir' is generated by joining the names and values of the relevant fidelity "
                              "parameters in a string separated by '-', e.g. 'N-1-W-8-Resolution-1.0'.")
 
@@ -179,7 +208,3 @@ if __name__ == "__main__":
 
     ## Parse CLI
     args = argument_parser().parse_args()
-
-    _handle_debug(args)
-
-

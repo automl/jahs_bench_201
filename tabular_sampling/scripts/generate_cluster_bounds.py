@@ -49,9 +49,9 @@ def final_calculations(runtimes_per_epoch):
     
     runtime_per_evaluation_per_bucket = runtimes_per_epoch * epochs_per_eval
     cpuh_required_per_bucket = runtime_per_evaluation_per_bucket * required_evals_per_bucket
-    cpuh_per_worker_per_bucket = cpuh_required_per_bucket / workers_per_bucket
+    runtime_per_worker_per_bucket = cpuh_required_per_bucket / workers_per_bucket
     
-    return cpus_per_worker_per_node_per_bucket, cpuh_per_worker_per_bucket, evals_per_worker, nodes_per_bucket
+    return cpus_per_worker_per_node_per_bucket, runtime_per_worker_per_bucket, evals_per_worker, nodes_per_bucket
 
 
 def create_slurm_limits_dataframe(job_config: JobConfig, cpus_per_worker_per_node_per_bucket: pd.Series,
@@ -133,12 +133,17 @@ if __name__ == "__main__":
     map_W = {1: 4, 2: 8, 3: 16}
     map_Res = {8: 0.25, 16: 0.5, 32: 1.0}
     runtimes_per_epoch.index = runtimes_per_epoch.index.map(lambda x: (x[0], map_W[x[1]], map_Res[x[2]]))
-    
-    cpus_per_worker_per_node_per_bucket, cpuh_per_worker_per_bucket, evals_per_worker, nodes_per_bucket = \
+
+    cpus_per_worker_per_node_per_bucket, runtime_per_worker_per_bucket, evals_per_worker, nodes_per_bucket = \
         final_calculations(runtimes_per_epoch)
 
+    # These are all over the place. This entire script should be phased out in favor of a better profiler that
+    # distributes the entire workload across multiple jobs of a given, fixed resource size instead of trying to infer
+    # optimal resource allocations from the estimates. The difference in name between the variables and their pickle
+    # filenames has been intentionally left in in order to indicate differences in behaviour and interpretation going
+    # forward.
     cpus_per_worker_per_node_per_bucket.to_pickle(outdir / "cpus_per_worker_per_node_per_bucket.pkl.gz")
-    cpuh_per_worker_per_bucket.to_pickle(outdir / "cpuh_per_worker_per_bucket.pkl.gz")
+    runtime_per_worker_per_bucket.to_pickle(outdir / "cpuh_per_worker_per_bucket.pkl.gz")
     evals_per_worker.to_pickle(outdir / "evals_per_worker.pkl.gz")
     nodes_per_bucket.to_pickle(outdir / "nodes_per_bucket.pkl.gz")
     pass
