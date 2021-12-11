@@ -141,7 +141,7 @@ def instantiate_model(model_config: dict, dataset: Datasets) -> NASB201HPOSearch
 
     return search_space
 
-
+# TODO: Update/check for consistency with updated pre-scheduler
 def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug: bool = False, **overrides):
     """ Resume working on a particular configuration wherever it was left off by loading all relevant parameters from
     the saved checkpoints. Some training parameters may be overridden by providing the relevant overrides as keyword

@@ -12,6 +12,7 @@ import pandas as pd
 from pathlib import Path
 from string import Template
 import sys
+from typing import Union
 
 import tabular_sampling.lib.postprocessing.metric_df_ops
 from tabular_sampling.clusterlib import prescheduler as sched_utils
@@ -20,9 +21,6 @@ from tabular_sampling.distributed_nas_sampling import run_task, get_tranining_co
 from tabular_sampling.lib.core import constants
 
 _log = logging.getLogger(__name__)
-prescheduler_estimates_dirname = "prescheduling_data"
-basedirs_filename = "basedirs.pkl.gz"
-profile_filename = "sampling_profile.pkl.gz"
 
 def _handle_debug(args):
     if args.debug:
@@ -33,6 +31,31 @@ def _handle_debug(args):
         sched_utils._log.setLevel(logging.INFO)
 
 
+def _args_from_training_config(training_config: dict) -> str:
+    args = []
+    actions = {
+        "store_true": True,
+        "store_false": False
+    }
+    for k, v in constants.training_config.items():
+        if k in training_config:
+            if "action" in v and "store" in v["action"]:
+                # This is a flag
+                if actions[v["action"]] == training_config[k]:
+                    args.append(f"--{k}")
+                else:
+                    continue
+            else:
+                # This is a key-value pair
+                args.append(f"--{k}={training_config[k]}")
+        else:
+            # No value given. If this is optional, leave it empty.
+            if "action" not in v and "default" not in v:
+                # This is not a flag but it also does not have a default value
+                raise RuntimeError(f"Cannot parse the given training config parameters into a valid CLI arguments "
+                                   f"string, missing value for required parameter {k}")
+
+
 def estimate_requirements(args):
     # TODO: Complete and standardize this procedure. For now, use manually generated estimates.
     raise NotImplementedError("This functionality will be properly built and re-structured at a later date.")
@@ -41,19 +64,15 @@ def estimate_requirements(args):
 def init_directory_tree(args):
     _handle_debug(args)
     _log.debug("Starting sub-program: initialize directory tree.")
-    estimates_dir: Path = args.rootdir / prescheduler_estimates_dirname
+
     taskid_levelname = constants.MetricDFIndexLevels.taskid.value
+    profile_path: Path = args.profile
 
-    if not estimates_dir.exists():
-        _log.error(f"The prescheduler estimates directory {estimates_dir} was not found.")
-        sys.exit(-1)
-
-    profile_file = estimates_dir / profile_filename
     try:
-        profile: pd.DataFrame = pd.read_pickle(profile_file)
+        profile: pd.DataFrame = pd.read_pickle(profile_path)
         basedirs: pd.Series = profile.job_config["basedir"]
     except Exception as e:
-        raise RuntimeError(f"Failed to read the directory structure from {profile_file}.") from e
+        raise RuntimeError(f"Failed to read the directory structure from {profile_path}.") from e
 
     if basedirs is None:
         _log.error(f"No data found in {basedirs_file}.")
@@ -91,22 +110,29 @@ def generate_jobs(args):
 
     _handle_debug(args)
 
-    # TODO: Eliminate reliance on knowing the config beforehand. Profile.pkl.gz should only contain the expected
-    #  runtime per epoch and the basedirs. The model's own configuration should have been pre-sampled and stored in the
-    #  task-level metrics dataframe. This also ensures that no task-metric write race conditions occur.
-    configs = get_configs(df=metrics_df)
-    estimated_runtimes = tabular_sampling.lib.postprocessing.metric_df_ops.estimate_remaining_runtime(
-        metrics_df, max_epochs=args.epochs)
-    estimated_runtimes = pd.concat({"model_config": configs, "runtime": estimated_runtimes}, axis=1)
+    profile_path: Path = args.profile
+    try:
+        profile: pd.DataFrame = pd.read_pickle(profile_path)
+        per_epoch_runtimes: pd.Series = profile.required.runtime
+    except Exception as e:
+        raise RuntimeError(f"Failed to read the sampling profile from {profile_path}.") from e
+
+    estimated_runtimes = per_epoch_runtimes
+
+    remaining_epochs: Union[pd.Series, int] = (profile.status.epochs - args.epochs) \
+        if ("status", "epochs") in profile.columns else args.epochs
+    estimated_runtimes: pd.Series = estimated_runtimes * remaining_epochs
+    profile.loc[:, ("required", "runtime")] = estimated_runtimes
+
     _log.info(f"Estimated total CPUh requirement: "
-              f"{estimated_runtimes[('runtime', 'required')].sum() * args.cpus_per_worker:,}")
+              f"{estimated_runtimes[('runtime', 'required')].sum() * args.cpus_per_worker / 3600:.2f,}")
 
     job_config = sched_utils.JobConfig(
         cpus_per_worker=args.cpus_per_worker, cpus_per_node=args.cpus_per_node, nodes_per_job=args.nodes_per_job,
         timelimit=args.timelimit * 60
     )
     workers = sched_utils.allocate_work(
-        job_config=job_config, runtime_estimates=estimated_runtimes,
+        job_config=job_config, profile=profile,
         cpuh_utilization_cutoff=args.cpuh_utilization_cutoff, cap_job_timelimit=args.dynamic_timelimit
     )
 
@@ -131,7 +157,7 @@ def generate_jobs(args):
         )
         srun_str = config_template.substitute(
             rootdir=rootdir, workerid_offset=workerid_offset, portfolio_dir=str(args.portfolio_dir),
-            epochs=str(args.epochs)
+            training_args=_args_from_training_config(get_tranining_config_from_args(args))
         )
 
         with open(args.script_dir / f"job-{jobid}.job", "w") as fp:
@@ -153,6 +179,11 @@ def argument_parser():
                                     "'<rootdir>/<fidelity_dir>/tasks', where 'fidelity_dir' is generated by joining "
                                     "the names and values of the relevant fidelity parameters in a string separated by "
                                     "'-', e.g. 'N-1-W-8-Resolution-1.0'.")
+    parent_parser.add_argument("--profile", type=Path,
+                               help="Path to a *.pkl.gz file which will be either read from or written to, referring "
+                                    "to the relevant sampling profile. When used with the command 'estimate', this "
+                                    "file will be written to. When used with either 'init' or 'gen', it will be read "
+                                    "from.")
 
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(

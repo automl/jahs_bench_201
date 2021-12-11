@@ -113,22 +113,6 @@ class WorkerConfig(object):
         return hash(self.worker_id)
 
 
-# class ModelConfig(object):
-#     """ Container for various properties relevant to each unique model configuration, as defined by the tuple
-#     (<taskid>, <model_idx>) """
-#
-#     taskid: int
-#     model_idx: int
-#
-#     def __init__(self, taskid: int, model_idx: int):
-#         self.taskid = taskid
-#         self.model_idx = model_idx
-#
-#     @classmethod
-#     def load_from_portfolio(cls, portfolio: pd.DataFrame, taskid: int, model_idx: int) -> ModelConfig:
-#         pass
-
-
 def fidelity_basedir_map(c: Union[pd.Series, dict]):
     """ Given a Series or mapping from fidelity parameter names to values, generate a fidelity-specific base directory
     name. """
@@ -137,9 +121,11 @@ def fidelity_basedir_map(c: Union[pd.Series, dict]):
     return "-".join([f"{p}-{fidelity_types[p](c[i])}" for i, p in enumerate(fidelity_params)]) + "/tasks"
 
 
-def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_utilization_cutoff: float = 0.75,
+# TODO: Change this to instead work with a given profile (or subset thereof)
+def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization_cutoff: float = 0.75,
                   cap_job_timelimit: bool = True) -> Sequence[WorkerConfig]:
-    """ Given a job configuration and estimates for how long each model needs to run for, generates a work schedule in
+    """
+    Given a job configuration and estimates for how long each model needs to run for, generates a work schedule in
     the form of a list of WorkerConfig objects that have been allocated their respective portfolios.
     'runtime_estimates' should be a pandas DataFrame with a MultiIndex index containing model IDs as defined by the
     unique tuple (<taskid>, <model_idx>), and MultiIndex columns with values [('model_config', <conf>)] and
@@ -148,20 +134,20 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
     to be scheduled and n is the number of workers available.
     """
 
-    runtime_estimates = runtime_estimates.sort_values(by=("runtime", "required"), axis=0, ascending=False)
-    estimates_series = runtime_estimates[("runtime", "required")]
+    runtime_estimates: pd.Series = profile.required.runtime
+    runtime_estimates = runtime_estimates.sort_values(axis=0, ascending=False)
 
     _log.info("Filtering out negative values for required runtime.")
-    sel = estimates_series.where(estimates_series > 0.).notna()
-    estimates_series = estimates_series[sel]
+    sel = runtime_estimates.where(runtime_estimates > 0.).notna()
+    profile = profile[sel]
     runtime_estimates = runtime_estimates[sel]
 
     _log.info("Filtering out NA values from runtime estimates.")
-    sel = estimates_series.notna()
-    estimates_series = estimates_series[sel]
+    sel = runtime_estimates.notna()
+    profile = profile[sel]
     runtime_estimates = runtime_estimates[sel]
 
-    total_required_budget = estimates_series.sum()
+    total_required_budget = runtime_estimates.sum()
     required_num_workers = total_required_budget // job_config.timelimit + \
                            int(bool(total_required_budget % job_config.timelimit))
     required_num_jobs = math.ceil(required_num_workers / job_config.workers_per_job)
@@ -169,7 +155,7 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
     assert required_num_jobs >= 1, "Could not find a valid allocation under the given constraints. Consider allowing " \
                                    "jobs to be underutilized or changing the job config."
 
-    _log.info(f"Generating work schedule for {estimates_series.size} configurations spread across "
+    _log.info(f"Generating work schedule for {runtime_estimates.size} configurations spread across "
               f"{job_config.workers_per_job} workers per job.")
 
     workers = [WorkerConfig(worker_id=i) for i in range(job_config.workers_per_job * required_num_jobs)]
@@ -187,7 +173,7 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
                 return curr_worker
         return None
 
-    for conf, runtime in zip(estimates_series.index.values, estimates_series.values):
+    for conf, runtime in zip(runtime_estimates.index, runtime_estimates.values):
         assigned_worker = find_next_eligible_worker(required_runtime=runtime)
         if assigned_worker is None:
             _log.info(f"Found no available work slots for config id {conf}, required runtime - "
@@ -199,16 +185,9 @@ def allocate_work(job_config: JobConfig, runtime_estimates: pd.DataFrame, cpuh_u
         work[assigned_worker][1].append(conf)
 
     for id, worker in enumerate(workers):
-        configs: pd.DataFrame = runtime_estimates.loc[work[worker][1]]["model_config"].copy()
-        basedirs: pd.DataFrame = configs.apply(fidelity_basedir_map, axis=1)
-        if isinstance(basedirs, pd.Series):
-            # This is the normal route; only in the case when #workers > #configs is 'basedirs' occasionally an empty
-            # DataFrame and not a Series
-            basedirs = basedirs.to_frame("basedir")
+        basedirs: pd.Series = profile.loc[work[worker][1], ("job_config", "basedir")]
         basedirs.sort_index(axis=0, inplace=True)
         worker.portfolio = basedirs
-        # worker.portfolio = runtime_estimates.loc[work[worker][1]][["model_config"]].copy()
-        # worker.portfolio.sort_index(axis=0, inplace=True)
 
     min_waste = 0.
     if cap_job_timelimit:
