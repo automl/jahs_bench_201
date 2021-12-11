@@ -226,7 +226,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
             task_metric_logger.log()
 
         if generate_sampling_profile:
-            time.sleep(1)
+            # time.sleep(1)
             continue
 
         ## Actual model training and evaluation
