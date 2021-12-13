@@ -168,7 +168,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
     task_metric_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics,
                                             set_type=utils.MetricLogger.MetricSet.task, logger=logger, timer=tasktimer)
     n_known_samples = len(task_metrics.model_idx)
-    tasktimer.adjust(time=n_known_samples)
+    tasktimer.adjust(previous_timestamp=n_known_samples)
 
     task_config = {
         "train_config": train_config,
@@ -222,7 +222,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
             task_metrics.global_seed.append(curr_global_seed)
             task_metrics.size_MB.append(naslib_utils.count_parameters_in_MB(model))
 
-            tasktimer.update(time=model_idx, force=True)
+            tasktimer.update(timestamp=model_idx, force=True)
             task_metric_logger.log()
 
         if generate_sampling_profile:

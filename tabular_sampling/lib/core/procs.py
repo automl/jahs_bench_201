@@ -222,7 +222,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         checkpoint = utils.Checkpointer(model=model, optimizer=optimizer, scheduler=scheduler, dir_tree=dir_tree,
                                         logger=logger, map_location=device, timer=timer)
         old_chkpt_runtime = checkpoint.runtime
-        old_chkpt_epoch_idx = checkpoint.elapsed_epochs
+        old_chkpt_epoch_idx = checkpoint.last_epoch
 
     model_metrics_logger = utils.MetricLogger(dir_tree=dir_tree, metrics=model_metrics,
                                               set_type=utils.MetricLogger.MetricSet.model, logger=logger, timer=timer)
@@ -233,7 +233,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
                            f"{model_metrics_logger.elapsed_runtime}. Use the data integrity verification tools to "
                            f"resolve this. Note that this may cause some loss of data.")
 
-    timer.adjust(time=old_chkpt_runtime, epochs=old_chkpt_epoch_idx)
+    timer.adjust(previous_timestamp=old_chkpt_runtime, last_epoch=old_chkpt_epoch_idx)
 
     flops = get_model_flops(model=model, input_shape=min_shape, transfer_devices=transfer_devices, device=device)
 
@@ -306,7 +306,7 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
         effective_elapsed_runtime = time.time() - start_time + old_chkpt_runtime
         first_epoch = e == 0
         last_epoch = e == train_config.epochs - 1
-        timer.update(time=effective_elapsed_runtime, epochs=e, force=first_epoch or last_epoch)
+        timer.update(timestamp=effective_elapsed_runtime, curr_epoch=e, force=first_epoch or last_epoch)
         if not train_config.disable_checkpointing:
             checkpoint()
 

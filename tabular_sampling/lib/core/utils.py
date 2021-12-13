@@ -190,8 +190,8 @@ class SynchroTimer:
     registered with a SynchroTimer object can then query it anytime to know if the signal has been prepared. This is
     by no means intended to be used for multi-process signal passing! """
 
-    elapsed_time: float
-    elapsed_epochs: int
+    previous_timestamp: float
+    last_epoch: int
     ping_interval_time: float
     ping_interval_epochs: float
     _signal: bool
@@ -203,15 +203,15 @@ class SynchroTimer:
         intervals when manually asked to do so (see SynchroTimer.update()). """
         self.ping_interval_time = ping_interval_time
         self.ping_interval_epochs = ping_interval_epochs
-        self.elapsed_time = 0.
-        self.elapsed_epochs = -1
+        self.previous_timestamp = 0.
+        self.last_epoch = -1
         self._listeners = {}
         self._signal = False
 
-    def adjust(self, time: Optional[float] = None, epochs: Optional[int] = None):
+    def adjust(self, previous_timestamp: Optional[float] = None, last_epoch: Optional[int] = None):
         """ Sets the elapsed time and epochs without causing a signal to be generated. """
-        self.elapsed_time = time
-        self.elapsed_epochs = epochs
+        self.previous_timestamp = previous_timestamp
+        self.last_epoch = last_epoch
 
     def register_new_listener(self) -> Hashable:
         """ Allows SynchroTimer to know how many access points are listening to its signals and, in turn, ensure that
@@ -225,22 +225,22 @@ class SynchroTimer:
         for l in self._listeners.keys():
             self._listeners[l] = self._signal
 
-    def update(self, time: Optional[float] = None, epochs: Optional[int] = None, force: Optional[bool] = False):
+    def update(self, timestamp: Optional[float] = None, curr_epoch: Optional[int] = None, force: Optional[bool] = False):
         """ Given an input of time/epochs or an overriding flag 'force', determines whether a signal should be
         prepared for the listeners or not. Even if ping_interval_time or ping_interval_epoch was set to None,
         the time and epochs can still be specified here to keep track of them. In such a case, however, they will not
         cause the timer's signal to be set. """
 
         time_signal = False if self.ping_interval_time is None \
-            else (time - self.elapsed_time) >= self.ping_interval_time
+            else (timestamp - self.previous_timestamp) >= self.ping_interval_time
 
         epoch_signal = False if self.ping_interval_epochs is None \
-            else (epochs - self.elapsed_epochs) >= self.ping_interval_epochs
+            else (curr_epoch - self.last_epoch) >= self.ping_interval_epochs
 
         self._signal = time_signal or epoch_signal or force
         self._update_signals_()
-        self.elapsed_time = time
-        self.elapsed_epochs = epochs
+        self.previous_timestamp = timestamp
+        self.last_epoch = curr_epoch
 
     def ping(self, id: Hashable):
         """ Any listener can call this function along with its registered ID to query the signal. """
@@ -268,24 +268,24 @@ class Checkpointer(object):
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.dir_tree = dir_tree
-        self.runtime = self.timer.elapsed_time
-        self.elapsed_epochs = self.timer.elapsed_epochs
-        self.logger = logger if logger is not None else logging.getLogger(__name__)
         self.timer = timer
+        self.runtime = self.timer.previous_timestamp
+        self.last_epoch = self.timer.last_epoch
+        self.logger = logger if logger is not None else logging.getLogger(__name__)
         logger.debug(f"Successfully initialized checkpointer.")
         self._load_latest(map_location)
 
     def __call__(self, force_checkpoint: bool = False):
         if self._signal or force_checkpoint:
-            runtime = self.timer.elapsed_time
-            elapsed_epochs = self.timer.elapsed_epochs
+            runtime = self.timer.previous_timestamp
+            last_epoch = self.timer.last_epoch
             output_file = self.dir_tree.model_checkpoints_dir / f"{runtime}.pt"
             torch.save(
                 {
                     "model_state_dict": self.model.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
                     "scheduler_state_dict": self.scheduler.state_dict(),
-                    "epochs": elapsed_epochs,
+                    "epochs": last_epoch,
                     "torch_rng_state": torch.get_rng_state(),
                     "numpy_rng_state": np.random.get_state(),
                     "python_rng_state": random.getstate(),
@@ -293,7 +293,7 @@ class Checkpointer(object):
                 output_file
             )
             self.runtime = runtime
-            self.elapsed_epochs = elapsed_epochs
+            self.last_epoch = last_epoch
             self.logger.debug(f"Checkpointed model training at f{str(output_file)}")
 
     @property
@@ -355,7 +355,7 @@ class Checkpointer(object):
     def _load_latest(self, safe_load: Optional[bool] = True, map_location: Optional[Any] = None):
         """ Attempts to load a previously saved checkpoint in order to resume model training. If a checkpoint is
         successfully loaded, the model, optimizer and scheduler state dictionaries are appropriately loaded and the
-        relevant values of runtime and elapsed_epochs are updated, else, the state dictionaries and other object
+        relevant values of runtime and last_epoch are updated, else, the state dictionaries and other object
         attributes are left untouched.  If 'safe_load' is set to False, the most recent checkpoint that is readable
         from disk is loaded. Be careful with this setting - it is possible for the loaded checkpoint data and metrics
         data to be out of sync in such a scenario. It is set to True by default - i.e. if the latest checkpoint cannot
@@ -380,7 +380,7 @@ class Checkpointer(object):
         torch.set_rng_state(torch_rng_state)
         np.random.set_state(state_dicts["numpy_rng_state"])
         random.setstate(state_dicts["python_rng_state"])
-        self.elapsed_epochs = state_dicts["epochs"]
+        self.last_epoch = state_dicts["epochs"]
         self.runtime = self._extract_runtime_from_filename(pth)
         self.logger.info(f"Loaded existing checkpoint from {str(pth)}")
 
@@ -406,7 +406,7 @@ class MetricLogger(object):
         self.timer = timer
         self.set_type = set_type
         self.logger = logger if logger is not None else logging.getLogger(__name__)
-        self.elapsed_runtime = self.timer.elapsed_time
+        self.elapsed_runtime = self.timer.previous_timestamp
         self.resume_latest_saved_metrics()
 
     @property
@@ -559,7 +559,7 @@ class MetricLogger(object):
 
     def log(self, force: bool = False, where: Optional[Path] = None):
         if self._signal or force:
-            elapsed_runtime = self.timer.elapsed_time
+            elapsed_runtime = self.timer.previous_timestamp
             df = self._generate_df()
             pth = where if where is not None else self.log_directory
             df.to_pickle(pth / f"{elapsed_runtime}.pkl.gz")
