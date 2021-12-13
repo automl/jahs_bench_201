@@ -203,6 +203,8 @@ class SynchroTimer:
         intervals when manually asked to do so (see SynchroTimer.update()). """
         self.ping_interval_time = ping_interval_time
         self.ping_interval_epochs = ping_interval_epochs
+        self.elapsed_time = 0.
+        self.elapsed_epochs = -1
         self._listeners = {}
         self._signal = False
 
@@ -260,14 +262,14 @@ class Checkpointer(object):
     """
 
     def __init__(self, model: Graph, optimizer: torch.optim.Optimizer, scheduler: CosineAnnealingLR,
-                 dir_tree: DirectoryTree, logger: logging.Logger = None, map_location=None,
-                 timer: Optional[SynchroTimer] = None):
+                 dir_tree: DirectoryTree, timer: Optional[SynchroTimer], logger: logging.Logger = None,
+                 map_location=None):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.dir_tree = dir_tree
-        self.runtime = 0.
-        self.elapsed_epochs = -1
+        self.runtime = self.timer.elapsed_time
+        self.elapsed_epochs = self.timer.elapsed_epochs
         self.logger = logger if logger is not None else logging.getLogger(__name__)
         self.timer = timer
         logger.debug(f"Successfully initialized checkpointer.")
@@ -300,17 +302,16 @@ class Checkpointer(object):
 
     @timer.setter
     def timer(self, new_timer: SynchroTimer):
-        if new_timer is None:
-            self._timer = None
+        if not isinstance(new_timer, SynchroTimer):
+            raise ValueError(f"Checkpointer requires a valid instance of SynchroTimer, cannot set timer to "
+                             f"{type(new_timer)}.")
         else:
-            assert isinstance(new_timer, SynchroTimer), \
-                "Timer must be either an instance of the class SynchroTimer or None"
             self._timer = new_timer
             self._timer_id = self._timer.register_new_listener()
 
     @property
     def _signal(self):
-        return self.timer.ping(self._timer_id)
+        return False if self.timer is None else self.timer.ping(self._timer_id)
 
     @classmethod
     def _extract_runtime_from_filename(cls, f: Path) -> float:
@@ -362,7 +363,7 @@ class Checkpointer(object):
 
         latest = self._get_sorted_chkpt_paths(self.dir_tree.model_checkpoints_dir, ascending=False)
         state_dicts, pth = self._load_checkpoint(pths=latest, safe_load=safe_load, map_location=map_location,
-                                                  get_path=True)
+                                                 get_path=True)
 
         if state_dicts is None:
             self.logger.info(f"No valid checkpoints found at {self.dir_tree.model_checkpoints_dir}.")
@@ -398,14 +399,14 @@ class MetricLogger(object):
         task = enum.auto()
         default = enum.auto()
 
-    def __init__(self, dir_tree: DirectoryTree, metrics: dict, set_type: MetricSet = MetricSet.default,
-                 logger: logging.Logger = None, timer: Optional[SynchroTimer] = None):
+    def __init__(self, dir_tree: DirectoryTree, metrics: dict, timer: Optional[SynchroTimer],
+                 set_type: MetricSet = MetricSet.default, logger: logging.Logger = None):
         self.dir_tree = dir_tree
         self.metrics = metrics
+        self.timer = timer
         self.set_type = set_type
         self.logger = logger if logger is not None else logging.getLogger(__name__)
-        self.elapsed_runtime = 0.
-        self.timer = timer
+        self.elapsed_runtime = self.timer.elapsed_time
         self.resume_latest_saved_metrics()
 
     @property
@@ -414,17 +415,16 @@ class MetricLogger(object):
 
     @timer.setter
     def timer(self, new_timer: SynchroTimer):
-        if new_timer is None:
-            self._timer = None
+        if not isinstance(new_timer, SynchroTimer):
+            raise ValueError(f"Checkpointer requires a valid instance of SynchroTimer, cannot set timer to "
+                             f"{type(new_timer)}.")
         else:
-            assert isinstance(new_timer, SynchroTimer), \
-                "Timer must be either an instance of the class SynchroTimer or None"
             self._timer = new_timer
             self._timer_id = self._timer.register_new_listener()
 
     @property
     def _signal(self):
-        return self.timer.ping(self._timer_id)
+        return False if self.timer is None else self.timer.ping(self._timer_id)
 
     @classmethod
     def _nested_dict_to_df(cls, nested: Union[dict, Any]) -> pd.DataFrame:
