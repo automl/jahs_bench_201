@@ -56,6 +56,7 @@ if __name__ == "__main__":
                         help="The desired output filename. The filename should not carry any extension as '.pkl.gz' "
                              "will be automatically appended to it, unless the extension is already '.pkl.gz'. "
                              "Default: <basedir>/data.pkl.gz")
+    # TODO: Remove the summarize and clenaup flags, this functionality has been moved to data_verification.
     parser.add_argument("--summarize", action="store_true",
                         help="When this flag is given, a summary of the current status of each run is generated and "
                              "saved on a per-task and job-level basis.")
@@ -63,6 +64,7 @@ if __name__ == "__main__":
                         help="When this flag is given, various files such as error descriptions and checkpoints are "
                              "verified for correctness and consistency, and deleted so as to restore the jobs to an "
                              "state.")
+    # TODO: Remove anonymize, this functionality is probably useless.
     parser.add_argument("--anonymize", action="store_true",
                         help="When this flag is given, the task and model ids of the metric data are removed.")
     parser.add_argument("--workerid", type=int, default=-1,

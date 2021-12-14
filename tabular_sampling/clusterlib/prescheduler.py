@@ -13,11 +13,11 @@ from typing import Optional, Sequence, Iterator, Tuple, Union
 
 from tabular_sampling.lib.core import constants, utils
 from tabular_sampling.lib.postprocessing.metric_df_ops import estimate_remaining_runtime
-from tabular_sampling.lib.core import constants
 
 _log = logging.getLogger(__name__)
 fidelity_params = constants.fidelity_params
 fidelity_types = constants.fidelity_types
+
 
 class JobConfig(object):
     """ A container for various properties of the cluster that will be used to help compute the work schedule. """
@@ -28,7 +28,7 @@ class JobConfig(object):
     timelimit: float
     template_file: Optional[Path]
 
-    def __init__(self, cpus_per_worker = 1, cpus_per_node = 48, nodes_per_job = 3072, timelimit = 2 * 24 * 3600,
+    def __init__(self, cpus_per_worker=1, cpus_per_node=48, nodes_per_job=3072, timelimit=2 * 24 * 3600,
                  template_file: Path = None):
         self.cpus_per_worker = cpus_per_worker
         self.cpus_per_node = cpus_per_node
@@ -121,7 +121,7 @@ def fidelity_basedir_map(c: Union[pd.Series, dict]):
     return "-".join([f"{p}-{fidelity_types[p](c[i])}" for i, p in enumerate(fidelity_params)]) + "/tasks"
 
 
-# TODO: Change this to instead work with a given profile (or subset thereof)
+# noinspection PyPep8
 def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization_cutoff: float = 0.75,
                   cap_job_timelimit: bool = True) -> Sequence[WorkerConfig]:
     """
@@ -184,7 +184,7 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
         work[assigned_worker][0] -= runtime
         work[assigned_worker][1].append(conf)
 
-    for id, worker in enumerate(workers):
+    for worker in workers:
         basedirs: pd.Series = profile.loc[work[worker][1], ("job_config", "basedir")]
         basedirs.sort_index(axis=0, inplace=True)
         worker.portfolio = basedirs
@@ -283,8 +283,8 @@ def prepare_directory_structure(basedirs: pd.Series, rootdir: Path):
     assert rootdir.exists(), f"The root directory {rootdir} must be created before the prepare function can be called."
     index_levels = [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value]
 
-    for l in index_levels:
-        assert l in basedirs.index.names, f"The input Series must have {l} as an index level."
+    for level in index_levels:
+        assert level in basedirs.index.names, f"The input Series must have {level} as an index level."
 
     basedirs = basedirs.reorder_levels(index_levels)
     nconfigs = basedirs.size
@@ -351,6 +351,7 @@ def prepare_full_sampling_profile(cpus_per_task_per_bucket: pd.Series,
 
     # This is a change in philosophy for how the jobs should be built-up going forward as opposed to what was done thus
     # far. In a future version, this hack for converting runtimes back to runtimes per epoch won't be necessary.
+    # noinspection PyArgumentList
     runtime_per_evaluation_per_epoch = runtime_per_task_per_bucket.div(evals_per_task) / 200
 
     required_runtime = model_ids.join(runtime_per_evaluation_per_epoch.rename("runtime"), on=fidelity_params)["runtime"]
@@ -367,85 +368,84 @@ def prepare_full_sampling_profile(cpus_per_task_per_bucket: pd.Series,
     return profile
 
 
-
 if __name__ == "__main__":
     # test script
-
-    import sys
-
-    fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
-    ch = logging.StreamHandler(stream=sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(fmt)
-    _log.addHandler(ch)
-    _log.setLevel(logging.DEBUG)
-
-    modelid_level_names = [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value]
-    modelids = pd.MultiIndex.from_product([[0, 1, 2], [0, 1, 2]], names=modelid_level_names)
-    runtimes = [100] * 9
-    nepochs = [300, 200, 200, 100, 100, 50, 50, 25, 25]
-    estimates = {}
-    max_epochs = 200
-
-    subdfs = {}
-    for id, e, t in zip(modelids.values, nepochs, runtimes):
-        tdata = [i * t / (e - 1) for i in range(e)]
-        edata = [0.1 * t / e] * e
-        subdfs[id] = pd.DataFrame({("diagnostic", "runtime"): tdata, ("train", "duration"): edata,
-                                   ("valid", "duration"): edata, ("test", "duration"): edata})
-        estimates[id] = t / e * (max_epochs - e)
-
-    metdf = pd.concat(subdfs, axis=0)
-    metdf.index = metdf.index.rename([*modelid_level_names, constants.MetricDFIndexLevels.epoch.value])
-    runtime_estimates = estimate_remaining_runtime(df=metdf, max_epochs=max_epochs)
-    assert runtime_estimates.columns.size == 1 and "required" in runtime_estimates.columns, \
-        f"Unexpected runtime estimate DataFrame structure, with columns: {runtime_estimates.columns}"
-    assert runtime_estimates.index.size == len(modelids) and runtime_estimates.index.difference(modelids).size == 0, \
-        f"Unexpected runtime estimate DataFrame structure.\nExpected model IDs: {modelids}\n" \
-        f"DataFrame index:{runtime_estimates.index}"
-
-    expected_estimates = pd.DataFrame(data=estimates, index=["required"]).transpose()
-    assert runtime_estimates.equals(expected_estimates), \
-        f"Mismatch in expected runtime estimates and calculated estimates.\nExpected: {expected_estimates}\n" \
-        f"Calculated: {runtime_estimates}"
-
-    max_runtime = 700.
-    real_fidelity_params = fidelity_params
-    real_fidelity_types = fidelity_types
-    fidelity_params = ["C1", "C2"]
-    fidelity_types = {"C1": int, "C2": int}
-
-    confs = {"C1": list(range(modelids.size)), "C2": list(range(modelids.size))[::-1]}
-    confs = pd.DataFrame(confs, index=modelids)
-    estimates_input_df = pd.concat({"model_config": confs, "runtime": runtime_estimates}, axis=1)
-    jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=300)
-    work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
-                                    cpuh_utilization_cutoff=0.75, cap_job_timelimit=False)
-    _log.info("This message should have been preceeded by a warning about low CPUh utilization, at about 0.33.")
-    assert len(work_allocation) == 9, f"Expected the work allocation to be split amongst 9 workers, was split " \
-                                      f"amongst {len(work_allocation)} workers instead."
-    assert all([w.portfolio.shape[0] == 0 for w in work_allocation[3:]]), \
-        f"Unexpected work allocation, work allocation for 6 of the 9 workers should have failed, was instead:\n" \
-        f"{[str(w.portfolio) for w in work_allocation]}"
-
-    jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=900)
-    work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
-                                    cpuh_utilization_cutoff=0.75, cap_job_timelimit=False)
-    _log.info("This message should not have been preceeded by a warning about low CPUh utilization.")
-    assert len(work_allocation) == 3, f"Expected the work allocation to be split amongst 3 workers, was split " \
-                                      f"amongst {len(work_allocation)} workers instead."
-    assert jobconf.timelimit == 900, f"The timelimit of the job should not have been capped."
-
-    jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=900)
-    work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
-                                    cpuh_utilization_cutoff=0.95, cap_job_timelimit=True)
-    _log.info("This message should have been preceeded by a warning about low CPUh utilization.")
-    assert len(work_allocation) == 3, f"Expected the work allocation to be split amongst 3 workers, was split " \
-                                      f"amongst {len(work_allocation)} workers instead."
-    assert jobconf.timelimit == 800, f"The timelimit of the job should have been capped."
-
-    fidelity_params = real_fidelity_params
-    fidelity_types = real_fidelity_types
+    # TODO: Adjust for new sampling-profile based operation
+    # import sys
+    #
+    # fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
+    # ch = logging.StreamHandler(stream=sys.stdout)
+    # ch.setLevel(logging.DEBUG)
+    # ch.setFormatter(fmt)
+    # _log.addHandler(ch)
+    # _log.setLevel(logging.DEBUG)
+    #
+    # modelid_level_names = [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value]
+    # modelids = pd.MultiIndex.from_product([[0, 1, 2], [0, 1, 2]], names=modelid_level_names)
+    # runtimes = [100] * 9
+    # nepochs = [300, 200, 200, 100, 100, 50, 50, 25, 25]
+    # estimates = {}
+    # max_epochs = 200
+    #
+    # subdfs = {}
+    # for id, e, t in zip(modelids.values, nepochs, runtimes):
+    #     tdata = [i * t / (e - 1) for i in range(e)]
+    #     edata = [0.1 * t / e] * e
+    #     subdfs[id] = pd.DataFrame({("diagnostic", "runtime"): tdata, ("train", "duration"): edata,
+    #                                ("valid", "duration"): edata, ("test", "duration"): edata})
+    #     estimates[id] = t / e * (max_epochs - e)
+    #
+    # metdf = pd.concat(subdfs, axis=0)
+    # metdf.index = metdf.index.rename([*modelid_level_names, constants.MetricDFIndexLevels.epoch.value])
+    # runtime_estimates = estimate_remaining_runtime(df=metdf, max_epochs=max_epochs)
+    # assert runtime_estimates.columns.size == 1 and "required" in runtime_estimates.columns, \
+    #     f"Unexpected runtime estimate DataFrame structure, with columns: {runtime_estimates.columns}"
+    # assert runtime_estimates.index.size == len(modelids) and runtime_estimates.index.difference(modelids).size == 0, \
+    #     f"Unexpected runtime estimate DataFrame structure.\nExpected model IDs: {modelids}\n" \
+    #     f"DataFrame index:{runtime_estimates.index}"
+    #
+    # expected_estimates = pd.DataFrame(data=estimates, index=["required"]).transpose()
+    # assert runtime_estimates.equals(expected_estimates), \
+    #     f"Mismatch in expected runtime estimates and calculated estimates.\nExpected: {expected_estimates}\n" \
+    #     f"Calculated: {runtime_estimates}"
+    #
+    # max_runtime = 700.
+    # real_fidelity_params = fidelity_params
+    # real_fidelity_types = fidelity_types
+    # fidelity_params = ["C1", "C2"]
+    # fidelity_types = {"C1": int, "C2": int}
+    #
+    # confs = {"C1": list(range(modelids.size)), "C2": list(range(modelids.size))[::-1]}
+    # confs = pd.DataFrame(confs, index=modelids)
+    # estimates_input_df = pd.concat({"model_config": confs, "runtime": runtime_estimates}, axis=1)
+    # jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=300)
+    # work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
+    #                                 cpuh_utilization_cutoff=0.75, cap_job_timelimit=False)
+    # _log.info("This message should have been preceeded by a warning about low CPUh utilization, at about 0.33.")
+    # assert len(work_allocation) == 9, f"Expected the work allocation to be split amongst 9 workers, was split " \
+    #                                   f"amongst {len(work_allocation)} workers instead."
+    # assert all([w.portfolio.shape[0] == 0 for w in work_allocation[3:]]), \
+    #     f"Unexpected work allocation, work allocation for 6 of the 9 workers should have failed, was instead:\n" \
+    #     f"{[str(w.portfolio) for w in work_allocation]}"
+    #
+    # jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=900)
+    # work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
+    #                                 cpuh_utilization_cutoff=0.75, cap_job_timelimit=False)
+    # _log.info("This message should not have been preceeded by a warning about low CPUh utilization.")
+    # assert len(work_allocation) == 3, f"Expected the work allocation to be split amongst 3 workers, was split " \
+    #                                   f"amongst {len(work_allocation)} workers instead."
+    # assert jobconf.timelimit == 900, f"The timelimit of the job should not have been capped."
+    #
+    # jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=900)
+    # work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
+    #                                 cpuh_utilization_cutoff=0.95, cap_job_timelimit=True)
+    # _log.info("This message should have been preceeded by a warning about low CPUh utilization.")
+    # assert len(work_allocation) == 3, f"Expected the work allocation to be split amongst 3 workers, was split " \
+    #                                   f"amongst {len(work_allocation)} workers instead."
+    # assert jobconf.timelimit == 800, f"The timelimit of the job should have been capped."
+    #
+    # fidelity_params = real_fidelity_params
+    # fidelity_types = real_fidelity_types
 
     # Test resource estimation funcs
 
@@ -453,9 +453,10 @@ if __name__ == "__main__":
     cpus_per_bucket = pd.Series([1, 1, 4], index=fids)
     runtime_per_bucket = pd.Series([100, 400, 1600], index=fids)
     evals_per_worker = pd.Series([20, 20, 5], index=fids)
-    nodes_per_bucket = pd.Series([5, 5, 20], index=fids)
-    profile = prepare_full_sampling_profile(cpus_per_bucket, runtime_per_bucket, evals_per_worker, nodes_per_bucket)
+    test_nodes_per_bucket = pd.Series([5, 5, 20], index=fids)
+    test_profile = prepare_full_sampling_profile(cpus_per_bucket, runtime_per_bucket, evals_per_worker,
+                                                 test_nodes_per_bucket)
 
-    assert len(profile.index) == 10800, f"Unexpected number of model configs: {len(profile.index)}"
+    assert len(test_profile.index) == 10800, f"Unexpected number of model configs: {len(test_profile.index)}"
 
     _log.info("Finished verification.")

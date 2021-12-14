@@ -88,7 +88,7 @@ def parse_training_overrides(args: argparse.Namespace) -> AttrDict:
     return AttrDict({k: getattr(args, k) for k in recognized_train_config_overrides.keys()})
 
 
-def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> AttrDict:
+def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> Tuple[AttrDict, Datasets]:
     """ Load a saved training config from disk, overriding the training config with appropriate values if needed. """
 
     with open(dtree.task_config_file, "r") as fp:
@@ -103,8 +103,9 @@ def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> AttrDict:
         raise RuntimeError(f"Unable to determine appropriate dataset with name - {task_config['dataset']}.")
 
     # Update the saved task config with the latest overrides.
-    with open(dtree.task_config_file, "w") as fp:
-        json.dump(task_config, fp, default=str)
+    ## DISABLED since this can lead to race conditions during multiprocess write operations
+    # with open(dtree.task_config_file, "w") as fp:
+    #     json.dump(task_config, fp, default=str)
 
     return AttrDict(task_config["train_config"]), dataset
 
@@ -137,11 +138,15 @@ def instantiate_model(model_config: dict, dataset: Datasets) -> NASB201HPOSearch
         f"Failed to restrict all hyperparameters in the search space to the specified model configuration. The " \
         f"restricted space is defined by:\n{search_space.config_space}"
 
+    # Since all hyper-parameters are constants, this will always sample the same configuration.
     search_space.sample_random_architecture()
 
     return search_space
 
 # TODO: Update/check for consistency with updated pre-scheduler
+# TODO: Extend this script to also include stage 2 verification functionality - loading a specific checkpoint, training
+#  it for a specified number of epochs, and verifying the metric data. Save the new metrics as alternative data points
+#  for a potential analysis of the various metric distributions
 def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug: bool = False, **overrides):
     """ Resume working on a particular configuration wherever it was left off by loading all relevant parameters from
     the saved checkpoints. Some training parameters may be overridden by providing the relevant overrides as keyword
@@ -151,9 +156,9 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
     logger = naslib_logging.setup_logger(str(dir_tree.model_dir / f"resume.log"))
 
     task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
-    # TODO: Update to use SynchroTimer
-    _ = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, log_interval=None,
-                           set_type=utils.MetricLogger.MetricSet.task, logger=logger)  # Used to load metrics from disk
+    # No timer, since this is read-only - reads the pre-sampled configs from disk
+    _ = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, timer=None,
+                           set_type=utils.MetricLogger.MetricSet.task, logger=logger)
     global_seed, model_config = load_model_config(task_metrics, model_idx)
     train_config, dataset = reload_train_config(dir_tree, **overrides)
 
@@ -200,7 +205,6 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
 
     ## Clean up memory before terminating task
     del task_metrics
-    # del task_metric_logger
     del dir_tree
 
 

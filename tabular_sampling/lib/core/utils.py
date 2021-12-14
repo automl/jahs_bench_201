@@ -258,24 +258,28 @@ class Checkpointer(object):
     Essentially a stateful-function factory for checkpointing model training at discrete intervals of time and epochs.
     Initialized with references to all necessary objects and data for checkpointing and called by specifying the
     elapsed runtime and number of epochs. However, it can also be used to load existing checkpoints. Consult
-    DirectoryTree for a breakdown of how the file structure is organized.
+    DirectoryTree for a breakdown of how the file structure is organized. A SynchroTimer object needs to be passed to
+    the initializer argument 'timer' in order to enable logging functionality. Without it, a Checkpointer object can
+    only be used in 'read-only' mode.
     """
 
     def __init__(self, model: Graph, optimizer: torch.optim.Optimizer, scheduler: CosineAnnealingLR,
-                 dir_tree: DirectoryTree, timer: Optional[SynchroTimer], logger: logging.Logger = None,
+                 dir_tree: DirectoryTree, timer: Optional[SynchroTimer] = None, logger: logging.Logger = None,
                  map_location=None):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.dir_tree = dir_tree
         self.timer = timer
-        self.runtime = self.timer.previous_timestamp
-        self.last_epoch = self.timer.last_epoch
+        self.runtime = 0. if self.timer is None else self.timer.previous_timestamp
+        self.last_epoch = -1 if self.timer is None else self.timer.last_epoch
         self.logger = logger if logger is not None else logging.getLogger(__name__)
         logger.debug(f"Successfully initialized checkpointer.")
         self._load_latest(map_location)
 
     def __call__(self, force_checkpoint: bool = False):
+        if self.timer is None:
+            raise RuntimeError("The log functionality of Checkpointer is enabled only when a valid timer has been set.")
         if self._signal or force_checkpoint:
             runtime = self.timer.previous_timestamp
             last_epoch = self.timer.last_epoch
@@ -302,7 +306,9 @@ class Checkpointer(object):
 
     @timer.setter
     def timer(self, new_timer: SynchroTimer):
-        if not isinstance(new_timer, SynchroTimer):
+        if new_timer is None:
+            self._timer = None
+        elif not isinstance(new_timer, SynchroTimer):
             raise ValueError(f"Checkpointer requires a valid instance of SynchroTimer, cannot set timer to "
                              f"{type(new_timer)}.")
         else:
@@ -389,7 +395,9 @@ class MetricLogger(object):
     """
     Holds a set of metrics, information about where they are to be logged, the frequency at which they should be
     logged as well as some functionality to convert any given set of metrics into a pandas DataFrame. Consult
-    DirectoryTree for a breakdown of how the file structure is organized.
+    DirectoryTree for a breakdown of how the file structure is organized. A SynchroTimer object needs to be passed to
+    the initializer argument 'timer' in order to enable logging functionality. Without it, a MetricLogger object can
+    only be used in 'read-only' mode.
     """
 
     @enum.unique
@@ -399,14 +407,14 @@ class MetricLogger(object):
         task = enum.auto()
         default = enum.auto()
 
-    def __init__(self, dir_tree: DirectoryTree, metrics: dict, timer: Optional[SynchroTimer],
+    def __init__(self, dir_tree: DirectoryTree, metrics: dict, timer: Optional[SynchroTimer] = None,
                  set_type: MetricSet = MetricSet.default, logger: logging.Logger = None):
         self.dir_tree = dir_tree
         self.metrics = metrics
         self.timer = timer
         self.set_type = set_type
         self.logger = logger if logger is not None else logging.getLogger(__name__)
-        self.elapsed_runtime = self.timer.previous_timestamp
+        self.elapsed_runtime = 0. if self.timer is None else self.timer.previous_timestamp
         self.resume_latest_saved_metrics()
 
     @property
@@ -415,7 +423,9 @@ class MetricLogger(object):
 
     @timer.setter
     def timer(self, new_timer: SynchroTimer):
-        if not isinstance(new_timer, SynchroTimer):
+        if new_timer is None:
+            self._timer = None
+        elif not isinstance(new_timer, SynchroTimer):
             raise ValueError(f"Checkpointer requires a valid instance of SynchroTimer, cannot set timer to "
                              f"{type(new_timer)}.")
         else:
@@ -558,6 +568,8 @@ class MetricLogger(object):
         return getattr(self.dir_tree, self._metric_set_to_log_directory[self.set_type])
 
     def log(self, force: bool = False, where: Optional[Path] = None):
+        if self.timer is None:
+            raise RuntimeError("The log functionality of MetricLogger is enabled only when a valid timer has been set.")
         if self._signal or force:
             elapsed_runtime = self.timer.previous_timestamp
             df = self._generate_df()

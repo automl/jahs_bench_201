@@ -136,6 +136,7 @@ def collate_task_models(taskid: int, basedir: Optional[Path] = None, dtree: Opti
         if anonymize:
             task_df = task_df.reset_index(drop=True)
         else:
+            # TODO: Make the 'taskid' name programmatically consistent in 'assign'.
             task_df = task_df.assign(taskid=dtree.taskid).set_index(constants.MetricDFIndexLevels.taskid.value,
                                                                     append=True)
             task_df = task_df.reorder_levels(metric_df_index_levels, axis=0)
