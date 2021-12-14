@@ -12,16 +12,27 @@ training_config = {
                           help="When set to a positive integer, this many epochs are used to warm-start the training."),
     "disable_checkpointing": dict(
         action="store_true",
-        help="When given, checkpointing of model training is disabled. By default, model training is checkpointed "
-             "either every X seconds or Y epochs, whichever occurs first. Check --checkpoint_interval_seconds and "
-             "--checkpoint_interval_epochs."),
+        help="When given, overrides the values of --checkpoint_interval_seconds and --checkpoint_internval_epochs "
+             "and disables checkpointing. By default, model training is checkpointed every X epochs. "
+             "Check --checkpoint_interval_seconds and --checkpoint_interval_epochs for more information."),
     "checkpoint_interval_seconds": dict(
-        type=int, default=1800,
-        help="The time interval between subsequent model training checkpoints, in seconds. Default: 30 minutes i.e. "
-             "1800 seconds."),
+        type=int, default=None,
+        help="The time interval between subsequent model training checkpoints, in seconds. When not specified "
+             "(default), model training is checkpointed only every X epochs, as specified by "
+             "--checkpoint_interval_epochs. When specified along with --checkpoint_interval_epochs, both "
+             "checkpointing intervals are enabled simultaneously, i.e. the model will be checkpointed every X epochs "
+             "and Y seconds. Thus, if neither --checkpoint_interval_epochs nor --checkpoint_interval_seconds is "
+             "specified, checkpointing is disabled. Even if either or both these values are specified, checkpointing "
+             "can be forcefully disabled by the flag --disable_checkpointing."),
     "checkpoint_interval_epochs": dict(
-        type=int, default=20, help="The interval between subsequent model training checkpoints, in epochs. Default: "
-                                   "20 epochs.")
+        type=int, default=None,
+        help="The interval between subsequent model training checkpoints, in epochs. When not specified "
+             "(default), model training is checkpointed only every Y seconds, as specified by "
+             "--checkpoint_interval_seconds. When specified along with --checkpoint_interval_seconds, both "
+             "checkpointing intervals are enabled simultaneously, i.e. the model will be checkpointed every X epochs "
+             "and Y seconds. Thus, if neither --checkpoint_interval_epochs nor --checkpoint_interval_seconds is "
+             "specified, checkpointing is disabled. Even if either or both these values are specified, checkpointing "
+             "can be forcefully disabled by the flag --disable_checkpointing.")
 }
 
 
