@@ -99,7 +99,7 @@ def init_directory_tree(args):
                  portfolio_pth=None, cycle_portfolio=False,
                  opts=fidelity.to_dict())
 
-        if i % (5 * ntasks // 100) == 0:
+        if i % (5 * max(ntasks // 100, 1)) == 0:
             # Report progress every time approximately 5% of the tasks have been fully pre-sampled.
             _log.info(f"Pre-sampling progress:\t{100 * i / ntasks:=6.2f}%\t({i}/{ntasks} tasks)")
 
@@ -216,17 +216,13 @@ def argument_parser():
     )
     subparser_init.set_defaults(func=init_directory_tree)
     subparser_init.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
-
-    # Unpack the training config into CLI flags.
-    for k, v in constants.training_config.items():
-        subparser_init.add_argument(f"--{k}", **v)
-
     subparser_init.add_argument("--datadir", type=Path,
                                 help="The directory where all datasets are expected to be stored.")
     subparser_init.add_argument("--dataset", type=constants.Datasets.__members__.get,
-                                choices=list(constants.Datasets.__members__.keys()),
-                                help="The name of which dataset is to be used for model training and evaluation. Only "
-                                     "one of the provided choices can be used.")
+                                choices=constants.Datasets.__members__.values(),
+                                help=f"The name of which dataset is to be used for model training and evaluation. Only "
+                                     f"one of the provided choices can be used. Valid dataset names: "
+                                     f"{constants.Datasets.__members__.keys()}")
 
     ## Step 3 - Generate bundled jobs
 
@@ -238,11 +234,10 @@ def argument_parser():
     )
     subparser_gen.set_defaults(func=generate_jobs)
 
-    # subparser_gen.add_argument("--metrics_df", type=Path,
-    #                            help="Path to a pandas DataFrame that contains all the metric data that has been "
-    #                                 "collected thus far and is to be used for generating the schedule.")
+    # TODO: Update- this should now be read from the profile
     subparser_gen.add_argument("--cpus_per_worker", type=int,
                                help="Job configuration - the number of CPUs to be allocated to each worker.")
+
     subparser_gen.add_argument("--cpus_per_node", type=int,
                                help="Job configuration - the number of CPUs that are to be expected in each node of "
                                     "the cluster.")
@@ -255,8 +250,6 @@ def argument_parser():
                                     "maximize the CPUh utilization. The dynamically adjusted time limit can only be "
                                     "lower than that specified by '--timelimit'. If this flag is omitted, the job will "
                                     "have exactly the value of '--timelimit' as its time limit.")
-    subparser_gen.add_argument("--epochs", type=int,
-                               help="The maximum number of epochs that each configuration should be evaluated for.")
     subparser_gen.add_argument("--cpuh_utilization_cutoff", type=float, default=0.8,
                                help="Recommended minimum fraction of total allocated CPUh that should be actively used "
                                     "for computation. Generates a warning when the job allocation's expected CPUh "
@@ -270,7 +263,12 @@ def argument_parser():
                                help="Path to a directory from where each worker will be able to store its own "
                                     "allocated portfolio of configurations to evaluate.")
     subparser_gen.add_argument("--script_dir", type=Path,
-                               help="This is the directory where the generated job scripts will be stored.")
+                               help="This is the directory where the generated job scripts and their respective srun "
+                                    "configuration files will be stored.")
+
+    # Unpack the training config into CLI flags.
+    for k, v in constants.training_config.items():
+        subparser_gen.add_argument(f"--{k}", **v)
 
     return parser
 
@@ -289,3 +287,4 @@ if __name__ == "__main__":
 
     ## Parse CLI
     args = argument_parser().parse_args()
+    args.func(args)

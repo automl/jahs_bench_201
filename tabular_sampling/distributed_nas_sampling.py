@@ -215,6 +215,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
             assert task_metrics.model_config[model_idx - 1] == model_config, \
                 f"There is a mismatch between the previously registered model config used for evaluating the " \
                 f"model index {model_idx} and the newly generated config {model_config}"
+            logger.debug(f"Task {taskid}, model {model_idx} has been previously sampled.")
         else:
             # A new model config has been sampled.
             task_metrics.model_idx.append(model_idx)
@@ -224,6 +225,7 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
 
             tasktimer.update(timestamp=model_idx, force=True)
             task_metric_logger.log()
+            logger.debug(f"Logged new sample for task {taskid}, model {model_idx}.")
 
         if generate_sampling_profile:
             # time.sleep(1)

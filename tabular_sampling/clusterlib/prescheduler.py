@@ -307,7 +307,7 @@ def prepare_directory_structure(basedirs: pd.Series, rootdir: Path):
         except FileExistsError:
             pass
 
-        if i % (5 * nconfigs // 100) == 0:
+        if i % (5 * max(nconfigs // 100, 1)) == 0:
             # Report progress after iterating over approximately every 5 percent of the configs
             _log.info(f"Finished:\t{i * 100 / nconfigs:=6.2f}%\t({i}/{nconfigs}).")
 
