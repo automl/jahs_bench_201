@@ -24,7 +24,7 @@ from tabular_sampling.lib.core import datasets as dataset_lib, utils
 from tabular_sampling.lib.core.procs import train
 from tabular_sampling.search_space import NASB201HPOSearchSpace
 
-_log = logging.getLogger(__name__)
+# _log = logging.getLogger(__name__)
 # recognized_train_config_overrides = {
 #     "epochs": dict(
 #         type=int, default=None,
@@ -144,20 +144,22 @@ def instantiate_model(model_config: dict, dataset: Datasets) -> NASB201HPOSearch
 # TODO: Extend this script to also include stage 2 verification functionality - loading a specific checkpoint, training
 #  it for a specified number of epochs, and verifying the metric data. Save the new metrics as alternative data points
 #  for a potential analysis of the various metric distributions
-def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug: bool = False, **overrides):
+def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug: bool = False,
+                logger: logging.Logger = None, **training_config_overrides):
     """ Resume working on a particular configuration wherever it was left off by loading all relevant parameters from
     the saved checkpoints. Some training parameters may be overridden by providing the relevant overrides as keyword
     arguments. """
 
     dir_tree = utils.DirectoryTree(basedir=basedir, taskid=taskid, model_idx=model_idx)
-    logger = naslib_logging.setup_logger(str(dir_tree.model_dir / f"resume.log"))
+    if logger is None:
+        logger = naslib_logging.setup_logger(str(dir_tree.model_dir / f"resume.log"))
 
     task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
     # No timer, since this is read-only - reads the pre-sampled configs from disk
     _ = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, timer=None,
                            set_type=utils.MetricLogger.MetricSet.task, logger=logger)
     global_seed, model_config = load_model_config(task_metrics, model_idx)
-    train_config, dataset = reload_train_config(dir_tree, **overrides)
+    train_config, dataset = reload_train_config(dir_tree, **training_config_overrides)
 
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -208,22 +210,18 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
 if __name__ == "__main__":
 
     # Setup this module's logger
-    fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
-    ch = logging.StreamHandler(stream=sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(fmt)
-    _log.addHandler(ch)
-    _log.setLevel(logging.INFO)
-
-    sched_utils._log.addHandler(ch)
-    sched_utils._log.setLevel(logging.INFO)
+    # fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
+    # ch = logging.StreamHandler(stream=sys.stdout)
+    # ch.setLevel(logging.DEBUG)
+    # ch.setFormatter(fmt)
+    # _log.addHandler(ch)
+    # _log.setLevel(logging.INFO)
+    #
+    # sched_utils._log.addHandler(ch)
+    # sched_utils._log.setLevel(logging.INFO)
 
     ## Parse CLI
     args = argument_parser().parse_args()
-
-    if args.debug:
-        _log.setLevel(logging.DEBUG)
-        sched_utils._log.setLevel(logging.DEBUG)
 
     # train_config_overrides = parse_training_overrides(args)
     train_config_overrides = get_tranining_config_from_args(args)
@@ -232,9 +230,20 @@ if __name__ == "__main__":
     worker_config = sched_utils.WorkerConfig(worker_id=workerid, portfolio_dir=args.portfolio_dir)
     worker_config.load_portfolio()
 
+    logdir: Path = args.rootdir / "worker_logs"
+    logdir.mkdir(exist_ok=True, parents=False)
+    logger = naslib_logging.setup_logger(str(logdir / f"{workerid}.log"), name='tabular_sampling')
+    if args.debug:
+        # _log.setLevel(logging.DEBUG)
+        # sched_utils._log.setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.WARNING)
+
     for taskid, model_idx, basedir in worker_config.iterate_portfolio(rootdir=args.rootdir):
         # conf = worker_config.portfolio.loc[(taskid, model_idx)]
         # basedir = args.rootdir / "-".join(["-".join([p, str(conf[p])]) for p in fidelity_params]) / "tasks"
         # run_task(basedir=basedir, taskid=taskid, )
-        resume_work(basedir, taskid, model_idx, datadir=args.datadir, debug=args.debug, **train_config_overrides)
+        resume_work(basedir, taskid, model_idx, datadir=args.datadir, debug=args.debug, logger=logger,
+                    **train_config_overrides)
 

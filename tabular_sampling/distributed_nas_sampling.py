@@ -104,7 +104,7 @@ def argument_parser():
 def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datasets, datadir,
              local_seed: Optional[int] = None, global_seed: Optional[Union[Iterable[int], int]] = None,
              debug: bool = False, generate_sampling_profile: bool = False, nsamples: int = 0,
-             portfolio_pth: Optional[Path] = None, cycle_portfolio: bool = False,
+             portfolio_pth: Optional[Path] = None, cycle_portfolio: bool = False, logger: logging.Logger = None,
              opts: Optional[Sequence[str]] = None):
     """
     Run the sampling, training and evaluation procedures on a single task.
@@ -160,7 +160,9 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
     global_seed_gen = utils.default_global_seed_gen(rng, global_seed)
     dir_tree = utils.DirectoryTree(basedir=basedir, taskid=taskid)
 
-    logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
+    if logger is None:
+        logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
+
     task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
 
     # The timer-based interface is necessary to synchronize the model metric logger and checkpointer later.
@@ -212,9 +214,9 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
             assert task_metrics.global_seed[model_idx - 1] == curr_global_seed, \
                 f"There is a mismatch between the previously registered global seed used for evaluating the " \
                 f"model index {model_idx} and the newly generated seed {curr_global_seed}"
-            assert task_metrics.model_config[model_idx - 1] == model_config, \
-                f"There is a mismatch between the previously registered model config used for evaluating the " \
-                f"model index {model_idx} and the newly generated config {model_config}"
+            if not task_metrics.model_config[model_idx - 1] == model_config:
+                f"Task {taskid}, model {model_idx}: Model config generation mismatch. Old model config: " \
+                f"{task_metrics.model_config[model_idx - 1]}. Newly generated config: {model_config}"
             logger.debug(f"Task {taskid}, model {model_idx} has been previously sampled.")
         else:
             # A new model config has been sampled.

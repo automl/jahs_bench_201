@@ -10,7 +10,9 @@ import logging
 import pandas as pd
 from pathlib import Path
 from string import Template
+import shutil
 import sys
+import time
 from typing import Union
 
 import tabular_sampling.lib.postprocessing.metric_df_ops
@@ -20,17 +22,48 @@ from tabular_sampling.lib.postprocessing.metric_df_ops import get_configs
 from tabular_sampling.distributed_nas_sampling import run_task, get_tranining_config_from_args, _seed
 from tabular_sampling.lib.core import constants
 
-_log = logging.getLogger(__name__)
+from naslib.utils.logging import setup_logger
+
+# _log = logging.getLogger(__name__)
+_log = setup_logger(name='tabular_sampling')
+
+
+def generate_worker_portfolio(workerid: int, nworkers: int, configs_pth: Path) -> pd.DataFrame:
+    configs: pd.DataFrame = pd.read_pickle(configs_pth)
+    _log.debug(f"Found {configs.index.size} configurations to construct portfolio from.")
+
+    assert isinstance(configs, pd.DataFrame), f"The configs path should lead to a DataFrame, was {type(configs)}."
+    assert isinstance(configs.index, pd.MultiIndex), \
+        f"The configs DataFrame's index has not been configured properly. It should be a MultiIndex, was " \
+        f"{type(configs.index)}"
+    assert constants.MetricDFIndexLevels.taskid.value in configs.index.names, \
+        f"Configs DataFrame index has not been configured properly, could not find " \
+        f"{constants.MetricDFIndexLevels.taskid.value}"
+    assert constants.MetricDFIndexLevels.modelid.value in configs.index.names, \
+        f"Configs DataFrame index has not been configured properly, could not find " \
+        f"{constants.MetricDFIndexLevels.modelid.value}"
+
+    portfolio = configs.loc[configs.index[workerid::nworkers], :]
+    _log.debug(f"Created portfolio of {portfolio.index.size} configs.")
+    return portfolio
 
 
 # noinspection PyShadowingNames,PyProtectedMember
 def _handle_debug(args):
+    # fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
+    # ch = logging.StreamHandler(stream=sys.stdout)
+    # ch.setLevel(logging.DEBUG)
+    # ch.setFormatter(fmt)
+    # _log.addHandler(ch)
+    # _log.setLevel(logging.INFO)
+    # sched_utils._log.addHandler(ch)
+
     if args.debug:
         _log.setLevel(logging.DEBUG)
-        sched_utils._log.setLevel(logging.DEBUG)
+        # sched_utils._log.setLevel(logging.DEBUG)
     else:
         _log.setLevel(logging.INFO)
-        sched_utils._log.setLevel(logging.INFO)
+        # sched_utils._log.setLevel(logging.INFO)
 
 
 # noinspection PyShadowingNames
@@ -85,11 +118,16 @@ def init_directory_tree(args):
     _handle_debug(args)
     _log.debug("Starting sub-program: initialize directory tree.")
 
+    ## Estimated time budget requirement
+    start = time.time()
+    budget = args.budget - 60
+
     taskid_levelname = constants.MetricDFIndexLevels.taskid.value
     profile_path: Path = args.profile
+    workerid = args.workerid_offset + args.workerid
 
     try:
-        profile: pd.DataFrame = pd.read_pickle(profile_path)
+        profile = generate_worker_portfolio(workerid=workerid, nworkers=args.nworkers, configs_pth=profile_path)
         assert profile.index.is_unique, "Each row index in the profile must be unique throughout the profile."
         basedirs: pd.Series = profile.job_config["basedir"]
     except Exception as e:
@@ -99,33 +137,87 @@ def init_directory_tree(args):
         _log.error(f"Profile {profile_path} contains no data on the basedirs.")
         sys.exit(-1)
 
-    sched_utils.prepare_directory_structure(basedirs=basedirs, rootdir=args.rootdir)
+    if args.create_tree:
+        sched_utils.prepare_directory_structure(basedirs=basedirs, rootdir=args.rootdir)
 
     _log.info("Pre-sampling model configs.")
 
     training_config = default_training_config()
     nsamples = basedirs.index.to_frame(index=False).groupby(taskid_levelname).max()
     if isinstance(nsamples, pd.DataFrame):
-        nsamples = nsamples[nsamples.columns[0]].rename("nsamples")
+        nsamples: pd.Series = nsamples[nsamples.columns[0]].rename("nsamples")
 
     fidelities = profile.model_config
     dataset = constants.Datasets.__members__.get(args.dataset)
 
+    opts = {}
+    if args.opts is not None:
+        if isinstance(args.opts, list):
+            i = iter(args.opts)
+            opts = {k: v for k, v in zip(i, i)}
+        else:
+            raise RuntimeError(f"Unable to parse the search space overrides {args.opts}")
+
+    ## Handle the checkpointing of this worker's portfolio
+    worker_chkpt_subdir = "worker_chkpts"
+    chkpt_name = f"preschedule_init_worker.pkl.gz"
+    assert args.rootdir.exists(), f"The specified root directory {args.rootdir} does not exist."
+    worker_chkpt_dir: Path = args.rootdir / worker_chkpt_subdir / str(workerid)
+    worker_chkpt_dir.mkdir(exist_ok=True, parents=True)
+    chkpt_filepath = worker_chkpt_dir / chkpt_name
+
+    done = None
+    if chkpt_filepath.exists():
+        try:
+            done = pd.read_pickle(chkpt_filepath)
+            nsamples = nsamples[done == False]
+            fidelities = fidelities.loc[nsamples.index, :]
+        except Exception as e:
+            _log.info(f"Ran into an error while trying to read {chkpt_filepath}: {str(e)}")
+            done = None
+
+    if done is None:
+        done = pd.Series(False, index=nsamples.index)
+        done.to_pickle(chkpt_filepath)
+
+    end = time.time()
+    duration = end - start
+    _log.info(f"Worker {workerid}: Setting up the directory tree consumed {duration} seconds.")
+    budget -= duration
+    start = end
+    max_time = 0.
+
     ntasks = nsamples.index.size
     for i, taskid in enumerate(nsamples.index, start=1):
+        if budget < 1.2 * max_time:
+            break
+
         fidelity = fidelities.xs(taskid, level=taskid_levelname).iloc[0]
         basedir = args.rootdir / basedirs.xs(taskid, level=taskid_levelname).iloc[0]
         run_task(basedir=basedir, taskid=taskid,
                  train_config=training_config, dataset=dataset, datadir=args.datadir, local_seed=_seed,
                  global_seed=None, debug=args.debug, generate_sampling_profile=True, nsamples=nsamples[taskid],
-                 portfolio_pth=None, cycle_portfolio=False,
-                 opts=fidelity.to_dict())
+                 portfolio_pth=None, cycle_portfolio=False, logger=_log,
+                 opts={**fidelity.to_dict(), **opts})
 
         if i % (5 * max(ntasks // 100, 1)) == 0:
-            # Report progress every time approximately 5% of the tasks have been fully pre-sampled.
-            _log.info(f"Pre-sampling progress:\t{100 * i / ntasks:=6.2f}%\t({i}/{ntasks} tasks)")
+            # Report progress every time approximately 5% of the tasks have been fully pre-sampled and checkpoint
+            # progress.
+            _log.info(f"Worker {workerid}: Pre-sampling progress:\t{100 * i / ntasks:=6.2f}%\t({i}/{ntasks} tasks)")
+            _log.info(f"Worker {workerid}: Maximum time per sampling operation: {max_time} seconds. Remaining Budget: "
+                      f"{budget} seconds.")
+            done.iloc[:i] = True
+            shutil.copyfile(chkpt_filepath, f"{chkpt_filepath}.bak")
+            done.to_pickle(chkpt_filepath)
 
-    _log.debug("Finished sub-program: initialize directory tree.")
+        ## Update duration estimate
+        end = time.time()
+        duration = end - start
+        max_time = max(max_time, duration)
+        budget -= duration
+        start = end
+
+    _log.debug(f"Worker {workerid}: Finished sub-program: initialize directory tree.")
 
 
 # noinspection PyShadowingNames
@@ -246,6 +338,33 @@ def argument_parser():
                                 choices=list(constants.Datasets.__members__.keys()),
                                 help=f"The name of which dataset is to be used for model training and evaluation. Only "
                                      f"one of the provided choices can be used.")
+    subparser_init.add_argument("--workerid", type=int,
+                                help="An offset from 0 for this worker within the current job's allocation of workers. "
+                                     "This does NOT correspond to a single 'taskid' but rather the portfolio of "
+                                     "configurations that this worker will handle.")
+    subparser_init.add_argument("--workerid-offset", type=int, default=0,
+                                help="An additional fixed offset from 0 for this worker that, combined with the value "
+                                     "of '--worker', gives the overall worker ID in the context of a job that has been "
+                                     "split into multiple smaller parts.")
+    subparser_init.add_argument("--nworkers", type=int,
+                                help="The total number of workers that are expected to concurrently perform data "
+                                     "verification in this root directory. This is used to coordinate the workers such "
+                                     "that there is no overlap in their portfolios.")
+    subparser_init.add_argument("--budget", type=int,
+                                help="Time budget for each worker in seconds. This is used to approximate whether or "
+                                     "not a worker has enough time to perform one more operation without any risk to "
+                                     "any data. The script reserves 60 seconds of the budget for initialization, i.e. "
+                                     "it always assumes a budget of 60 seconds less than what was specified here.")
+    subparser_init.add_argument("--create_tree", action="store_true",
+                                help="When given, also creates the required directory trees under rootdir. Otherwise, "
+                                     "assumes that the directory tree already exists. This should be done exactly once "
+                                     "with a single worker.")
+    subparser_init.add_argument("opts", nargs=argparse.REMAINDER, default=None,
+                                help="A variable number of optional keyword arguments provided as 2-tuples, each "
+                                     "potentially corresponding to a hyper-parameter in the search space. If a match "
+                                     "is found, that hyper-parameter is excluded from the search space and fixed to "
+                                     "the given value instead. This also overrides the respective values read in from "
+                                     "profiles.")
 
     ## Step 3 - Generate bundled jobs
 
@@ -299,17 +418,6 @@ def argument_parser():
 
 
 if __name__ == "__main__":
-    # Setup this module's logger
-    fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
-    ch = logging.StreamHandler(stream=sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(fmt)
-    _log.addHandler(ch)
-    _log.setLevel(logging.INFO)
-
-    sched_utils._log.addHandler(ch)
-    sched_utils._log.setLevel(logging.INFO)
-
     ## Parse CLI
     args = argument_parser().parse_args()
     args.func(args)
