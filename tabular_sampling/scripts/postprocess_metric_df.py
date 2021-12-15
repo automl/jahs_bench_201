@@ -51,7 +51,7 @@ if __name__ == "__main__":
         pproc_log.setLevel(logging.DEBUG)
     else:
         _log.setLevel(logging.INFO)
-        pproc_log.setLevel(logging.INFO)
+        pproc_log.setLevel(logging.WARNING)
 
     if args.workerid >= 0:
         fids = {"N": [1, 3, 5], "W": [4, 8, 16], "Resolution": [0.25, 0.5, 1.0]}
@@ -65,6 +65,7 @@ if __name__ == "__main__":
     else:
         basedir = args.basedir
 
+    _log.info(f"Beginning metric data postprocessing at {basedir}.")
     df = metric_ops.load_metric_df(basedir=basedir)
 
     fidelity_confs = [("model_config", f) for f in fidelity_params]
@@ -99,3 +100,5 @@ if __name__ == "__main__":
     acc_all_epochs.to_pickle(outdir / "acc_all_epochs.pkl.gz")
     loss_200epochs.to_pickle(outdir / "loss_200epochs.pkl.gz")
     loss_all_epochs.to_pickle(outdir / "loss_all_epochs.pkl.gz")
+
+    _log.info("Finished postprocessing.")

@@ -4,7 +4,6 @@ evaluations across the workers in a job allocation using data that has been gene
 planned samples in the search space.
 """
 
-
 import argparse
 import itertools
 import logging
@@ -23,6 +22,8 @@ from tabular_sampling.lib.core import constants
 
 _log = logging.getLogger(__name__)
 
+
+# noinspection PyShadowingNames,PyProtectedMember
 def _handle_debug(args):
     if args.debug:
         _log.setLevel(logging.DEBUG)
@@ -32,6 +33,7 @@ def _handle_debug(args):
         sched_utils._log.setLevel(logging.INFO)
 
 
+# noinspection PyShadowingNames
 def _isolate_training_args(args: argparse.Namespace) -> str:
     """ Given parsed CLI arguments, isolates the values of arguments corresponding to the training config and
     re-constructs the corresponding CLI arguments. """
@@ -72,11 +74,13 @@ def default_training_config() -> AttrDict:
     return get_tranining_config_from_args(default_args)
 
 
+# noinspection PyUnusedLocal,PyShadowingNames
 def estimate_requirements(args):
     # TODO: Complete and standardize this procedure. For now, use manually generated estimates.
     raise NotImplementedError("This functionality will be properly built and re-structured at a later date.")
 
 
+# noinspection PyShadowingNames
 def init_directory_tree(args):
     _handle_debug(args)
     _log.debug("Starting sub-program: initialize directory tree.")
@@ -86,12 +90,13 @@ def init_directory_tree(args):
 
     try:
         profile: pd.DataFrame = pd.read_pickle(profile_path)
+        assert profile.index.is_unique, "Each row index in the profile must be unique throughout the profile."
         basedirs: pd.Series = profile.job_config["basedir"]
     except Exception as e:
         raise RuntimeError(f"Failed to read the directory structure from {profile_path}.") from e
 
     if basedirs is None:
-        _log.error(f"No data found in {basedirs_file}.")
+        _log.error(f"Profile {profile_path} contains no data on the basedirs.")
         sys.exit(-1)
 
     sched_utils.prepare_directory_structure(basedirs=basedirs, rootdir=args.rootdir)
@@ -123,13 +128,14 @@ def init_directory_tree(args):
     _log.debug("Finished sub-program: initialize directory tree.")
 
 
+# noinspection PyShadowingNames
 def generate_jobs(args):
-
     _handle_debug(args)
 
     profile_path: Path = args.profile
     try:
         profile: pd.DataFrame = pd.read_pickle(profile_path)
+        assert profile.index.is_unique, "Each row index in the profile must be unique throughout the profile."
         per_epoch_runtimes: pd.Series = profile.required.runtime
         cpus_per_worker: pd.Series = profile.required.cpus
     except Exception as e:
@@ -189,7 +195,6 @@ def generate_jobs(args):
 
 
 def argument_parser():
-
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument("--rootdir", type=Path,
                                help="This is the directory where the outputs of the jobs will be stored i.e. WORK. "
@@ -231,9 +236,9 @@ def argument_parser():
         "initialize", aliases=["init"], parents=[parent_parser],
         help="Use the predicted total evaluation profile to generate the directory structure that will be needed for "
              "carrying out the expected calculations. Performing this step in advance allows the main jobs to run with "
-             "the assumption that each individual model's parent directories already exist, fixed model configurations, "
-             "training configurations and random seeds have been generated, and prevents a number of issues with "
-             "multi-processing."
+             "the assumption that each individual model's parent directories already exist, fixed model "
+             "configurations, training configurations and random seeds have been generated, and prevents a number of "
+             "issues with multi-processing."
     )
     subparser_init.set_defaults(func=init_directory_tree)
     subparser_init.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
@@ -292,8 +297,8 @@ def argument_parser():
 
     return parser
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     # Setup this module's logger
     fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
     ch = logging.StreamHandler(stream=sys.stdout)

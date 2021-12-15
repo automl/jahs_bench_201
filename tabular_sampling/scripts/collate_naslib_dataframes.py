@@ -82,7 +82,7 @@ if __name__ == "__main__":
         collation._log.setLevel(logging.DEBUG)
     else:
         _log.setLevel(logging.INFO)
-        collation._log.setLevel(logging.INFO)
+        collation._log.setLevel(logging.WARNING)
 
     if args.workerid >= 0:
         fids = {"N": [1, 3, 5], "W": [4, 8, 16], "Resolution": [0.25, 0.5, 1.0]}
@@ -98,6 +98,8 @@ if __name__ == "__main__":
         basedir = args.basedir
         outdir = args.basedir
 
+    _log.info(f"Beginning metric data collation at {basedir}.")
+
     collated_df = collation.collate_tasks(basedir=basedir, cleanup=args.cleanup, save_summary=args.summarize,
                                           anonymize=args.anonymize)
     outfile: Path = outdir / "metrics.pkl.gz" if args.file is None else args.file.resolve()
@@ -105,3 +107,5 @@ if __name__ == "__main__":
         _log.info(f"No valid metric data found at: {args.basedir / subdir}")
     else:
         collated_df.to_pickle(outfile)
+
+    _log.info("Finished metric data collation.")
