@@ -12,38 +12,38 @@ from pathlib import Path
 import sys
 import torch
 import traceback
-from typing import Tuple
+from typing import Tuple, Sequence
 
 import naslib.utils.logging as naslib_logging
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AttrDict
 
 from tabular_sampling.clusterlib import prescheduler as sched_utils
-from tabular_sampling.lib.core.constants import Datasets, standard_task_metrics
+from tabular_sampling.lib.core.constants import Datasets, standard_task_metrics, training_config
 from tabular_sampling.lib.core import datasets as dataset_lib, utils
 from tabular_sampling.lib.core.procs import train
 from tabular_sampling.search_space import NASB201HPOSearchSpace
 
 _log = logging.getLogger(__name__)
-recognized_train_config_overrides = {
-    "epochs": dict(
-        type=int, default=None,
-        help="Number of epochs that each sampled architecture should be trained for. If not specified, uses the value "
-             "specified in the original training configuration."),
-    "disable_checkpointing": dict(
-        action="store_true",
-        help="When given, checkpointing of model training is disabled. By default, model training is checkpointed "
-             "either every X seconds or Y epochs, whichever occurs first. Check --checkpoint_interval_seconds and "
-             "--checkpoint_interval_epochs."),
-    "checkpoint_interval_seconds": dict(
-        type=int, default=None,
-        help="The time interval between subsequent model training checkpoints, in seconds. If not specified, uses the "
-             "value specified in the original training configuration."),
-    "checkpoint_interval_epochs": dict(
-        type=int, default=None,
-        help="The interval between subsequent model training checkpoints, in epochs. If not specified, uses the value "
-             "specified in the original training configuration.")
-}
+# recognized_train_config_overrides = {
+#     "epochs": dict(
+#         type=int, default=None,
+#         help="Number of epochs that each sampled architecture should be trained for. If not specified, uses the value "
+#              "specified in the original training configuration."),
+#     "disable_checkpointing": dict(
+#         action="store_true",
+#         help="When given, checkpointing of model training is disabled. By default, model training is checkpointed "
+#              "either every X seconds or Y epochs, whichever occurs first. Check --checkpoint_interval_seconds and "
+#              "--checkpoint_interval_epochs."),
+#     "checkpoint_interval_seconds": dict(
+#         type=int, default=None,
+#         help="The time interval between subsequent model training checkpoints, in seconds. If not specified, uses the "
+#              "value specified in the original training configuration."),
+#     "checkpoint_interval_epochs": dict(
+#         type=int, default=None,
+#         help="The interval between subsequent model training checkpoints, in epochs. If not specified, uses the value "
+#              "specified in the original training configuration.")
+# }
 
 
 def argument_parser():
@@ -67,18 +67,11 @@ def argument_parser():
     parser.add_argument("--portfolio_dir", type=Path, default=None,
                         help="Path to a directory from where each worker will be able to read its own allocated "
                              "portfolio of configurations to evaluate.")
-    # parser.add_argument("--cycle_portfolio", action="store_true",
-    #                     help="Only appliable when a complete portfolio of task- and mode-wise configurations is given. "
-    #                          "When given, causes the portfolio configurations within each task to cycle infinitely or "
-    #                          "until sampling is stopped due to the limit set down by '--nsamples'.")
-    # parser.add_argument("--global_seed", type=int, default=None,
-    #                     help="A value for a global seed to be used for all global NumPy and PyTorch random "
-    #                          "operations. This is different from the fixed seed used for reproducible search space "
-    #                          "sampling. If not specified, a random source of entropy is used instead.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
 
     # Unpack the training config overrides into CLI flags.
-    for k, v in recognized_train_config_overrides.items():
+    # for k, v in recognized_train_config_overrides.items():
+    for k, v in training_config.items():
         parser.add_argument(f"--{k}", **v)
 
     return parser
@@ -86,6 +79,10 @@ def argument_parser():
 
 def parse_training_overrides(args: argparse.Namespace) -> AttrDict:
     return AttrDict({k: getattr(args, k) for k in recognized_train_config_overrides.keys()})
+
+
+def get_tranining_config_from_args(args: Sequence[str]) -> AttrDict:
+    return AttrDict({k: getattr(args, k) for k in training_config.keys()})
 
 
 def reload_train_config(dtree: utils.DirectoryTree, **overrides) -> Tuple[AttrDict, Datasets]:
@@ -228,7 +225,8 @@ if __name__ == "__main__":
         _log.setLevel(logging.DEBUG)
         sched_utils._log.setLevel(logging.DEBUG)
 
-    train_config_overrides = parse_training_overrides(args)
+    # train_config_overrides = parse_training_overrides(args)
+    train_config_overrides = get_tranining_config_from_args(args)
 
     workerid = args.workerid + args.workerid_offset
     worker_config = sched_utils.WorkerConfig(worker_id=workerid, portfolio_dir=args.portfolio_dir)

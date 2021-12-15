@@ -48,10 +48,10 @@ class JobConfig(object):
     def template_kwargs(self) -> dict:
         """ A dict of keyword arguments that should provide most of the details needed to fill in a job template. """
         return {
-            "cpus_per_worker": self.cpus_per_worker,
-            "cpus_per_node": self.cpus_per_node,
+            "cpus_per_task": self.cpus_per_worker,
+            # "cpus_per_node": self.cpus_per_node,
             "nodes_per_job": self.nodes_per_job,
-            "workers_per_node": self.workers_per_node,
+            "tasks_per_node": self.workers_per_node,
             "timelimit": self.timestr(self.timelimit),
         }
 
@@ -74,7 +74,7 @@ class WorkerConfig(object):
 
     worker_id: int
     portfolio_dir: Optional[Path]
-    portfolio: Optional[pd.DataFrame]
+    portfolio: Optional[pd.Series]
 
     def __init__(self, worker_id: int, portfolio_dir: Optional[Path] = None, portfolio: Optional[pd.DataFrame] = None):
         self.worker_id = worker_id
@@ -90,7 +90,7 @@ class WorkerConfig(object):
         if self.portfolio is not None:
             _log.warning(f"Existing portfolio of worker {self.worker_id} will be overwritten by portfolio read from "
                          f"{self.portolio_file}")
-        self.portfolio = pd.read_pickle(self.portolio_file)
+        self.portfolio: pd.Series = pd.read_pickle(self.portolio_file)
 
     def iterate_portfolio(self, start: int = 0, stop: int = None, step: int = 1, rootdir: Optional[Path] = None) -> \
             Iterator[Tuple[int, int, Path]]:
@@ -99,11 +99,10 @@ class WorkerConfig(object):
         checkpoints of this configuration's previous evaluations are stored. The optional Path-like 'rootdir' can be
         specified to read all the saved base directory paths to be treated as relative to the specified 'rootdir'. """
 
-        subset = self.portfolio[start:stop:step]
-        index = subset.index.to_list()
-        pths = subset["basedir"].to_list()
+        index = self.portfolio.index[start:stop:step]
+        pths = self.portfolio[index]
         if rootdir is None:
-            pths = [Path(p) for p in pths]
+            pths = [Path().cwd() / p for p in pths]
         else:
             pths = [(rootdir / p).resolve() for p in pths]
 
@@ -137,43 +136,52 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
     runtime_estimates: pd.Series = profile.required.runtime
     runtime_estimates = runtime_estimates.sort_values(axis=0, ascending=False)
 
-    _log.info("Filtering out negative values for required runtime.")
     sel = runtime_estimates.where(runtime_estimates > 0.).notna()
-    profile = profile[sel]
-    runtime_estimates = runtime_estimates[sel]
+    if sel.index.size != profile.index.size:
+        _log.info(f"Filtering out {profile.index.size - sel.index.size} negative values for required runtime.")
 
-    _log.info("Filtering out NA values from runtime estimates.")
+    profile = profile.loc[sel]
+    runtime_estimates = runtime_estimates.loc[sel]
+
     sel = runtime_estimates.notna()
-    profile = profile[sel]
-    runtime_estimates = runtime_estimates[sel]
+    if sel.index.size != profile.index.size:
+        _log.info(f"Filtering out {profile.index.size - sel.index.size} NaN values for required runtime.")
+
+    profile = profile.loc[sel]
+    runtime_estimates = runtime_estimates.loc[sel]
 
     total_required_budget = runtime_estimates.sum()
-    required_num_workers = total_required_budget // job_config.timelimit + \
-                           int(bool(total_required_budget % job_config.timelimit))
-    required_num_jobs = math.ceil(required_num_workers / job_config.workers_per_job)
 
-    assert required_num_jobs >= 1, "Could not find a valid allocation under the given constraints. Consider allowing " \
-                                   "jobs to be underutilized or changing the job config."
+    _log.info(f"Estimated total CPUh requirement: "
+              f"{total_required_budget * job_config.cpus_per_worker / 3600:.2f}")
 
     _log.info(f"Generating work schedule for {runtime_estimates.size} configurations spread across "
               f"{job_config.workers_per_job} workers per job.")
 
-    workers = [WorkerConfig(worker_id=i) for i in range(job_config.workers_per_job * required_num_jobs)]
-    work = {w: [job_config.timelimit, []] for w in workers}
-    nworkers = len(workers)
+    required_num_workers = total_required_budget // job_config.timelimit
+    required_num_jobs = math.ceil(required_num_workers / job_config.workers_per_job)
+    available_num_workers = job_config.workers_per_job * required_num_jobs
+    available_total_budget = available_num_workers * job_config.timelimit
 
-    worker_id_cycle = itertools.cycle(list(range(job_config.workers_per_job)))
+    assert required_num_jobs >= 1, "Could not find a valid allocation under the given constraints. Consider tweaking " \
+                                   "the job config."
+
+    workers = [WorkerConfig(worker_id=i) for i in range(available_num_workers)]
+    work = {w: [job_config.timelimit, []] for w in workers}
+
+    worker_id_cycle = itertools.cycle(workers)
 
     def find_next_eligible_worker(required_runtime: float) -> Optional[WorkerConfig]:
         counter = itertools.count()
-        while next(counter) < job_config.workers_per_job:
-            curr_worker = workers[next(worker_id_cycle)]
+        while next(counter) < available_num_workers:
+            curr_worker = next(worker_id_cycle)
             available_runtime = work[curr_worker][0]
             if available_runtime >= required_runtime:
                 return curr_worker
         return None
 
-    for conf, runtime in zip(runtime_estimates.index, runtime_estimates.values):
+    for conf in runtime_estimates.index:
+        runtime = runtime_estimates[conf]
         assigned_worker = find_next_eligible_worker(required_runtime=runtime)
         if assigned_worker is None:
             _log.info(f"Found no available work slots for config id {conf}, required runtime - "
@@ -185,17 +193,17 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
         work[assigned_worker][1].append(conf)
 
     for worker in workers:
-        basedirs: pd.Series = profile.loc[work[worker][1], ("job_config", "basedir")]
+        basedirs: pd.Series = profile.loc[work[worker][1], ("job_config", "basedir")].rename("basedir")
         basedirs.sort_index(axis=0, inplace=True)
         worker.portfolio = basedirs
 
-    min_waste = 0.
+    worker_runtime = job_config.timelimit
     if cap_job_timelimit:
         min_waste = min([work[w][0] for w in workers])
         job_config.timelimit = job_config.timelimit - min_waste
 
-    utilization = sum([job_config.timelimit + min_waste - work[w][0] for w in workers])
-    utilization /= job_config.timelimit * nworkers
+    utilization = sum([worker_runtime - work[w][0] for w in workers])  # Active runtime per worker
+    utilization /= job_config.timelimit * available_num_workers  # Actual total runtime
     underutilized = utilization < cpuh_utilization_cutoff
 
     if underutilized:
@@ -204,6 +212,8 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
                      f"{utilization * 100:.2f}%.")
     else:
         _log.debug(f"The job setup has a CPUh utilization factor of {utilization * 100:.2f}%.")
+
+    _log.info(f"Distributed the workload across {required_num_jobs} jobs.")
 
     return workers
 

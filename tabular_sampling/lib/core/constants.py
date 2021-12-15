@@ -8,7 +8,7 @@ training_config = {
     "batch_size": dict(type=int, default=256, help="Number of samples per mini-batch."),
     "use_grad_clipping": dict(action="store_true", help="Enable gradient clipping for SGD."),
     "split": dict(action="store_true", help="Split training dataset into training and validation sets."),
-    "warmup_epochs": dict(type=int, default=0.,
+    "warmup_epochs": dict(type=int, default=0,
                           help="When set to a positive integer, this many epochs are used to warm-start the training."),
     "disable_checkpointing": dict(
         action="store_true",
