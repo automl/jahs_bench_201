@@ -9,7 +9,7 @@ import logging
 import math
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Sequence, Iterator, Tuple, Union
+from typing import Optional, Sequence, Iterator, Tuple, Union, Dict
 
 from tabular_sampling.lib.core import constants, utils
 from tabular_sampling.lib.postprocessing.metric_df_ops import estimate_remaining_runtime
@@ -26,15 +26,12 @@ class JobConfig(object):
     cpus_per_node: int
     nodes_per_job: int
     timelimit: float
-    template_file: Optional[Path]
 
-    def __init__(self, cpus_per_worker=1, cpus_per_node=48, nodes_per_job=3072, timelimit=2 * 24 * 3600,
-                 template_file: Path = None):
+    def __init__(self, cpus_per_worker=1, cpus_per_node=48, nodes_per_job=3072, timelimit=2 * 24 * 3600):
         self.cpus_per_worker = cpus_per_worker
         self.cpus_per_node = cpus_per_node
         self.nodes_per_job = nodes_per_job
         self.timelimit = timelimit
-        self.template_file = template_file
 
     @property
     def workers_per_node(self) -> int:
@@ -112,6 +109,136 @@ class WorkerConfig(object):
         return hash(self.worker_id)
 
 
+WorkAssignment = Dict[WorkerConfig, Tuple[float, Sequence[Tuple[int, int]]]]
+
+
+class JobAllocation:
+    def __init__(self, config: JobConfig, worker_id_offset: int = 0, assignment: Optional[WorkAssignment] = None,
+                 dynamic_nnodes: bool = True, dynamic_timelimit: bool = True):
+        """ A container for a single job's work assignment. Used primarily for bundling together workers operating on
+        the same resource assignment (JobConfig) that have been assigned some portfolio into a single job file. """
+        self.config = JobConfig(cpus_per_worker=config.cpus_per_worker, cpus_per_node=config.cpus_per_node,
+                                nodes_per_job=config.nodes_per_job, timelimit=config.timelimit)
+        self.worker_id_offset = worker_id_offset
+        self.assignment = assignment
+        self.dynamic_nnodes = dynamic_nnodes
+        self.dynamic_timelimit = dynamic_timelimit
+
+    @property
+    def assignment(self) -> Dict[WorkerConfig, Tuple[float, Sequence[Tuple[int, int]]]]:
+        """ """
+        return self._assignment
+
+    @assignment.setter
+    def assignment(self, value: WorkAssignment):
+        if value is None:
+            # Initialize with an empty work assignment
+            self.workers: Sequence[WorkerConfig] = [WorkerConfig(worker_id=self.worker_id_offset + i)
+                                                    for i in range(self.config.workers_per_job)]
+            self._assignment = {w: [0., []] for w in self.workers}
+        else:
+            assert isinstance(value, dict), f"The work assignment of a JobAllocation must be a dictionary of the " \
+                                            f"form {WorkAssignment}."
+            self.workers: Sequence[WorkerConfig] = list(value.keys())
+            self._assignment = value
+
+    @property
+    def cpuh_demand(self) -> float:
+        """ Total requested CPUh """
+        return self.config.workers_per_job * self.config.cpus_per_worker * self.config.timelimit / 3600
+
+    @property
+    def cpuh_utilization(self) -> float:
+        """ Total active runtime of all workers. """
+        return sum([allocation[0] for allocation in self.assignment.values()]) * self.config.cpus_per_worker / 3600
+
+    def schedule_work(self, profile: pd.DataFrame) -> pd.DataFrame:
+        """ Attempts to greedily fill up all available workers within this job allocation and returns the part of the
+        input profile that could not be fit within this job allocation. """
+
+        runtime_estimates: pd.Series = profile.required.runtime
+        job_config = self.config
+        workers = self.workers
+        assignment = self.assignment
+        worker_id_cycle = itertools.cycle(workers)
+        curr_worker = next(worker_id_cycle)
+
+        def find_next_eligible_worker(required_runtime: float) -> Optional[WorkerConfig]:
+            """ Greedily fill up each worker's budget before moving on to the next worker. """
+            nonlocal curr_worker
+            counter = itertools.count()
+            while next(counter) < job_config.workers_per_job:
+                available_runtime = job_config.timelimit - assignment[curr_worker][0]
+                if available_runtime >= required_runtime:
+                    return curr_worker
+                else:
+                    curr_worker = next(worker_id_cycle)
+            return None
+
+        remainder = []
+        for conf in runtime_estimates.index:
+            runtime = runtime_estimates[conf]
+            assigned_worker = find_next_eligible_worker(required_runtime=runtime)
+            if assigned_worker is None:
+                remainder.append(conf)
+                continue
+
+            assignment[assigned_worker][0] += runtime
+            assignment[assigned_worker][1].append(conf)
+
+        for worker in workers:
+            basedirs: pd.Series = profile.loc[assignment[worker][1], ("job_config", "basedir")].rename("basedir")
+            basedirs.sort_index(axis=0, inplace=True)
+            worker.portfolio = basedirs
+
+        # final_assignment = {k: tuple(v) for k, v in assignment.items()}
+        remainder = profile.loc[remainder, :]
+
+        return remainder
+
+    def optimize(self):
+        """ If the flags 'dynamic_timelimit' and 'dynamic_nnodes' are True, optimize the job's resource demands w.r.t.
+        the allocated work so as to maximize the CPUh utilization. """
+
+        _log.debug(f"Current CPUh utilization: {self.cpuh_utilization * 100 / self.cpuh_demand:.2f}%")
+        job_config = self.config
+
+        if self.dynamic_nnodes:
+            # If any workers don't have any work assigned to them, don't request those nodes in the first place.
+            empty_workers = []
+            for worker, (runtime, configs) in self.assignment.items():
+                if runtime == 0.:
+                    empty_workers.append(worker)
+
+            for worker in empty_workers:
+                self.assignment.pop(worker)
+
+            self.workers = list(self.assignment.keys())
+
+            empty_cpus = len(empty_workers) * job_config.cpus_per_worker
+            empty_nodes = empty_cpus // job_config.cpus_per_node
+            if empty_nodes > 0:
+                job_config.nodes_per_job -= empty_nodes
+                _log.debug(f"Reduced number of nodes required by {empty_nodes}.New CPUh utilization is at "
+                           f"{self.cpuh_utilization * 100 / self.cpuh_demand:.2f}%")
+
+        if self.dynamic_timelimit:
+            # Clip the job runtime to the maximum required by any worker.
+            max_runtime = max([allocation[0] for allocation in self.assignment.values()])
+            job_config.timelimit = max_runtime
+            _log.debug(f"Re-adjusted the job length to (DD-HH:MM): {JobConfig.timestr(job_config.timelimit)}. New CPUh "
+                       f"utilization is at {self.cpuh_utilization * 100 / self.cpuh_demand:.2f}%")
+
+    def save_worker_portfolios(self, portfolio_dir: Path):
+        """ Saves the respective portfolios for each worker in the given directory 'portfolio_dir'. The directory
+        is created if it doesn't already exist. """
+
+        portfolio_dir.mkdir(exist_ok=True, parents=False)
+        for worker in self.workers:
+            worker.portfolio_dir = portfolio_dir
+            worker.portfolio.to_pickle(worker.portolio_file)
+
+
 def fidelity_basedir_map(c: Union[pd.Series, dict]):
     """ Given a Series or mapping from fidelity parameter names to values, generate a fidelity-specific base directory
     name. """
@@ -122,7 +249,7 @@ def fidelity_basedir_map(c: Union[pd.Series, dict]):
 
 # noinspection PyPep8
 def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization_cutoff: float = 0.75,
-                  cap_job_timelimit: bool = True) -> Sequence[WorkerConfig]:
+                  dynamic_timelimit: bool = True, dynamic_nnodes: bool = True) -> Sequence[JobAllocation]:
     """
     Given a job configuration and estimates for how long each model needs to run for, generates a work schedule in
     the form of a list of WorkerConfig objects that have been allocated their respective portfolios.
@@ -153,80 +280,84 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
     total_required_budget = runtime_estimates.sum()
 
     _log.info(f"Estimated total CPUh requirement: "
-              f"{total_required_budget * job_config.cpus_per_worker / 3600:.2f}")
+              f"{total_required_budget * job_config.cpus_per_worker / 3600:<,.2f}")
 
     _log.info(f"Generating work schedule for {runtime_estimates.size} configurations spread across "
               f"{job_config.workers_per_job} workers per job.")
 
-    required_num_workers = total_required_budget // job_config.timelimit
-    required_num_jobs = math.ceil(required_num_workers / job_config.workers_per_job)
-    available_num_workers = job_config.workers_per_job * required_num_jobs
-    available_total_budget = available_num_workers * job_config.timelimit
+    # workers = [WorkerConfig(worker_id=i) for i in range(available_num_workers)]
+    # work = {w: [job_config.timelimit, []] for w in workers}
+    #
+    # worker_id_cycle = itertools.cycle(workers)
+    #
+    # def find_next_eligible_worker(required_runtime: float) -> Optional[WorkerConfig]:
+    #     counter = itertools.count()
+    #     while next(counter) < available_num_workers:
+    #         curr_worker = next(worker_id_cycle)
+    #         available_runtime = work[curr_worker][0]
+    #         if available_runtime >= required_runtime:
+    #             return curr_worker
+    #     return None
+    #
+    # for conf in runtime_estimates.index:
+    #     runtime = runtime_estimates[conf]
+    #     assigned_worker = find_next_eligible_worker(required_runtime=runtime)
+    #     if assigned_worker is None:
+    #         _log.info(f"Found no available work slots for config id {conf}, required runtime - "
+    #                   f"{JobConfig.timestr(runtime)}")
+    #         continue
+    #
+    #     work[assigned_worker][0] -= runtime
+    #     work[assigned_worker][1].append(conf)
+    #
+    # for worker in workers:
+    #     basedirs: pd.Series = profile.loc[work[worker][1], ("job_config", "basedir")].rename("basedir")
+    #     basedirs.sort_index(axis=0, inplace=True)
+    #     worker.portfolio = basedirs
 
-    assert required_num_jobs >= 1, "Could not find a valid allocation under the given constraints. Consider tweaking " \
-                                   "the job config."
+    current_profile = profile
+    jobs = []
+    worker_id_offset = 0
+    while True:
+        job_allocation = JobAllocation(config=job_config, worker_id_offset=worker_id_offset,
+                                       dynamic_nnodes=dynamic_nnodes, dynamic_timelimit=dynamic_timelimit)
+        remainder = job_allocation.schedule_work(profile=current_profile)
 
-    workers = [WorkerConfig(worker_id=i) for i in range(available_num_workers)]
-    work = {w: [job_config.timelimit, []] for w in workers}
+        if remainder.index.size == current_profile.index.size:
+            # The job timelimit is too small for these configs, which is why no more work can be assigned
+            _log.warning(f"The given job timelimit {JobConfig.timestr(job_config.timelimit)} (DD-HH:MM) is too small "
+                         f"for {remainder.index.size} configs with an average runtime requirement of "
+                         f"{JobConfig.timestr(remainder.required.runtime.mean())} (DD-HH:MM). The remaining configs "
+                         f"were distributed across {len(jobs)} jobs.")
+            break
+        else:
+            # A job allocation has been successful. Add it to the list of jobs.
+            job_allocation.optimize()
+            jobs.append(job_allocation)
+            worker_id_offset += job_allocation.config.workers_per_job
+            if remainder.index.size == 0:
+                _log.info(
+                    f"Distributed the workload across {len(jobs)} jobs.")
+                break
+            else:
+                current_profile = remainder
 
-    worker_id_cycle = itertools.cycle(workers)
-
-    def find_next_eligible_worker(required_runtime: float) -> Optional[WorkerConfig]:
-        counter = itertools.count()
-        while next(counter) < available_num_workers:
-            curr_worker = next(worker_id_cycle)
-            available_runtime = work[curr_worker][0]
-            if available_runtime >= required_runtime:
-                return curr_worker
-        return None
-
-    for conf in runtime_estimates.index:
-        runtime = runtime_estimates[conf]
-        assigned_worker = find_next_eligible_worker(required_runtime=runtime)
-        if assigned_worker is None:
-            _log.info(f"Found no available work slots for config id {conf}, required runtime - "
-                      f"{JobConfig.timestr(runtime)}, "
-                      f"configuration: {runtime_estimates.loc[conf]['model_config']} ")
-            continue
-
-        work[assigned_worker][0] -= runtime
-        work[assigned_worker][1].append(conf)
-
-    for worker in workers:
-        basedirs: pd.Series = profile.loc[work[worker][1], ("job_config", "basedir")].rename("basedir")
-        basedirs.sort_index(axis=0, inplace=True)
-        worker.portfolio = basedirs
-
-    worker_runtime = job_config.timelimit
-    if cap_job_timelimit:
-        min_waste = min([work[w][0] for w in workers])
-        job_config.timelimit = job_config.timelimit - min_waste
-
-    utilization = sum([worker_runtime - work[w][0] for w in workers])  # Active runtime per worker
-    utilization /= job_config.timelimit * available_num_workers  # Actual total runtime
-    underutilized = utilization < cpuh_utilization_cutoff
-
+    utilization = [job.cpuh_utilization for job in jobs]
+    demand = [job.cpuh_demand for job in jobs]
+    avg_utilization = sum(utilization) / sum(demand)
+    utilization = [u / d for u, d in zip(utilization, demand)]
+    underutilized = avg_utilization  < cpuh_utilization_cutoff
     if underutilized:
-        _log.warning(f"The current job setup may not utilize all available workers very well. Current setup predicted "
-                     f"to require {required_num_jobs} jobs with a predicted approximate CPUh utilization of "
-                     f"{utilization * 100:.2f}%.")
+        _log.warning(f"The current job setup may not utilize all available workers very well. The current setup "
+                     f"demands {sum(demand):<,.2f} CPUh and has a predicted approximate CPUh utilization of "
+                     f"{avg_utilization * 100:.2f}%. . Individual jobs have CPUh utilization in the range of "
+                     f"{min(utilization) * 100:.2f}% to {max(utilization) * 100:.2f}%")
     else:
-        _log.debug(f"The job setup has a CPUh utilization factor of {utilization * 100:.2f}%.")
+        _log.info(f"The job setup has an overall CPUh utilization factor of {avg_utilization * 100:.2f}%. Individual "
+                  f"jobs have CPUh utilization in the range of {min(utilization) * 100:.2f}% to "
+                  f"{max(utilization) * 100:.2f}%")
 
-    _log.info(f"Distributed the workload across {required_num_jobs} jobs.")
-
-    return workers
-
-
-def save_worker_portfolios(workers: Sequence[WorkerConfig], portfolio_dir: Path):
-    """ Convenience function. Given a list of WorkerConfig objects that have been pre-allocated worker IDs and
-    portfolios, saves the respective portfolios for each worker in the given directory 'portfolio_dir'. The directory
-    is created if it doesn't already exist. """
-
-    portfolio_dir.mkdir(exist_ok=True, parents=False)
-    for worker in workers:
-        worker.portfolio_dir = portfolio_dir
-        worker.portfolio.to_pickle(worker.portolio_file)
+    return jobs
 
 
 def generate_model_ids(specs: pd.DataFrame):
@@ -430,7 +561,7 @@ if __name__ == "__main__":
     # estimates_input_df = pd.concat({"model_config": confs, "runtime": runtime_estimates}, axis=1)
     # jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=300)
     # work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
-    #                                 cpuh_utilization_cutoff=0.75, cap_job_timelimit=False)
+    #                                 cpuh_utilization_cutoff=0.75, dynamic_timelimit=False)
     # _log.info("This message should have been preceeded by a warning about low CPUh utilization, at about 0.33.")
     # assert len(work_allocation) == 9, f"Expected the work allocation to be split amongst 9 workers, was split " \
     #                                   f"amongst {len(work_allocation)} workers instead."
@@ -440,7 +571,7 @@ if __name__ == "__main__":
     #
     # jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=900)
     # work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
-    #                                 cpuh_utilization_cutoff=0.75, cap_job_timelimit=False)
+    #                                 cpuh_utilization_cutoff=0.75, dynamic_timelimit=False)
     # _log.info("This message should not have been preceeded by a warning about low CPUh utilization.")
     # assert len(work_allocation) == 3, f"Expected the work allocation to be split amongst 3 workers, was split " \
     #                                   f"amongst {len(work_allocation)} workers instead."
@@ -448,7 +579,7 @@ if __name__ == "__main__":
     #
     # jobconf = JobConfig(cpus_per_worker=1, cpus_per_node=3, nodes_per_job=1, timelimit=900)
     # work_allocation = allocate_work(job_config=jobconf, runtime_estimates=estimates_input_df,
-    #                                 cpuh_utilization_cutoff=0.95, cap_job_timelimit=True)
+    #                                 cpuh_utilization_cutoff=0.95, dynamic_timelimit=True)
     # _log.info("This message should have been preceeded by a warning about low CPUh utilization.")
     # assert len(work_allocation) == 3, f"Expected the work allocation to be split amongst 3 workers, was split " \
     #                                   f"amongst {len(work_allocation)} workers instead."

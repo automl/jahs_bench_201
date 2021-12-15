@@ -136,16 +136,16 @@ def generate_jobs(args):
         raise RuntimeError(f"Failed to read the sampling profile from {profile_path}.") from e
 
     if cpus_per_worker.nunique() != 1:
-        _log.warning(f"The given profile is heterogenous in the number of CPUs required per worker. The current state "
+        _log.warning(f"The given profile is heterogeneous in the number of CPUs required per worker. The current state "
                      f"of this script does not support such profiles. It is advisable to break up the profile into "
-                     f"multiple parts that are partwise homogenous in the number of CPUs required per worker. ")
+                     f"multiple parts that are part-wise homogenous in the number of CPUs required per worker. ")
     else:
         cpus_per_worker: int = cpus_per_worker.max()
         assert isinstance(cpus_per_worker, int), f"The number of CPUs per worker must be an integer value, was " \
                                                  f"{cpus_per_worker} of type {type(cpus_per_worker)}."
 
     if ("status", "nepochs") in profile.columns:
-        remaining_epochs: pd.Series = profile.status.nepochs - args.epochs
+        remaining_epochs: pd.Series = args.epochs - profile.status.nepochs
     else:
         remaining_epochs: int = args.epochs
 
@@ -156,12 +156,10 @@ def generate_jobs(args):
         cpus_per_worker=cpus_per_worker, cpus_per_node=args.cpus_per_node, nodes_per_job=args.nodes_per_job,
         timelimit=args.timelimit * 60
     )
-    workers = sched_utils.allocate_work(
+    jobs = sched_utils.allocate_work(
         job_config=job_config, profile=profile, cpuh_utilization_cutoff=args.cpuh_utilization_cutoff,
-        cap_job_timelimit=args.dynamic_timelimit
+        dynamic_timelimit=args.dynamic_timelimit, dynamic_nnodes=args.dynamic_nnodes
     )
-
-    sched_utils.save_worker_portfolios(workers=workers, portfolio_dir=args.portfolio_dir)
 
     with open(args.template_dir / "job.template") as fp:
         job_template = Template(fp.read())
@@ -169,18 +167,17 @@ def generate_jobs(args):
     with open(args.template_dir / "config.template") as fp:
         config_template = Template(fp.read())
 
-    ctr = itertools.count(start=1)
-    workerid_offset = 0
-
-    for _ in workers[::job_config.workers_per_job]:
-        jobid = next(ctr)
+    for jobid, job in enumerate(jobs):
         job_name = f"job-{jobid}"
         rootdir = str(args.rootdir)
+
+        job.save_worker_portfolios(portfolio_dir=args.portfolio_dir)
+
         job_str = job_template.substitute(
-            rootdir=rootdir, script_dir=args.script_dir, job_name=job_name, **job_config.template_kwargs
+            rootdir=rootdir, script_dir=args.script_dir, job_name=job_name, **job.config.template_kwargs
         )
         srun_str = config_template.substitute(
-            rootdir=rootdir, workerid_offset=workerid_offset, portfolio_dir=str(args.portfolio_dir),
+            rootdir=rootdir, workerid_offset=job.worker_id_offset, portfolio_dir=str(args.portfolio_dir),
             datadir=str(args.datadir), training_config_args=" ".join(_isolate_training_args(args))
         )
 
@@ -189,9 +186,6 @@ def generate_jobs(args):
 
         with open(args.script_dir / f"{job_name}.config", "w") as fp:
             fp.write(srun_str)
-
-        workerid_offset += job_config.workers_per_job
-
 
 
 def argument_parser():
@@ -270,6 +264,12 @@ def argument_parser():
                                     "maximize the CPUh utilization. The dynamically adjusted time limit can only be "
                                     "lower than that specified by '--timelimit'. If this flag is omitted, the job will "
                                     "have exactly the value of '--timelimit' as its time limit.")
+    subparser_gen.add_argument("--dynamic_nnodes", action="store_true",
+                               help="When this flag is given, the number of nodes requested by each job is dynamically "
+                                    "adjusted to maximize the CPUh utilization. The dynamically adjusted number of "
+                                    "nodes can only be lower than that specified by '--nodes_per_job'. If this flag is "
+                                    "omitted, each job will request exactly '--nodes_per_job' nodes, even if there "
+                                    "aren't enough busy workers to use them.")
     subparser_gen.add_argument("--cpuh_utilization_cutoff", type=float, default=0.8,
                                help="Recommended minimum fraction of total allocated CPUh that should be actively used "
                                     "for computation. Generates a warning when the job allocation's expected CPUh "
