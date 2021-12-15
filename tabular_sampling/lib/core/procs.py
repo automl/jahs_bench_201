@@ -218,6 +218,12 @@ def train(model: NASB201HPOSearchSpace, data_loaders, train_config: AttrDict, di
     old_chkpt_epoch_idx = -1
     timer = utils.SynchroTimer(ping_interval_time=train_config.checkpoint_interval_seconds,
                                ping_interval_epochs=train_config.checkpoint_interval_epochs)
+
+    if train_config.checkpoint_interval_seconds is not None and train_config.checkpoint_interval_epochs is not None:
+        logger.log(logging.WARNING, "Checkpoint logging at regular intervals of time as well as epochs has been "
+                                    "enabled simultaneously. This will cause the checkpoints to be saved at either "
+                                    "regular time intervals or epoch intervals, depending on which is shorter.")
+
     if not train_config.disable_checkpointing:
         checkpoint = utils.Checkpointer(model=model, optimizer=optimizer, scheduler=scheduler, dir_tree=dir_tree,
                                         logger=logger, map_location=device, timer=timer)

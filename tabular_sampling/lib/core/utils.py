@@ -238,9 +238,10 @@ class SynchroTimer:
             else (curr_epoch - self.last_epoch) >= self.ping_interval_epochs
 
         self._signal = time_signal or epoch_signal or force
-        self._update_signals_()
-        self.previous_timestamp = timestamp
-        self.last_epoch = curr_epoch
+        if self._signal:
+            self._update_signals_()
+            self.previous_timestamp = timestamp
+            self.last_epoch = curr_epoch
 
     def ping(self, id: Hashable):
         """ Any listener can call this function along with its registered ID to query the signal. """
