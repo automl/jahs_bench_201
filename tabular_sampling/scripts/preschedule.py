@@ -28,16 +28,16 @@ from naslib.utils.logging import setup_logger
 _log = setup_logger(name='tabular_sampling')
 
 
-def generate_worker_portfolio(workerid: int, nworkers: int, profile: pd.DataFrame) -> pd.DataFrame:
-    _log.debug(f"Found {profile.index.size} configurations to construct portfolio from.")
+def generate_worker_portfolio(workerid: int, nworkers: int, full_profile: pd.DataFrame) -> pd.DataFrame:
+    _log.debug(f"Found {full_profile.index.size} configurations to construct portfolio from.")
 
-    if isinstance(profile, pd.DataFrame):
-        portfolio = profile.loc[profile.index[workerid::nworkers], :]
-    elif isinstance(profile, pd.Series):
-        portfolio = profile[profile.index[workerid::nworkers]]
+    if isinstance(full_profile, pd.DataFrame):
+        portfolio = full_profile.loc[full_profile.index[workerid::nworkers], :]
+    elif isinstance(full_profile, pd.Series):
+        portfolio = full_profile[full_profile.index[workerid::nworkers]]
     else:
         raise RuntimeError("Unexpected control flow sequence. This piece of code should be unreachable. Given "
-                           f"profile of type {type(profile)}.")
+                           f"profile of type {type(full_profile)}.")
     _log.debug(f"Created portfolio of {portfolio.index.size} configs.")
     return portfolio
 
@@ -122,7 +122,10 @@ def init_directory_tree(args):
         sys.exit(-1)
 
     if args.create_tree:
-        sched_utils.prepare_directory_structure(basedirs=basedirs, rootdir=args.rootdir)
+        sched_utils.prepare_directory_structure(
+            basedirs=generate_worker_portfolio(workerid=workerid, nworkers=args.nworkers, full_profile=basedirs),
+            rootdir=args.rootdir
+        )
         return
 
     _log.info("Pre-sampling model configs.")
@@ -133,7 +136,7 @@ def init_directory_tree(args):
         nsamples: pd.Series = nsamples[nsamples.columns[0]].rename("nsamples")
 
     # Only consider this worker's allocation.
-    nsamples = generate_worker_portfolio(workerid=workerid, nworkers=args.nworkers, profile=nsamples)
+    nsamples = generate_worker_portfolio(workerid=workerid, nworkers=args.nworkers, full_profile=nsamples)
 
     fidelities = profile.model_config
     dataset = constants.Datasets.__members__.get(args.dataset)

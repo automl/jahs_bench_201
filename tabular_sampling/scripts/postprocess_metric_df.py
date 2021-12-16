@@ -105,4 +105,4 @@ if __name__ == "__main__":
     loss_200epochs.to_pickle(outdir / "loss_200epochs.pkl.gz")
     loss_all_epochs.to_pickle(outdir / "loss_all_epochs.pkl.gz")
 
-    _log.info("Worker {wid}: Finished postprocessing.")
+    _log.info(f"Worker {wid}: Finished postprocessing.")

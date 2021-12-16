@@ -90,12 +90,15 @@ def load_model_config(task_metrics: AttrDict, model_idx: int) -> Tuple[int, dict
     """ Given the metrics of a task, recover the specified model's configuration. Remember that 'model_idx' uses a
     starting index of 1 and not 0. """
 
-    n_known_samples = len(task_metrics.model_idx)
-    if n_known_samples < model_idx:
-        raise IndexError(f"The specified model index {model_idx} was not found in the task's recorded metrics.")
+    # n_known_samples = len(task_metrics.model_idx)
+    # if n_known_samples < model_idx:
+    try:
+        global_seed = task_metrics.global_seed[model_idx - 1]
+        model_config = task_metrics.model_config[model_idx - 1]
+    except IndexError as e:
+        raise IndexError(f"The specified model index {model_idx} was not found in the task's recorded metrics, which "
+                         f"contained {len(task_metrics.model_idx)} records.") from e
 
-    global_seed = task_metrics.global_seed[model_idx - 1]
-    model_config = task_metrics.model_config[model_idx - 1]
     return global_seed, model_config
 
 

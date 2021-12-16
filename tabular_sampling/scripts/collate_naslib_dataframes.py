@@ -113,4 +113,4 @@ if __name__ == "__main__":
     else:
         collated_df.to_pickle(outfile)
 
-    _log.info("Worker {wid}: Finished metric data collation.")
+    _log.info(f"Worker {wid}: Finished metric data collation.")
