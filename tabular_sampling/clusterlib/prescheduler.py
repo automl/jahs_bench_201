@@ -17,6 +17,7 @@ from tabular_sampling.lib.postprocessing.metric_df_ops import estimate_remaining
 _log = logging.getLogger(__name__)
 fidelity_params = constants.fidelity_params
 fidelity_types = constants.fidelity_types
+logdir_name = "logs"
 
 
 class JobConfig(object):
@@ -423,6 +424,8 @@ def prepare_directory_structure(basedirs: pd.Series, rootdir: Path):
 
     assert rootdir.exists(), f"The root directory {rootdir} must be created before the prepare function can be called."
     index_levels = [constants.MetricDFIndexLevels.taskid.value, constants.MetricDFIndexLevels.modelid.value]
+    logdir = rootdir / logdir_name
+    logdir.mkdir(exist_ok=True, parents=False)
 
     for level in index_levels:
         assert level in basedirs.index.names, f"The input Series must have {level} as an index level."

@@ -24,27 +24,6 @@ from tabular_sampling.lib.core import datasets as dataset_lib, utils
 from tabular_sampling.lib.core.procs import train
 from tabular_sampling.search_space import NASB201HPOSearchSpace
 
-# _log = logging.getLogger(__name__)
-# recognized_train_config_overrides = {
-#     "epochs": dict(
-#         type=int, default=None,
-#         help="Number of epochs that each sampled architecture should be trained for. If not specified, uses the value "
-#              "specified in the original training configuration."),
-#     "disable_checkpointing": dict(
-#         action="store_true",
-#         help="When given, checkpointing of model training is disabled. By default, model training is checkpointed "
-#              "either every X seconds or Y epochs, whichever occurs first. Check --checkpoint_interval_seconds and "
-#              "--checkpoint_interval_epochs."),
-#     "checkpoint_interval_seconds": dict(
-#         type=int, default=None,
-#         help="The time interval between subsequent model training checkpoints, in seconds. If not specified, uses the "
-#              "value specified in the original training configuration."),
-#     "checkpoint_interval_epochs": dict(
-#         type=int, default=None,
-#         help="The interval between subsequent model training checkpoints, in epochs. If not specified, uses the value "
-#              "specified in the original training configuration.")
-# }
-
 
 def argument_parser():
     parser = argparse.ArgumentParser()
@@ -140,7 +119,6 @@ def instantiate_model(model_config: dict, dataset: Datasets) -> NASB201HPOSearch
 
     return search_space
 
-# TODO: Update/check for consistency with updated pre-scheduler
 # TODO: Extend this script to also include stage 2 verification functionality - loading a specific checkpoint, training
 #  it for a specified number of epochs, and verifying the metric data. Save the new metrics as alternative data points
 #  for a potential analysis of the various metric distributions
@@ -208,42 +186,24 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
 
 
 if __name__ == "__main__":
-
-    # Setup this module's logger
-    # fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
-    # ch = logging.StreamHandler(stream=sys.stdout)
-    # ch.setLevel(logging.DEBUG)
-    # ch.setFormatter(fmt)
-    # _log.addHandler(ch)
-    # _log.setLevel(logging.INFO)
-    #
-    # sched_utils._log.addHandler(ch)
-    # sched_utils._log.setLevel(logging.INFO)
-
     ## Parse CLI
     args = argument_parser().parse_args()
 
-    # train_config_overrides = parse_training_overrides(args)
     train_config_overrides = get_tranining_config_from_args(args)
 
     workerid = args.workerid + args.workerid_offset
     worker_config = sched_utils.WorkerConfig(worker_id=workerid, portfolio_dir=args.portfolio_dir)
     worker_config.load_portfolio()
 
-    logdir: Path = args.rootdir / "worker_logs"
+    logdir: Path = args.rootdir / sched_utils.logdir_name
     logdir.mkdir(exist_ok=True, parents=False)
     logger = naslib_logging.setup_logger(str(logdir / f"{workerid}.log"), name='tabular_sampling')
     if args.debug:
-        # _log.setLevel(logging.DEBUG)
-        # sched_utils._log.setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.WARNING)
 
     for taskid, model_idx, basedir in worker_config.iterate_portfolio(rootdir=args.rootdir):
-        # conf = worker_config.portfolio.loc[(taskid, model_idx)]
-        # basedir = args.rootdir / "-".join(["-".join([p, str(conf[p])]) for p in fidelity_params]) / "tasks"
-        # run_task(basedir=basedir, taskid=taskid, )
         resume_work(basedir, taskid, model_idx, datadir=args.datadir, debug=args.debug, logger=logger,
                     **train_config_overrides)
 

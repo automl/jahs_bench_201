@@ -24,7 +24,7 @@ from tabular_sampling.lib.core import constants
 
 from naslib.utils.logging import setup_logger
 
-# _log = logging.getLogger(__name__)
+
 _log = setup_logger(name='tabular_sampling')
 
 
@@ -50,20 +50,10 @@ def generate_worker_portfolio(workerid: int, nworkers: int, configs_pth: Path) -
 
 # noinspection PyShadowingNames,PyProtectedMember
 def _handle_debug(args):
-    # fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
-    # ch = logging.StreamHandler(stream=sys.stdout)
-    # ch.setLevel(logging.DEBUG)
-    # ch.setFormatter(fmt)
-    # _log.addHandler(ch)
-    # _log.setLevel(logging.INFO)
-    # sched_utils._log.addHandler(ch)
-
     if args.debug:
         _log.setLevel(logging.DEBUG)
-        # sched_utils._log.setLevel(logging.DEBUG)
     else:
         _log.setLevel(logging.INFO)
-        # sched_utils._log.setLevel(logging.INFO)
 
 
 # noinspection PyShadowingNames
