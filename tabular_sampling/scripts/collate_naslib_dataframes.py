@@ -98,14 +98,19 @@ if __name__ == "__main__":
         basedir = args.basedir
         outdir = args.basedir
 
-    _log.info(f"Beginning metric data collation at {basedir}.")
+    _log.info(f"Worker {wid}: Beginning metric data collation at {basedir}.")
 
-    collated_df = collation.collate_tasks(basedir=basedir, cleanup=args.cleanup, save_summary=args.summarize,
-                                          anonymize=args.anonymize)
+    try:
+        collated_df = collation.collate_tasks(basedir=basedir, cleanup=args.cleanup, save_summary=args.summarize,
+                                              anonymize=args.anonymize)
+    except Exception as e:
+        _log.warning(f"Worker {wid}: Could not collate metrics DataFrames. Exiting. Cause: {str(e)}")
+        sys.exit(1)
+
     outfile: Path = outdir / "metrics.pkl.gz" if args.file is None else args.file.resolve()
     if collated_df is None:
-        _log.info(f"No valid metric data found at: {args.basedir / subdir}")
+        _log.info(f"Worker {wid}: No valid metric data found at: {args.basedir / subdir}")
     else:
         collated_df.to_pickle(outfile)
 
-    _log.info("Finished metric data collation.")
+    _log.info("Worker {wid}: Finished metric data collation.")

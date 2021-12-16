@@ -65,8 +65,12 @@ if __name__ == "__main__":
     else:
         basedir = args.basedir
 
-    _log.info(f"Beginning metric data postprocessing at {basedir}.")
-    df = metric_ops.load_metric_df(basedir=basedir)
+    _log.info(f"Worker {wid}: Beginning metric data postprocessing at {basedir}.")
+    try:
+        df = metric_ops.load_metric_df(basedir=basedir)
+    except Exception as e:
+        _log.warning(f"Worker {wid}: Could not load metric DataFrame. Exiting. Cause: {str(e)}")
+        sys.exit(1)
 
     fidelity_confs = [("model_config", f) for f in fidelity_params]
     configs = metric_ops.get_configs(basedir=None, df=df)
@@ -101,4 +105,4 @@ if __name__ == "__main__":
     loss_200epochs.to_pickle(outdir / "loss_200epochs.pkl.gz")
     loss_all_epochs.to_pickle(outdir / "loss_all_epochs.pkl.gz")
 
-    _log.info("Finished postprocessing.")
+    _log.info("Worker {wid}: Finished postprocessing.")

@@ -28,22 +28,16 @@ from naslib.utils.logging import setup_logger
 _log = setup_logger(name='tabular_sampling')
 
 
-def generate_worker_portfolio(workerid: int, nworkers: int, configs_pth: Path) -> pd.DataFrame:
-    configs: pd.DataFrame = pd.read_pickle(configs_pth)
-    _log.debug(f"Found {configs.index.size} configurations to construct portfolio from.")
+def generate_worker_portfolio(workerid: int, nworkers: int, profile: pd.DataFrame) -> pd.DataFrame:
+    _log.debug(f"Found {profile.index.size} configurations to construct portfolio from.")
 
-    assert isinstance(configs, pd.DataFrame), f"The configs path should lead to a DataFrame, was {type(configs)}."
-    assert isinstance(configs.index, pd.MultiIndex), \
-        f"The configs DataFrame's index has not been configured properly. It should be a MultiIndex, was " \
-        f"{type(configs.index)}"
-    assert constants.MetricDFIndexLevels.taskid.value in configs.index.names, \
-        f"Configs DataFrame index has not been configured properly, could not find " \
-        f"{constants.MetricDFIndexLevels.taskid.value}"
-    assert constants.MetricDFIndexLevels.modelid.value in configs.index.names, \
-        f"Configs DataFrame index has not been configured properly, could not find " \
-        f"{constants.MetricDFIndexLevels.modelid.value}"
-
-    portfolio = configs.loc[configs.index[workerid::nworkers], :]
+    if isinstance(profile, pd.DataFrame):
+        portfolio = profile.loc[profile.index[workerid::nworkers], :]
+    elif isinstance(profile, pd.Series):
+        portfolio = profile[profile.index[workerid::nworkers]]
+    else:
+        raise RuntimeError("Unexpected control flow sequence. This piece of code should be unreachable. Given "
+                           f"profile of type {type(profile)}.")
     _log.debug(f"Created portfolio of {portfolio.index.size} configs.")
     return portfolio
 
@@ -117,7 +111,7 @@ def init_directory_tree(args):
     workerid = args.workerid_offset + args.workerid
 
     try:
-        profile = generate_worker_portfolio(workerid=workerid, nworkers=args.nworkers, configs_pth=profile_path)
+        profile = pd.read_pickle(profile_path)
         assert profile.index.is_unique, "Each row index in the profile must be unique throughout the profile."
         basedirs: pd.Series = profile.job_config["basedir"]
     except Exception as e:
@@ -129,6 +123,7 @@ def init_directory_tree(args):
 
     if args.create_tree:
         sched_utils.prepare_directory_structure(basedirs=basedirs, rootdir=args.rootdir)
+        return
 
     _log.info("Pre-sampling model configs.")
 
@@ -136,6 +131,9 @@ def init_directory_tree(args):
     nsamples = basedirs.index.to_frame(index=False).groupby(taskid_levelname).max()
     if isinstance(nsamples, pd.DataFrame):
         nsamples: pd.Series = nsamples[nsamples.columns[0]].rename("nsamples")
+
+    # Only consider this worker's allocation.
+    nsamples = generate_worker_portfolio(workerid=workerid, nworkers=args.nworkers, profile=nsamples)
 
     fidelities = profile.model_config
     dataset = constants.Datasets.__members__.get(args.dataset)
@@ -207,7 +205,7 @@ def init_directory_tree(args):
         budget -= duration
         start = end
 
-    _log.debug(f"Worker {workerid}: Finished sub-program: initialize directory tree.")
+    _log.info(f"Worker {workerid}: Finished sub-program: initialize directory tree.")
 
 
 # noinspection PyShadowingNames
@@ -227,10 +225,10 @@ def generate_jobs(args):
         _log.warning(f"The given profile is heterogeneous in the number of CPUs required per worker. The current state "
                      f"of this script does not support such profiles. It is advisable to break up the profile into "
                      f"multiple parts that are part-wise homogenous in the number of CPUs required per worker. ")
-    else:
-        cpus_per_worker: int = cpus_per_worker.max()
-        assert isinstance(cpus_per_worker, int), f"The number of CPUs per worker must be an integer value, was " \
-                                                 f"{cpus_per_worker} of type {type(cpus_per_worker)}."
+
+    cpus_per_worker: int = cpus_per_worker.max()
+    assert isinstance(cpus_per_worker, int), f"The number of CPUs per worker must be an integer value, was " \
+                                             f"{cpus_per_worker} of type {type(cpus_per_worker)}."
 
     if ("status", "nepochs") in profile.columns:
         remaining_epochs: pd.Series = args.epochs - profile.status.nepochs
@@ -255,10 +253,20 @@ def generate_jobs(args):
     with open(args.template_dir / "config.template") as fp:
         config_template = Template(fp.read())
 
+    # Clean the directories of old files first, if needed
+    for f in args.script_dir.rglob("*.job"):
+        os.remove(f)
+    for f in args.script_dir.rglob("*.config"):
+        os.remove(f)
+    for f in args.portfolio_dir.rglob("*.pkl.gz"):
+        os.remove(f)
+
     for jobid, job in enumerate(jobs):
+        _log.info(f"Saving files for job #{jobid}.")
         job_name = f"job-{jobid}"
         rootdir = str(args.rootdir)
 
+        _log.info(f"Saving portfolios.")
         job.save_worker_portfolios(portfolio_dir=args.portfolio_dir)
 
         job_str = job_template.substitute(
@@ -269,11 +277,14 @@ def generate_jobs(args):
             datadir=str(args.datadir), training_config_args=" ".join(_isolate_training_args(args))
         )
 
+        _log.info("Saving job and config.")
         with open(args.script_dir / f"{job_name}.job", "w") as fp:
             fp.write(job_str)
 
         with open(args.script_dir / f"{job_name}.config", "w") as fp:
             fp.write(srun_str)
+
+    _log.info("Finished generating all job files.")
 
 
 def argument_parser():

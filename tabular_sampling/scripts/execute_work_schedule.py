@@ -136,8 +136,20 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
     # No timer, since this is read-only - reads the pre-sampled configs from disk
     _ = utils.MetricLogger(dir_tree=dir_tree, metrics=task_metrics, timer=None,
                            set_type=utils.MetricLogger.MetricSet.task, logger=logger)
-    global_seed, model_config = load_model_config(task_metrics, model_idx)
-    train_config, dataset = reload_train_config(dir_tree, **training_config_overrides)
+
+    try:
+        global_seed, model_config = load_model_config(task_metrics, model_idx)
+    except IndexError:
+        logger.warning(f"Could not resume working on model config of task {taskid}, model index {model_idx} due to an "
+                       f"error:", exc_info=True)
+        return
+
+    try:
+        train_config, dataset = reload_train_config(dir_tree, **training_config_overrides)
+    except RuntimeError:
+        logger.warning(f"Could not resume working on model config of task {taskid}, model index {model_idx} due to an "
+                       f"error:", exc_info=True)
+        return
 
     logger.setLevel(logging.DEBUG if debug else logging.INFO)
 
@@ -166,7 +178,7 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
         )
 
     except Exception as e:
-        logger.info("Architecture Training failed.")
+        logger.info("Architecture Training failed.", exc_info=True)
         error_description = {
             "exception": traceback.format_exc(),
             "config": model_config,
@@ -192,8 +204,6 @@ if __name__ == "__main__":
     train_config_overrides = get_tranining_config_from_args(args)
 
     workerid = args.workerid + args.workerid_offset
-    worker_config = sched_utils.WorkerConfig(worker_id=workerid, portfolio_dir=args.portfolio_dir)
-    worker_config.load_portfolio()
 
     logdir: Path = args.rootdir / sched_utils.logdir_name
     logdir.mkdir(exist_ok=True, parents=False)
@@ -202,6 +212,13 @@ if __name__ == "__main__":
         logger.setLevel(logging.DEBUG)
     else:
         logger.setLevel(logging.WARNING)
+
+    worker_config = sched_utils.WorkerConfig(worker_id=workerid, portfolio_dir=args.portfolio_dir)
+    try:
+        worker_config.load_portfolio()
+    except FileNotFoundError as e:
+        logger.warning(f"Worker {workerid} failed to load a portfolio. Ignore this warning if the job specification "
+                       f"had more workers than needed. Cause: {str(e)}")
 
     for taskid, model_idx, basedir in worker_config.iterate_portfolio(rootdir=args.rootdir):
         resume_work(basedir, taskid, model_idx, datadir=args.datadir, debug=args.debug, logger=logger,
