@@ -10,6 +10,8 @@ import logging
 import json
 from pathlib import Path
 import sys
+
+import pandas as pd
 import torch
 import traceback
 from typing import Tuple, Sequence
@@ -43,9 +45,8 @@ def argument_parser():
                              "multiple smaller parts.")
     parser.add_argument("--datadir", type=Path, default=dataset_lib.get_default_datadir(),
                         help="The directory where all datasets are expected to be stored.")
-    parser.add_argument("--portfolio_dir", type=Path, default=None,
-                        help="Path to a directory from where each worker will be able to read its own allocated "
-                             "portfolio of configurations to evaluate.")
+    parser.add_argument("--portfolio", type=Path, default=None,
+                        help="Path to a pickled Pandas Series that contains the portfolio for this job's workers.")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode (very verbose) logging.")
 
     # Unpack the training config overrides into CLI flags.
@@ -216,13 +217,19 @@ if __name__ == "__main__":
     else:
         logger.setLevel(logging.WARNING)
 
-    worker_config = sched_utils.WorkerConfig(worker_id=workerid, portfolio_dir=args.portfolio_dir)
-    try:
-        worker_config.load_portfolio()
-    except FileNotFoundError as e:
-        logger.warning(f"Worker {workerid} failed to load a portfolio. Ignore this warning if the job specification "
-                       f"had more workers than needed. Cause: {str(e)}")
+    portfolio = pd.read_pickle(args.portfolio)
+    if "worker_id" not in portfolio.index.names:
+        raise ValueError(f"The given portfolio at {args.portfolio} has not been configured properly, its index lacks "
+                         f"the level for a worker ID. Portfolio index level names: {portfolio.index.names}")
+    if workerid not in portfolio.index.unique("worker_id"):
+        logger.warning(f"Worker {workerid} not present in the job's portfolio. Ignore this warning if the job "
+                       f"specification had more workers than needed, otherwise, check the portfolio file "
+                       f"{args.portfolio}")
         sys.exit(1)
+
+    portfolio = portfolio.xs(workerid, level="worker_id")
+    # TODO: Remove worker-specific portfolio_dir and relative functionality once it is confirmed to be superfluous
+    worker_config = sched_utils.WorkerConfig(worker_id=workerid, portfolio=portfolio)
 
     for taskid, model_idx, basedir in worker_config.iterate_portfolio(rootdir=args.rootdir):
         resume_work(basedir, taskid, model_idx, datadir=args.datadir, debug=args.debug, logger=logger,

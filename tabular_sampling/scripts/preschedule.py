@@ -249,7 +249,7 @@ def generate_jobs(args):
     jobs = sched_utils.allocate_work(
         job_config=job_config, profile=profile, cpuh_utilization_cutoff=args.cpuh_utilization_cutoff,
         dynamic_timelimit=args.dynamic_timelimit, dynamic_nnodes=args.dynamic_nnodes,
-        remainder_pth=args.profile_remainder, worker_id_offset=args.workerid_offset
+        remainder_pth=args.profile_remainder, worker_id_offset=args.workerid_start
     )
 
     with open(args.template_dir / "job.template") as fp:
@@ -266,19 +266,19 @@ def generate_jobs(args):
     for f in args.portfolio_dir.rglob("*.pkl.gz"):
         os.remove(f)
 
-    for jobid, job in enumerate(jobs, start=args.jobid_offset):
+    for jobid, job in enumerate(jobs, start=args.jobid_start):
         _log.info(f"Saving files for job #{jobid}.")
         job_name = f"job-{jobid}"
         rootdir = str(args.rootdir)
 
         _log.info(f"Saving portfolios.")
-        job.save_worker_portfolios(portfolio_dir=args.portfolio_dir)
+        portoflio_fn = job.save_worker_portfolios(jobid=jobid, portfolio_dir=args.portfolio_dir)
 
         job_str = job_template.substitute(
             rootdir=rootdir, script_dir=args.script_dir, job_name=job_name, **job.config.template_kwargs
         )
         srun_str = config_template.substitute(
-            rootdir=rootdir, workerid_offset=job.worker_id_offset, portfolio_dir=str(args.portfolio_dir),
+            rootdir=rootdir, workerid_offset=job.worker_id_offset, portfolio=str(portoflio_fn),
             datadir=str(args.datadir), training_config_args=" ".join(_isolate_training_args(args))
         )
 
@@ -290,7 +290,7 @@ def generate_jobs(args):
             fp.write(srun_str)
 
     _log.info(f"Finished generating all job files. To continue adding jobs to this job allocation, use the Job ID "
-              f"Offset {args.jobid_offset + len(jobs)}")
+              f"Offset {args.jobid_start + len(jobs)}")
 
 
 def argument_parser():
@@ -423,12 +423,12 @@ def argument_parser():
                                     "all configurations specified in the sampling profile have bee allocated to a "
                                     "worker's portfolio, this file is not created, but any existing file will remain"
                                     "untouched.")
-    subparser_init.add_argument("--jobid-offset", type=int, default=0,
+    subparser_gen.add_argument("--jobid_start", type=int, default=0,
                                 help="A fixed offset from 0 for all jobs produced by this run. This allows multiple "
                                      "executions of this script to be used to chain together multiple jobs without "
                                      "them interfering with each other by, e.g., continuously changing the input "
                                      "profile.")
-    subparser_init.add_argument("--workerid-offset", type=int, default=0,
+    subparser_gen.add_argument("--workerid_start", type=int, default=0,
                                 help="A fixed offset from 0 for the workers of all jobs produced by this run. This "
                                      "allows multiple executions of this script to be used to chain together multiple "
                                      "jobs without them interfering with each other by, e.g., continuously changing "

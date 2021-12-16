@@ -230,14 +230,25 @@ class JobAllocation:
             _log.debug(f"Re-adjusted the job length to (DD-HH:MM): {JobConfig.timestr(job_config.timelimit)}. New CPUh "
                        f"utilization is at {self.cpuh_utilization * 100 / self.cpuh_demand:.2f}%")
 
-    def save_worker_portfolios(self, portfolio_dir: Path):
+    def save_worker_portfolios(self, jobid: int, portfolio_dir: Path) -> Path:
         """ Saves the respective portfolios for each worker in the given directory 'portfolio_dir'. The directory
         is created if it doesn't already exist. """
 
         portfolio_dir.mkdir(exist_ok=True, parents=False)
-        for worker in self.workers:
-            worker.portfolio_dir = portfolio_dir
-            worker.portfolio.to_pickle(worker.portolio_file)
+        nworkers = len(self.workers)
+        portfolios = {w.worker_id: w.portfolio for w in self.workers}
+        job_portfolio = pd.concat(portfolios, axis=0)
+        # TODO: Save index level name in constants
+        job_portfolio.index = job_portfolio.index.set_names("worker_id", level=0)
+        portfolio_fn = portfolio_dir / f"portfolio_{jobid}.pkl.gz"
+        job_portfolio.to_pickle(portfolio_fn)
+        return portfolio_fn
+        # for i, worker in enumerate(self.workers, start=1):
+        #     worker.portfolio_dir = portfolio_dir
+        #     worker.portfolio.to_pickle(worker.portolio_file)
+        #
+        #     if (i % (5 * max(1, nworkers // 100))) == 0:
+        #         _log.info(f"Saved {i / nworkers} portfolios ({i * 100 / nworkers:.2f}%).")
 
 
 def fidelity_basedir_map(c: Union[pd.Series, dict]):
@@ -359,7 +370,7 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
     if underutilized:
         _log.warning(f"The current job setup may not utilize all available workers very well. The current setup "
                      f"demands {sum(demand):<,.2f} CPUh and has a predicted approximate CPUh utilization of "
-                     f"{avg_utilization * 100:.2f}%. . Individual jobs have CPUh utilization in the range of "
+                     f"{avg_utilization * 100:.2f}%. Individual jobs have CPUh utilization in the range of "
                      f"{min(utilization) * 100:.2f}% to {max(utilization) * 100:.2f}%, spread over {nworkers} workers. "
                      f"To continue adding workers to this job allocation, use the worker ID offset {worker_id_offset}.")
     else:
