@@ -408,15 +408,40 @@ class MetricLogger(object):
         task = enum.auto()
         default = enum.auto()
 
-    def __init__(self, dir_tree: DirectoryTree, metrics: dict, timer: Optional[SynchroTimer] = None,
-                 set_type: MetricSet = MetricSet.default, logger: logging.Logger = None):
+    def __init__(self, dir_tree: DirectoryTree, metrics: Dict, timer: Optional[SynchroTimer] = None,
+                 set_type: MetricSet = MetricSet.default, logger: logging.Logger = None, where: Path = None,
+                 safe_load: bool = True):
+        """
+        Setup a MetricLogger instance.
+
+        :param dir_tree: DirectoryTree
+            An instance of DirectoryTree that has already been initialized with the parameters appropriate for usage
+            with this object, i.e. base directory, taskid and model index depending on which level of the tree this
+            MetricLogger is intended to interface with.
+        :param metrics: dict-like
+            A dict-like object that will store the actual metric data. This object can be initialized with keys and no
+            data before being passed to the MetricLogger, in which case the data will be filled in by loading it from
+            disk.
+        :param timer: SynchroTimer
+            Used to coordinate the timing of saving metrics to disk with other parts of the code.
+        :param set_type: Enum
+            One of MetricLogger.MetricSet to indicate which level of the directory this logger will be interfacing with.
+        :param logger: logging.Logger
+            Used to generate log messages. Optional.
+        :param where: Path
+            An optional Path to a directory containing *.pkl.gz files, which should be compatible pickled Pandas
+            DataFrames used to initialize the metrics dict. If None, the directory is read from the 'dir_tree'.
+        :param safe_load: bool
+            If True (default), failing to load the latest metrics log raises a RuntimeError. Otherwise, the next most
+            recent readable metrics log is used instead.
+        """
         self.dir_tree = dir_tree
         self.metrics = metrics
         self.timer = timer
         self.set_type = set_type
         self.logger = logger if logger is not None else logging.getLogger(__name__)
         self.elapsed_runtime = 0. if self.timer is None else self.timer.previous_timestamp
-        self.resume_latest_saved_metrics()
+        self.resume_latest_saved_metrics(where=where, safe_load=safe_load)
 
     @property
     def timer(self) -> SynchroTimer:

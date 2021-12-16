@@ -199,7 +199,7 @@ def argument_parser():
                              "these modes exactly in the order of their appearance above. 'prepare' runs a series of "
                              "preparatory procedures, such as creating the backup directory tree. 'cleanup' performs a "
                              "very simple and quick check to remove all checkpoints and metrics logs that are "
-                             "unreadable. 'prune' is more involved that 'cleanup' and checks the checkpoints and "
+                             "unreadable. 'prune' is more involved than 'cleanup' and checks the checkpoints and "
                              "metrics logs for consistency. Any such pairs of files that are found to not be in sync "
                              "with each other, as well as subsequent pairs that would be affected, are removed. If "
                              "either of these two operations results in changes to the stored data, the respective "

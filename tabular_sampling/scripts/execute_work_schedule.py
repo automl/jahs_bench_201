@@ -222,6 +222,7 @@ if __name__ == "__main__":
     except FileNotFoundError as e:
         logger.warning(f"Worker {workerid} failed to load a portfolio. Ignore this warning if the job specification "
                        f"had more workers than needed. Cause: {str(e)}")
+        sys.exit(1)
 
     for taskid, model_idx, basedir in worker_config.iterate_portfolio(rootdir=args.rootdir):
         resume_work(basedir, taskid, model_idx, datadir=args.datadir, debug=args.debug, logger=logger,
