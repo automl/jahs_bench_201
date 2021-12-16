@@ -248,7 +248,8 @@ def generate_jobs(args):
     )
     jobs = sched_utils.allocate_work(
         job_config=job_config, profile=profile, cpuh_utilization_cutoff=args.cpuh_utilization_cutoff,
-        dynamic_timelimit=args.dynamic_timelimit, dynamic_nnodes=args.dynamic_nnodes
+        dynamic_timelimit=args.dynamic_timelimit, dynamic_nnodes=args.dynamic_nnodes,
+        remainder_pth=args.profile_remainder, worker_id_offset=args.workerid_offset
     )
 
     with open(args.template_dir / "job.template") as fp:
@@ -265,7 +266,7 @@ def generate_jobs(args):
     for f in args.portfolio_dir.rglob("*.pkl.gz"):
         os.remove(f)
 
-    for jobid, job in enumerate(jobs):
+    for jobid, job in enumerate(jobs, start=args.jobid_offset):
         _log.info(f"Saving files for job #{jobid}.")
         job_name = f"job-{jobid}"
         rootdir = str(args.rootdir)
@@ -288,7 +289,8 @@ def generate_jobs(args):
         with open(args.script_dir / f"{job_name}.config", "w") as fp:
             fp.write(srun_str)
 
-    _log.info("Finished generating all job files.")
+    _log.info(f"Finished generating all job files. To continue adding jobs to this job allocation, use the Job ID "
+              f"Offset {args.jobid_offset + len(jobs)}")
 
 
 def argument_parser():
@@ -414,6 +416,23 @@ def argument_parser():
     subparser_gen.add_argument("--portfolio_dir", type=Path,
                                help="Path to a directory from where each worker will be able to store its own "
                                     "allocated portfolio of configurations to evaluate.")
+    subparser_gen.add_argument("--profile_remainder", type=Path, default=None,
+                               help="Full or relative (to the current working directory) path to *.pkl.gz file, in "
+                                    "which any configurations from the profile that could not be fit into the given "
+                                    "resource constraints will be stored. If the file exists, it is overwritten. If "
+                                    "all configurations specified in the sampling profile have bee allocated to a "
+                                    "worker's portfolio, this file is not created, but any existing file will remain"
+                                    "untouched.")
+    subparser_init.add_argument("--jobid-offset", type=int, default=0,
+                                help="A fixed offset from 0 for all jobs produced by this run. This allows multiple "
+                                     "executions of this script to be used to chain together multiple jobs without "
+                                     "them interfering with each other by, e.g., continuously changing the input "
+                                     "profile.")
+    subparser_init.add_argument("--workerid-offset", type=int, default=0,
+                                help="A fixed offset from 0 for the workers of all jobs produced by this run. This "
+                                     "allows multiple executions of this script to be used to chain together multiple "
+                                     "jobs without them interfering with each other by, e.g., continuously changing "
+                                     "the input profile.")
 
     # Unpack the training config into CLI flags.
     for k, v in constants.training_config.items():

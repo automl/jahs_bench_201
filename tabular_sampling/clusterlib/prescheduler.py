@@ -250,7 +250,8 @@ def fidelity_basedir_map(c: Union[pd.Series, dict]):
 
 # noinspection PyPep8
 def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization_cutoff: float = 0.75,
-                  dynamic_timelimit: bool = True, dynamic_nnodes: bool = True) -> Sequence[JobAllocation]:
+                  dynamic_timelimit: bool = True, dynamic_nnodes: bool = True, remainder_pth: Path = None,
+                  worker_id_offset: int = 0) -> Sequence[JobAllocation]:
     """
     Given a job configuration and estimates for how long each model needs to run for, generates a work schedule in
     the form of a list of WorkerConfig objects that have been allocated their respective portfolios.
@@ -318,7 +319,6 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
 
     current_profile = profile
     jobs = []
-    worker_id_offset = 0
     while True:
         job_allocation = JobAllocation(config=job_config, worker_id_offset=worker_id_offset,
                                        dynamic_nnodes=dynamic_nnodes, dynamic_timelimit=dynamic_timelimit)
@@ -330,6 +330,11 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
                          f"for {remainder.index.size} configs with an average runtime requirement of "
                          f"{JobConfig.timestr(remainder.required.runtime.mean())} (DD-HH:MM). The remaining configs "
                          f"were distributed across {len(jobs)} jobs.")
+
+            if remainder_pth is not None:
+                _log.info(f"Saving {remainder.index.size} leftover configs at {remainder_pth}")
+                remainder.to_pickle(remainder_pth)
+
             break
         else:
             # A job allocation has been successful. Add it to the list of jobs.
@@ -348,15 +353,20 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
     avg_utilization = sum(utilization) / sum(demand)
     utilization = [u / d for u, d in zip(utilization, demand)]
     underutilized = avg_utilization  < cpuh_utilization_cutoff
+
+    nworkers = sum([j.config.workers_per_job for j in jobs])
+
     if underutilized:
         _log.warning(f"The current job setup may not utilize all available workers very well. The current setup "
                      f"demands {sum(demand):<,.2f} CPUh and has a predicted approximate CPUh utilization of "
                      f"{avg_utilization * 100:.2f}%. . Individual jobs have CPUh utilization in the range of "
-                     f"{min(utilization) * 100:.2f}% to {max(utilization) * 100:.2f}%")
+                     f"{min(utilization) * 100:.2f}% to {max(utilization) * 100:.2f}%, spread over {nworkers} workers. "
+                     f"To continue adding workers to this job allocation, use the worker ID offset {worker_id_offset}.")
     else:
         _log.info(f"The job setup has an overall CPUh utilization factor of {avg_utilization * 100:.2f}%. Individual "
                   f"jobs have CPUh utilization in the range of {min(utilization) * 100:.2f}% to "
-                  f"{max(utilization) * 100:.2f}%")
+                  f"{max(utilization) * 100:.2f}%, spread over {nworkers} workers. To continue adding workers to this "
+                  f"job allocation, use the worker ID offset {worker_id_offset}.")
 
     return jobs
 
