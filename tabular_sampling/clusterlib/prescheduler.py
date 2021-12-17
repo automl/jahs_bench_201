@@ -153,11 +153,12 @@ class JobAllocation:
         """ Total active runtime of all workers. """
         return sum([allocation[0] for allocation in self.assignment.values()]) * self.config.cpus_per_worker / 3600
 
-    def schedule_work(self, profile: pd.DataFrame) -> pd.DataFrame:
+    def schedule_work(self, profile: pd.DataFrame, runtime_estimates: pd.Series) -> pd.DataFrame:
         """ Attempts to greedily fill up all available workers within this job allocation and returns the part of the
         input profile that could not be fit within this job allocation. """
 
-        runtime_estimates: pd.Series = profile.required.runtime
+        assert profile.index.isin(runtime_estimates.index).all(), "Mismatch between the index of the given runtime " \
+                                                                  "estimates and the profile."
         job_config = self.config
         workers = self.workers
         assignment = self.assignment
@@ -177,7 +178,7 @@ class JobAllocation:
             return None
 
         remainder = []
-        for conf in runtime_estimates.index:
+        for conf in profile.index:
             runtime = runtime_estimates[conf]
             assigned_worker = find_next_eligible_worker(required_runtime=runtime)
             if assigned_worker is None:
@@ -260,11 +261,11 @@ def fidelity_basedir_map(c: Union[pd.Series, dict]):
 
 
 # noinspection PyPep8
-def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization_cutoff: float = 0.75,
+def allocate_work(job_config: JobConfig, profile: pd.DataFrame, epochs: int, cpuh_utilization_cutoff: float = 0.75,
                   dynamic_timelimit: bool = True, dynamic_nnodes: bool = True, remainder_pth: Path = None,
-                  worker_id_offset: int = 0) -> Sequence[JobAllocation]:
+                  worker_id_offset: int = 0, squish_configs: bool = False) -> Sequence[JobAllocation]:
     """
-    Given a job configuration and estimates for how long each model needs to run for, generates a work schedule in
+    Given a job configuration with estimates of each model's required runtime per epoch, generates a work schedule in
     the form of a list of WorkerConfig objects that have been allocated their respective portfolios.
     'runtime_estimates' should be a pandas DataFrame with a MultiIndex index containing model IDs as defined by the
     unique tuple (<taskid>, <model_idx>), and MultiIndex columns with values [('model_config', <conf>)] and
@@ -273,22 +274,35 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
     to be scheduled and n is the number of workers available.
     """
 
-    runtime_estimates: pd.Series = profile.required.runtime
+    per_epoch_runtimes: pd.Series = profile.required.runtime
+
+    if ("status", "nepochs") in profile.columns:
+        remaining_epochs: pd.Series = epochs - profile.status.nepochs
+    else:
+        remaining_epochs: int = epochs
+
+    runtime_estimates: pd.Series = per_epoch_runtimes * remaining_epochs
     runtime_estimates = runtime_estimates.sort_values(axis=0, ascending=False)
 
-    sel = runtime_estimates.where(runtime_estimates > 0.).notna()
+    sel = runtime_estimates > 0.
     if sel.index.size != profile.index.size:
         _log.info(f"Filtering out {profile.index.size - sel.index.size} negative values for required runtime.")
 
-    profile = profile.loc[sel]
-    runtime_estimates = runtime_estimates.loc[sel]
+    runtime_estimates = runtime_estimates[sel]
+    profile = profile.loc[runtime_estimates.index]
 
     sel = runtime_estimates.notna()
     if sel.index.size != profile.index.size:
         _log.info(f"Filtering out {profile.index.size - sel.index.size} NaN values for required runtime.")
 
-    profile = profile.loc[sel]
-    runtime_estimates = runtime_estimates.loc[sel]
+    runtime_estimates = runtime_estimates[sel]
+    profile = profile.loc[runtime_estimates.index]
+
+    if squish_configs:
+        squishable = runtime_estimates[runtime_estimates > job_config.timelimit]
+        _log.info(f"Attempting to squish the {squishable.index.size} extra long configs into the given job "
+                  f"resource allocation.")
+        runtime_estimates[squishable.index] = job_config.timelimit
 
     total_required_budget = runtime_estimates.sum()
 
@@ -333,14 +347,15 @@ def allocate_work(job_config: JobConfig, profile: pd.DataFrame, cpuh_utilization
     while True:
         job_allocation = JobAllocation(config=job_config, worker_id_offset=worker_id_offset,
                                        dynamic_nnodes=dynamic_nnodes, dynamic_timelimit=dynamic_timelimit)
-        remainder = job_allocation.schedule_work(profile=current_profile)
+        remainder = job_allocation.schedule_work(profile=current_profile, runtime_estimates=runtime_estimates)
 
         if remainder.index.size == current_profile.index.size:
             # The job timelimit is too small for these configs, which is why no more work can be assigned
+
             _log.warning(f"The given job timelimit {JobConfig.timestr(job_config.timelimit)} (DD-HH:MM) is too small "
                          f"for {remainder.index.size} configs with an average runtime requirement of "
-                         f"{JobConfig.timestr(remainder.required.runtime.mean())} (DD-HH:MM). The remaining configs "
-                         f"were distributed across {len(jobs)} jobs.")
+                         f"{JobConfig.timestr(runtime_estimates[remainder.index].mean())} (DD-HH:MM). The remaining "
+                         f"configs were distributed across {len(jobs)} jobs.")
 
             if remainder_pth is not None:
                 _log.info(f"Saving {remainder.index.size} leftover configs at {remainder_pth}")

@@ -7,7 +7,6 @@ planned samples in the search space.
 import argparse
 import itertools
 import logging
-import os
 import pandas as pd
 from pathlib import Path
 from string import Template
@@ -220,7 +219,6 @@ def generate_jobs(args):
     try:
         profile: pd.DataFrame = pd.read_pickle(profile_path)
         assert profile.index.is_unique, "Each row index in the profile must be unique throughout the profile."
-        per_epoch_runtimes: pd.Series = profile.required.runtime
         cpus_per_worker: pd.Series = profile.required.cpus
     except Exception as e:
         raise RuntimeError(f"Failed to read the sampling profile from {profile_path}.") from e
@@ -234,22 +232,15 @@ def generate_jobs(args):
     assert isinstance(cpus_per_worker, int), f"The number of CPUs per worker must be an integer value, was " \
                                              f"{cpus_per_worker} of type {type(cpus_per_worker)}."
 
-    if ("status", "nepochs") in profile.columns:
-        remaining_epochs: pd.Series = args.epochs - profile.status.nepochs
-    else:
-        remaining_epochs: int = args.epochs
-
-    estimated_runtimes: pd.Series = per_epoch_runtimes * remaining_epochs
-    profile.loc[:, ("required", "runtime")] = estimated_runtimes
-
     job_config = sched_utils.JobConfig(
         cpus_per_worker=cpus_per_worker, cpus_per_node=args.cpus_per_node, nodes_per_job=args.nodes_per_job,
         timelimit=args.timelimit * 60
     )
     jobs = sched_utils.allocate_work(
-        job_config=job_config, profile=profile, cpuh_utilization_cutoff=args.cpuh_utilization_cutoff,
-        dynamic_timelimit=args.dynamic_timelimit, dynamic_nnodes=args.dynamic_nnodes,
-        remainder_pth=args.profile_remainder, worker_id_offset=args.workerid_start
+        job_config=job_config, profile=profile, epochs=args.epochs,
+        cpuh_utilization_cutoff=args.cpuh_utilization_cutoff, dynamic_timelimit=args.dynamic_timelimit,
+        dynamic_nnodes=args.dynamic_nnodes, remainder_pth=args.profile_remainder, worker_id_offset=args.workerid_start,
+        squish_configs=args.squish_configs
     )
 
     with open(args.template_dir / "job.template") as fp:
@@ -257,14 +248,6 @@ def generate_jobs(args):
 
     with open(args.template_dir / "config.template") as fp:
         config_template = Template(fp.read())
-
-    # Clean the directories of old files first, if needed
-    for f in args.script_dir.rglob("*.job"):
-        os.remove(f)
-    for f in args.script_dir.rglob("*.config"):
-        os.remove(f)
-    for f in args.portfolio_dir.rglob("*.pkl.gz"):
-        os.remove(f)
 
     for jobid, job in enumerate(jobs, start=args.jobid_start):
         _log.info(f"Saving files for job #{jobid}.")
@@ -433,6 +416,10 @@ def argument_parser():
                                      "allows multiple executions of this script to be used to chain together multiple "
                                      "jobs without them interfering with each other by, e.g., continuously changing "
                                      "the input profile.")
+    subparser_gen.add_argument("--squish_configs", action="store_true",
+                               help="When this flag is given, any configs that do not fit into the allocated time "
+                                    "budget will be squished into the job anyways so they can run for as long as "
+                                    "possible.")
 
     # Unpack the training config into CLI flags.
     for k, v in constants.training_config.items():
