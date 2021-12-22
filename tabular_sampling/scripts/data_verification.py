@@ -11,6 +11,7 @@ import pandas as pd
 from tabular_sampling.lib.core import constants
 from tabular_sampling.lib.core import utils
 from tabular_sampling.lib.postprocessing import verification
+from tabular_sampling.clusterlib.prescheduler import fidelity_basedir_map
 
 _log = logging.getLogger(__name__)
 fidelity_parameters = ["N", "W", "Resolution"]
@@ -62,28 +63,23 @@ def subdir_from_fidelity(config: pd.Series):
     return subdir
 
 
-def prepare_for_verification(rootdir: Path, backupdir: Path):
+def prepare_for_verification(basedir: Path, backupdir: Path):
 
-    _log.info("Preparing backup directory structure.")
-
-    available_dirs = [d / "tasks" for d in rootdir.iterdir() if (d / "tasks").exists()]
-    for basedir in available_dirs:
-        backup_subdir = backupdir / basedir.parent.name / "tasks"
-        backup_subdir.mkdir(exist_ok=True, parents=True)
+    backupdir.mkdir(exist_ok=True, parents=True)
+    try:
+        backuptree = utils.DirectoryTree(basedir=backupdir)
+    except FileExistsError:
+        pass
+    _log.debug(f"Preparing directory tree in {backuptree.basedir}.")
+    for dtree in verification.iterate_model_tree(basedir=basedir, enumerate=False):
         try:
-            backuptree = utils.DirectoryTree(basedir=backup_subdir)
+            backuptree.taskid = dtree.taskid
         except FileExistsError:
-            continue
-        _log.debug(f"Preparing directory tree in {backuptree.basedir}.")
-        for dtree in verification.iterate_model_tree(basedir=basedir, enumerate=False):
-            try:
-                backuptree.taskid = dtree.taskid
-            except FileExistsError:
-                pass
-            try:
-                backuptree.model_idx = dtree.model_idx
-            except FileExistsError:
-                pass
+            pass
+        try:
+            backuptree.model_idx = dtree.model_idx
+        except FileExistsError:
+            pass
 
     _log.info("Finished creating backup directory structure.")
 
@@ -281,10 +277,20 @@ if __name__ == "__main__":
     worker_chkpt_dir: Path = args.rootdir / worker_chkpt_subdir / str(workerid)
     worker_chkpt_dir.mkdir(exist_ok=True, parents=True)
 
-    _log.info(f"Beginning worker {workerid + 1}/{args.nworkers}.")
+    _log.info(f"Worker {workerid + 1}: Beginning.")
 
     if args.mode == modes_of_operation[0]:
-        prepare_for_verification(rootdir=args.rootdir, backupdir=args.backupdir)
+        basedirs = portfolio.loc[:, fidelity_parameters].apply(fidelity_basedir_map, axis=1).rename("basedir")
+        basedirs = basedirs.unique()
+        if workerid + 1 > basedirs.size:
+            print(f"Worker {workerid + 1}: No preparatory work to do given that there are {basedirs.unique()} possible "
+                  f"fidelity groupy defined in the given profile.")
+            sys.exit(0)
+        else:
+            _log.info(f"Worker {workerid + 1}: Preparing backup directory structure at {backupdir} for {basedir}.")
+
+        prepare_for_verification(basedir=args.rootdir / basedirs[workerid],
+                                 backupdir=args.backupdir / basedirs[workerid])
     elif args.mode == modes_of_operation[1]:
         clean_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
                    budget=args.budget)
@@ -292,6 +298,6 @@ if __name__ == "__main__":
         prune_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
                    budget=args.budget)
     else:
-        raise NotImplementedError(f"No existing implementation for mode {args.mode}.")
+        raise NotImplementedError(f"Worker {workerid + 1}: No existing implementation for mode {args.mode}.")
 
-    _log.info(f"Worker {workerid + 1}/{args.nworkers} finished.")
+    _log.info(f"Worker {workerid + 1}: Finished.")
