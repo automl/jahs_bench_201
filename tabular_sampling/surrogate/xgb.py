@@ -1,0 +1,259 @@
+import functools
+
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+from tabular_sampling.search_space.configspace import joint_config_space
+import ConfigSpace as cs
+from typing import Union, Optional, Iterable, Sequence, Callable, List, Any
+import typing_extensions as typingx
+import logging
+
+_log = logging.getLogger(__name__)
+ConfigType = Union[dict, cs.Configuration]
+
+def get_one_hot_encoder(parameter: cs.CategoricalHyperparameter) -> Callable:
+    """ Generate a callable function tailored for the given categorical hyper-parameter, which, when given a valid
+    value for the hyper-parameter generates a one-hot encoding of that value as a dictionary. """
+
+    codes = {f"{parameter.name}_{c}": 0 for c in parameter.choices}
+    def encoder(pval: Union[pd.Series, Any]):
+        if isinstance(pval, pd.Series):
+            assert pval.isin(parameter.choices).all(), \
+                f"Unknown values {pval[pval.isin(parameter.choices) == False].unique()} for parameter {parameter.name}."
+
+            # Get the one-hot encoding
+            encoding = pd.get_dummies(pval, prefix=parameter.name, prefix_sep="_")
+
+            # Ensure some consistency
+            expected_cols = pd.Index(codes.keys())
+            missing = expected_cols.difference(encoding.columns)
+            encoding[missing] = 0  # Fill in missing columns
+            encoding = encoding[expected_cols]  # Re-order the columns
+            return encoding
+        else:
+            assert pval in parameter.choices, f"Unknown value {pval} for parameter {parameter.name}."
+            encoding = dict(**codes)
+            encoding[f"{parameter.name}_{pval}"] = 1
+            return encoding
+
+    return encoder
+
+
+def get_identity_encoder(parameter: cs.hyperparameters.Hyperparameter) -> Callable:
+    """ Generates an identity encoder that does not change the input parameter value at all. Used for the sake of
+    consistency across vector operations. """
+
+    def identity(pval: Union[pd.Series, Any]):
+        return pval if isinstance(pval, pd.Series) else {parameter.name: pval}
+
+    return identity
+
+
+def get_default_encoders(space: cs.ConfigurationSpace) -> dict:
+    """ For a given configuration space, returns a dict mapping each parameter name in the space to an encoder for that
+    parameter's type. This is the default set of encoders. """
+
+    params = space.get_hyperparameters()
+
+    identity_types = [cs.OrdinalHyperparameter, cs.UniformFloatHyperparameter, cs.UniformIntegerHyperparameter]
+    special_types = {cs.CategoricalHyperparameter: get_one_hot_encoder}
+
+    encoder_by_type = {
+        **{p: get_identity_encoder for p in identity_types},
+        **{p: enc for p, enc in special_types.items()}
+    }
+
+    encoder_by_name = {p.name: encoder_by_type[type(p)](p) for p in params}
+    return encoder_by_name
+
+
+class XGBSurrogate:
+    """ A surrogate model based on XGBoost. Adapted from naslib.predictors.tree.xgb.XGBoost at
+    https://github.com/automl/NASLib/blob/6506a700f4d4764f9c58c918efb6769967b55669/naslib/predictors/trees/xgb.py """
+
+    config_space: cs.ConfigurationSpace
+    encoders: dict
+    feature_headers: List[str]
+    label_headers: List[str]
+    hyperparams: dict
+    _trained = False
+
+    @property
+    def default_hyperparams(self) -> dict:
+        params = {
+            "objective": "reg:squarederror",
+            # "eval_metric": "rmse",
+            "booster": "gbtree",
+            "max_depth": 6,
+            "min_child_weight": 1,
+            "colsample_bytree": 1,
+            "learning_rate": 0.3,
+            "colsample_bylevel": 1,
+        }
+        return params
+
+    def set_random_hyperparams(self):
+        if self.hyperparams is None:
+            # evaluate the default config first during HPO
+            params = self.default_hyperparams.copy()
+        else:
+            params = {
+                "objective": "reg:squarederror",
+                # "eval_metric": "rmse",
+                # 'early_stopping_rounds': 100,
+                "booster": "gbtree",
+                "max_depth": int(np.random.choice(range(1, 15))),
+                "min_child_weight": int(np.random.choice(range(1, 10))),
+                "colsample_bytree": np.random.uniform(0.0, 1.0),
+                "learning_rate": loguniform(0.001, 0.5),
+                # 'alpha': 0.24167936088332426,
+                # 'lambda': 31.393252465064943,
+                "colsample_bylevel": np.random.uniform(0.0, 1.0),
+            }
+        self.hyperparams = params
+        return params
+
+    def __init__(self, config_space: Optional[cs.ConfigurationSpace] = joint_config_space,
+                 encoders: Optional[dict] = None):
+        self.config_space = config_space
+        self.encoders = encoders if encoders is not None else get_default_encoders(self.config_space)
+        self.feature_headers = None
+        self.label_headers = None
+        self.hyperparams = None
+
+        # Both initializes some internal attributes as well as performs a sanity test
+        default_config = self.config_space.get_default_configuration()
+        default_encoding = self.encode(default_config)
+
+
+    def _encode_single(self, config: ConfigType) -> dict:
+        """ Encode a single configuration. """
+
+        if isinstance(config, cs.Configuration):
+            config = config.get_dictionary()
+
+        if isinstance(config, dict):
+            encodings: Sequence[dict] = [self.encoders[p](v) for p, v in config.items()]
+            # Concatenate all the encodings into one dict
+            config: dict = functools.reduce(lambda c, e: {**c, **e}, encodings)
+        else:
+            TypeError(f"Unrecognized input type: {type(config)}. Must be {ConfigType}.")
+
+        return config
+
+    def _encode_series(self, param_values: pd.Series) -> pd.DataFrame:
+        """ Encode a Pandas Series that describes multiple values of a single parameter type. The name of the Series
+        'param_values' is treated as the parameter name. This can, thus, be directly passed to the method 'apply()' of
+        a pandas.DataFrame instance in order to encode the entire DataFrame of complete configurations. Since different
+        kinds of encodings can generate either a Series or a DataFrame object (e.g. one-hot encoding), any Series
+        encodings are returned as DataFrame objects as well. Such DataFrames have a single column: the name of the
+        Series. """
+
+        encodings = self.encoders[param_values.name](param_values)
+        if isinstance(encodings, pd.Series):
+            encodings = encodings.to_frame(encodings.name)
+
+        return encodings
+
+    def encode(self, features: Union[ConfigType, List[ConfigType], pd.DataFrame]) -> \
+            Union[dict, List[dict], pd.DataFrame]:
+        """ Encode the given features data, assumed to be either a single configuration or a number of configurations,
+        according to the defined rules for this model's config space. When passing a DataFrame, care must be taken that
+        each row corresponds to a single configuration and each column to a single known parameter name. """
+
+        if isinstance(features, typingx.get_args(ConfigType)):
+            encodings: dict = self._encode_single(features)
+            xheaders = list(encodings.keys())
+
+            # Ensure consistency of ordering
+            if self.feature_headers is not None and xheaders is not None and self.feature_headers != xheaders:
+                encodings = {h: encodings[h] for h in self.feature_headers}
+
+        elif isinstance(features, list):
+            encodings = list(map(self._encode_single, features))
+            xheaders = list(encodings[0].keys())
+
+            # Ensure consistency of ordering
+            if self.feature_headers is not None and xheaders is not None and self.feature_headers != xheaders:
+                encodings = map(lambda enc: {h: enc[h] for h in self.feature_headers}, encodings)
+
+        elif isinstance(features, pd.DataFrame):
+            encodings: pd.DataFrame = pd.concat([self._encode_series(features[c]) for c in features.columns], axis=1)
+            xheaders = encodings.columns.tolist()
+
+            # Ensure consistency of ordering
+            if self.feature_headers is not None and xheaders is not None and self.feature_headers != xheaders:
+                encodings = encodings[self.feature_headers]
+        else:
+            raise TypeError(f"Unrecognized input type for encode: {type(features)}. Must be "
+                            f"{Union[ConfigType, Sequence[ConfigType], pd.DataFrame]}.")
+
+        if self.feature_headers is None:
+            self.feature_headers = xheaders
+
+        return encodings
+
+    def get_dataset(self, encodings: pd.DataFrame, labels: pd.DataFrame = None) -> xgb.DMatrix:
+        if labels is None:
+            return xgb.DMatrix(data=encodings, nthread=-1)
+        else:
+            return xgb.DMatrix(data=encodings, label=labels.sub(self.ymean, axis=1).div(self.ystd, axis=1), nthread=-1)
+
+    # def train(self, features: np.ndarray) -> xgb.Booster:
+    #     """ Train an XGBoost model on the given training dataset and return the trained model. The input data should
+    #     have been properly encoded, the labels normalized and the entire dataset converted to an XGBoost DMatrix object
+    #     before this function is called. """
+    #
+    #     return xgb.train(self.hyperparams, self.get_dataset(data), num_boost_round=500)
+
+    def fit(self, features: pd.DataFrame, labels: pd.DataFrame, perform_hpo: bool = True, test_frac: float = 0.,
+            random_state: np.random.RandomState = None):
+        """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
+
+        # Ensure the order of labels does not get messed up
+        if self.label_headers is None:
+            self.label_headers = labels.columns.tolist()
+        else:
+            labels = labels[self.label_headers]
+
+        # Tree based models only benefit from normalizing the target values, not the features
+        self.ymean = labels.mean(axis=0)
+        self.ystd = labels.std(axis=0)
+
+        # Encode the input features
+        xtrain = self.encode(features)
+        if isinstance(xtrain, (dict, list)):
+            xtrain = pd.DataFrame(xtrain)
+
+        # TODO: Split off a validation set
+        # Fit a model to the data
+        # data = self.get_dataset(encodings=xtrain, labels=labels)
+        # self.model = self.train(data)
+        # self.model = xgb.train(self.hyperparams, data, num_boost_round=500)
+        # TODO: Verify actual use of n_estimators and equivalence with num_boost_round
+        self.model = xgb.sklearn.XGBRegressor(n_estimators=500, **self.hyperparams)
+        self.model.fit(X=xtrain.to_numpy(), y=labels.to_numpy(), eval_set=[(xtrain, ytrain), (xtest, ytest)],
+                       eval_metric="rmse")
+
+        # Calculate training error as RMSE
+        # train_pred: pd.DataFrame = self.predict(self.get_dataset(encodings=xtrain))
+        # train_error = train_pred.sub(labels).pow(2).mean(axis=1).pow(0.5).mean()
+        evals = self.model.evals_result()
+        train_error = evals["validation_0"]["rmse"]
+        test_error = evals["validation_1"]["rmse"]
+
+        return train_error
+        # TODO: HPO
+
+    def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        """ Given some input data, generate model predictions. The input data will be properly encoded when this
+        function is called. """
+
+        encodings = self.encode(features)
+        ypredict = self.model.predict(encodings)
+        ypredict = pd.DataFrame(ypredict, columns=self.label_headers)
+        ypredict = ypredict.mul(self.ystd, axis=1).add(self.ymean, axis=1)  # De-normalize
+        return ypredict
+
+
