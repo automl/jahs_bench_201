@@ -2,6 +2,8 @@ import functools
 
 import numpy as np
 import pandas as pd
+import scipy.stats
+import sklearn.model_selection
 import xgboost as xgb
 from tabular_sampling.search_space.configspace import joint_config_space
 import ConfigSpace as cs
@@ -79,6 +81,20 @@ class XGBSurrogate:
     hyperparams: dict
     _trained = False
 
+    _hpo_search_space = {
+            "objective": ["reg:squarederror"],
+            # "eval_metric": "rmse",
+            # 'early_stopping_rounds': 100,
+            "booster": ["gbtree"],
+            "max_depth": np.arange(1, 15),
+            "min_child_weight": list(range(1, 10)),
+            "colsample_bytree": scipy.stats.uniform(0.0, 1.0),
+            "learning_rate": scipy.stats.loguniform(0.001, 0.5),
+            # 'alpha': 0.24167936088332426,
+            # 'lambda': 31.393252465064943,
+            "colsample_bylevel": scipy.stats.uniform(0.0, 1.0),
+        }
+
     @property
     def default_hyperparams(self) -> dict:
         params = {
@@ -125,7 +141,6 @@ class XGBSurrogate:
         # Both initializes some internal attributes as well as performs a sanity test
         default_config = self.config_space.get_default_configuration()
         default_encoding = self.encode(default_config)
-
 
     def _encode_single(self, config: ConfigType) -> dict:
         """ Encode a single configuration. """
@@ -207,7 +222,8 @@ class XGBSurrogate:
     #
     #     return xgb.train(self.hyperparams, self.get_dataset(data), num_boost_round=500)
 
-    def fit(self, features: pd.DataFrame, labels: pd.DataFrame, perform_hpo: bool = True, test_frac: float = 0.,
+    # TODO: Extend input types to include ConfigType and List[ConfigType]
+    def fit(self, features: pd.DataFrame, labels: pd.DataFrame, perform_hpo: bool = True, test_size: float = 0.,
             random_state: np.random.RandomState = None):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
@@ -226,25 +242,46 @@ class XGBSurrogate:
         if isinstance(xtrain, (dict, list)):
             xtrain = pd.DataFrame(xtrain)
 
-        # TODO: Split off a validation set
+        # TODO: Consider replacing with GroupShuffleSplit to maintain integrity of model-wise data
+        xtrain, xtest, ytrain, ytest = sklearn.model_selection.train_test_split(
+            xtrain, labels, test_size=test_size, random_state=random_state, shuffle=True
+        )
+
         # Fit a model to the data
         # data = self.get_dataset(encodings=xtrain, labels=labels)
         # self.model = self.train(data)
         # self.model = xgb.train(self.hyperparams, data, num_boost_round=500)
-        # TODO: Verify actual use of n_estimators and equivalence with num_boost_round
-        self.model = xgb.sklearn.XGBRegressor(n_estimators=500, **self.hyperparams)
-        self.model.fit(X=xtrain.to_numpy(), y=labels.to_numpy(), eval_set=[(xtrain, ytrain), (xtest, ytest)],
-                       eval_metric="rmse")
+        # TODO: Implement HPO with early stopping to determine correct final value for n_estimators - NASLib used a
+        #  fixed value of 500, so this procedure may or may not be useful and certainly needs a reference. This is a
+        #  method to prevent overfitting, analogous to cutting off NN training after a certain number of epochs.
+
+        # Create a model that can handle multiple regressands (dimensions of Y)
+        num_regressands = labels.columns.size
+        tree = xgb.sklearn.XGBRegressor(n_estimators=500, **self.hyperparams)
+        model = sklearn.multioutput.MultiOutputRegressor(estimator=tree, n_jobs=-1)
+
+        # TODO: Revise scoring and CV split generation
+        # Modify the search space to reference the estimator's parameters within the MultiOutputRegressor
+        num_splits = 5
+        hpo_search_space = {f"estimator__{k}": v for k, v in self._hpo_search_space.items()}
+        trainer = sklearn.model_selection.HalvingRandomSearchCV(
+            model, param_distributions=hpo_search_space, resource="estimator__n_estimators", random_state=random_state,
+            factor=2, max_resources=500 * num_regressands, min_resources=2 * num_splits * num_regressands, cv=num_splits
+        )
+        search_results = trainer.fit(xtrain, ytrain, eval_metric="rmse")
+        self.model = search_results
+
+        # self.model.fit(X=xtrain.to_numpy(), y=labels.to_numpy(), eval_set=[(xtrain, ytrain), (xtest, ytest)],
+        #                eval_metric="rmse")
 
         # Calculate training error as RMSE
         # train_pred: pd.DataFrame = self.predict(self.get_dataset(encodings=xtrain))
         # train_error = train_pred.sub(labels).pow(2).mean(axis=1).pow(0.5).mean()
-        evals = self.model.evals_result()
-        train_error = evals["validation_0"]["rmse"]
-        test_error = evals["validation_1"]["rmse"]
-
-        return train_error
-        # TODO: HPO
+        # evals = self.model.evals_result()
+        # train_error = evals["validation_0"]["rmse"]
+        # test_error = evals["validation_1"]["rmse"]
+        #
+        # return train_error
 
     def predict(self, features: pd.DataFrame) -> pd.DataFrame:
         """ Given some input data, generate model predictions. The input data will be properly encoded when this
