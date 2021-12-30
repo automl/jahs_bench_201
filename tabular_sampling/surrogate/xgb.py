@@ -219,7 +219,6 @@ class XGBSurrogate:
     #     else:
     #         return xgb.DMatrix(data=encodings, label=labels.sub(self.ymean, axis=1).div(self.ystd, axis=1), nthread=-1)
 
-
     def _get_simple_pipeline(self) -> sklearn.pipeline.Pipeline:
         """
         Get a Pipeline instance that can be used to train a new surrogat model. This is the simplest available pipeline
@@ -232,20 +231,9 @@ class XGBSurrogate:
         params = self.config_space.get_hyperparameters()
 
         # TODO: Add cache dir to speed up HPO
-        # identity_types = [cs.OrdinalHyperparameter, cs.UniformFloatHyperparameter, cs.UniformIntegerHyperparameter]
-        special_types: Dict[cs.hyperparameters.Hyperparameter, Tuple[Callable, Dict[str, Any]]] = {
-            cs.CategoricalHyperparameter: (
-                sklearn.preprocessing.OneHotEncoder,
-                dict(drop="if_binary", )
-            )
-        }
-
-        encoders = {
-            k.name: special_types[type(k)][0](**special_types[type(k)][1])
-            for k in params if type(k) in special_types
-        }
-
-        transformers = [(f"{type(enc).__name__}_{k}", enc, k) for k, enc in encoders.items()]
+        onehot_columns = [p.name for p in params if isinstance(p, cs.CategoricalHyperparameter)]
+        onehot_enc = sklearn.preprocessing.OneHotEncoder(drop="if_binary")
+        transformers = [("OneHotEncoder", onehot_enc, onehot_columns)]
         feature_preprocessing = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
 
         xgboost_estimator = xgb.sklearn.XGBRegressor(n_estimators=500, **self.hyperparams)
@@ -259,7 +247,6 @@ class XGBSurrogate:
 
         return pipeline
 
-
     # def train(self, features: np.ndarray) -> xgb.Booster:
     #     """ Train an XGBoost model on the given training dataset and return the trained model. The input data should
     #     have been properly encoded, the labels normalized and the entire dataset converted to an XGBoost DMatrix object
@@ -269,14 +256,14 @@ class XGBSurrogate:
 
     # TODO: Extend input types to include ConfigType and List[ConfigType]
     def fit(self, features: pd.DataFrame, labels: pd.DataFrame, perform_hpo: bool = True, test_size: float = 0.,
-            random_state: np.random.RandomState = None, hpo_iters: int = 10):
+            random_state: np.random.RandomState = None, hpo_iters: int = 10, num_cv_splits: int = 5):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
         # Ensure the order of labels does not get messed up
-        if self.label_headers is None:
-            self.label_headers = labels.columns.tolist()
-        else:
-            labels = labels[self.label_headers]
+        # if self.label_headers is None:
+        #     self.label_headers = labels.columns.tolist()
+        # else:
+        #     labels = labels[self.label_headers]
 
         # TODO: Check if y-scaling is needed. Add an option to enable y-scaling by building a composite estimator that
         #  works so: scale down -> real model -> scale up
@@ -290,9 +277,15 @@ class XGBSurrogate:
         #     xtrain = pd.DataFrame(xtrain)
 
         # TODO: Consider replacing with GroupShuffleSplit to maintain integrity of model-wise data
-        xtrain, xtest, ytrain, ytest = sklearn.model_selection.train_test_split(
-            xtrain, labels, test_size=test_size, random_state=random_state, shuffle=True
-        )
+        if test_size > 0.:
+            xtrain, xtest, ytrain, ytest = sklearn.model_selection.train_test_split(
+                features, labels, test_size=test_size, random_state=random_state, shuffle=True
+            )
+        elif test_size > 1.:
+            raise ValueError(f"The test set fraction size 'test_size' must be in the range (0, 1), was given "
+                             f"{test_size}")
+        else:
+            xtrain, ytrain = features, labels
 
         # Fit a model to the data
         # data = self.get_dataset(encodings=xtrain, labels=labels)
@@ -310,7 +303,6 @@ class XGBSurrogate:
         # TODO: Revise scoring and CV split generation
         pipeline = self._get_simple_pipeline()
         if perform_hpo:
-            num_splits = 5
             hpo_search_space = {f"multiout__estimator__{k}": v for k, v in self._hpo_search_space.items()}
             # trainer = sklearn.model_selection.HalvingRandomSearchCV(
             #     pipeline, param_distributions=hpo_search_space, resource="multiout__estimator__n_estimators",
@@ -318,10 +310,10 @@ class XGBSurrogate:
             #     min_resources=2 * num_splits * num_regressands, cv=num_splits
             # )
             trainer = sklearn.model_selection.RandomizedSearchCV(
-                estimator=pipeline, param_distributions=hpo_search_space, n_iter=hpo_iters, cv=num_splits,
-                random_state=random_state,
+                estimator=pipeline, param_distributions=hpo_search_space, n_iter=hpo_iters, cv=num_cv_splits,
+                random_state=random_state, refit=False
             )
-            search_results = trainer.fit(xtrain, ytrain, eval_metric="rmse")
+            search_results = trainer.fit(xtrain, ytrain)
             self.model = search_results
         else:
             self.model = pipeline.fit(xtrain, ytrain)
@@ -335,5 +327,3 @@ class XGBSurrogate:
         # ypredict = pd.DataFrame(ypredict, columns=self.label_headers)
         # ypredict = ypredict.mul(self.ystd, axis=1).add(self.ymean, axis=1)  # De-normalize
         return ypredict
-
-
