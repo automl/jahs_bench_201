@@ -11,7 +11,7 @@ _log = logging.getLogger(__name__)
 
 def parse_cli():
     parser = argparse.ArgumentParser("Clean up raw metrics data and prepare it for training a surrogate model.")
-    parser.add_argument("--data", type=Path, help="The path to the raw metrics DataFrame file. Must be either a full "
+    parser.add_argument("--data_pth", type=Path, help="The path to the raw metrics DataFrame file. Must be either a full "
                                                   "path or a path relative to the current working directory.")
     parser.add_argument("--outdir", type=Path,
                         help="Path to a directory where the cleaned data is stored as a pandas DataFrame named "
@@ -32,14 +32,14 @@ def parse_cli():
     args = parser.parse_args()
     return args
 
-def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete: bool = False, keep_nan_configs: bool = False):
+def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete_runs: bool = False, keep_nan_configs: bool = False):
     data: pd.DataFrame = pd.read_pickle(data_pth)
     outfile = outdir / "cleaned_metrics.pkl.gz"
 
     # Throw away excess epochs' data
     data = data.loc[data.index.get_level_values("Epoch") <= epochs]
 
-    if not keep_incomplete:
+    if keep_incomplete_runs:
         nepochs: pd.DataFrame = metric_df_ops.get_nepochs(df=data)
         nepochs = nepochs.reindex(index=data.index, method="ffill")
         valid: pd.Series = nepochs.nepochs <= epochs
@@ -48,18 +48,18 @@ def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete: bool = Fal
     nan_check = data.isna().any(axis=1)
     nan_ind: pd.MultiIndex = data.loc[nan_check].index
 
-    if not keep_nan_configs:
+    if keep_nan_configs:
         # Generalize the indices to be dropped to the entire config instead of just particular epochs.
-        nan_ind = nan_ind.drop("Epoch").drop_duplicates()
+        nan_ind = nan_ind.droplevel("Epoch").drop_duplicates()
 
     data = data.drop(nan_ind)
     features = data["model_config"]
-    features["Epoch"] = features.index.get_level_values("Epoch")
+    features.loc[:, "Epoch"] = features.index.get_level_values("Epoch")
     outputs = data[pd.MultiIndex.from_product([["train", "valid", "test"], ["duration", "loss", "acc"]])]
     outputs.columns = metric_df_ops.collapse_index_names(outputs.columns, nlevels=2)
-    diagnostics = data["diagnostic"]["FLOPS", "latency"]
-    outputs[diagnostics.columns] = diagnostics
-    outputs["size_MB"] = data["metadata"]["size_MB"]
+    diagnostics = data["diagnostic"][["FLOPS", "latency"]]
+    outputs.loc[:, diagnostics.columns] = diagnostics
+    outputs.loc[:, "size_MB"] = data["metadata"]["size_MB"]
 
     clean_data = pd.concat({"features": features, "labels": outputs}, axis=1)
 
@@ -69,4 +69,4 @@ def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete: bool = Fal
 
 if __name__ == "__main__":
     args = parse_cli()
-    clean(vars(args))
+    clean(**vars(args))
