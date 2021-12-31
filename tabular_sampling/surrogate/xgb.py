@@ -14,61 +14,6 @@ import logging
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, cs.Configuration]
-#
-# def get_one_hot_encoder(parameter: cs.CategoricalHyperparameter) -> Callable:
-#     """ Generate a callable function tailored for the given categorical hyper-parameter, which, when given a valid
-#     value for the hyper-parameter generates a one-hot encoding of that value as a dictionary. """
-#
-#     codes = {f"{parameter.name}_{c}": 0 for c in parameter.choices}
-#     def encoder(pval: Union[pd.Series, Any]):
-#         if isinstance(pval, pd.Series):
-#             assert pval.isin(parameter.choices).all(), \
-#                 f"Unknown values {pval[pval.isin(parameter.choices) == False].unique()} for parameter {parameter.name}."
-#
-#             # Get the one-hot encoding
-#             encoding = pd.get_dummies(pval, prefix=parameter.name, prefix_sep="_")
-#
-#             # Ensure some consistency
-#             expected_cols = pd.Index(codes.keys())
-#             missing = expected_cols.difference(encoding.columns)
-#             encoding[missing] = 0  # Fill in missing columns
-#             encoding = encoding[expected_cols]  # Re-order the columns
-#             return encoding
-#         else:
-#             assert pval in parameter.choices, f"Unknown value {pval} for parameter {parameter.name}."
-#             encoding = dict(**codes)
-#             encoding[f"{parameter.name}_{pval}"] = 1
-#             return encoding
-#
-#     return encoder
-#
-#
-# def get_identity_encoder(parameter: cs.hyperparameters.Hyperparameter) -> Callable:
-#     """ Generates an identity encoder that does not change the input parameter value at all. Used for the sake of
-#     consistency across vector operations. """
-#
-#     def identity(pval: Union[pd.Series, Any]):
-#         return pval if isinstance(pval, pd.Series) else {parameter.name: pval}
-#
-#     return identity
-#
-#
-# def get_default_encoders(space: cs.ConfigurationSpace) -> dict:
-#     """ For a given configuration space, returns a dict mapping each parameter name in the space to an encoder for that
-#     parameter's type. This is the default set of encoders. """
-#
-#     params = space.get_hyperparameters()
-#
-#     identity_types = [cs.OrdinalHyperparameter, cs.UniformFloatHyperparameter, cs.UniformIntegerHyperparameter]
-#     special_types = {cs.CategoricalHyperparameter: get_one_hot_encoder}
-#
-#     encoder_by_type = {
-#         **{p: get_identity_encoder for p in identity_types},
-#         **{p: enc for p, enc in special_types.items()}
-#     }
-#
-#     encoder_by_name = {p.name: encoder_by_type[type(p)](p) for p in params}
-#     return encoder_by_name
 
 
 class XGBSurrogate:
@@ -133,18 +78,14 @@ class XGBSurrogate:
         return params
 
     def __init__(self, config_space: Optional[cs.ConfigurationSpace] = joint_config_space,
-                 estimators_per_output: int = 500, encoders: Optional[dict] = None):
+                 estimators_per_output: int = 500, encoders: Optional[dict] = None, use_gpu: Optional[bool] = None):
         self.config_space = config_space
-        # self.encoders = encoders if encoders is not None else get_default_encoders(self.config_space)
-        # self.feature_headers = None
-        # self.label_headers = None
         self.estimators_per_output = estimators_per_output
         self.hyperparams = None
+        self.use_gpu = use_gpu
 
         # Both initializes some internal attributes as well as performs a sanity test
         self.set_random_hyperparams()  # Sets default hyperparameters
-        # default_config = self.config_space.get_default_configuration()
-        # default_encoding = self.encode(default_config)
 
     # def _encode_single(self, config: ConfigType) -> dict:
     #     """ Encode a single configuration. """
@@ -236,7 +177,8 @@ class XGBSurrogate:
         transformers = [("OneHotEncoder", onehot_enc, onehot_columns)]
         feature_preprocessing = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
 
-        xgboost_estimator = xgb.sklearn.XGBRegressor(n_estimators=500, **self.hyperparams)
+        xgboost_estimator = xgb.sklearn.XGBRegressor(
+            n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto", **self.hyperparams)
         multi_regressor = sklearn.multioutput.MultiOutputRegressor(estimator=xgboost_estimator, n_jobs=-1)
 
         pipeline_steps = [
@@ -246,13 +188,6 @@ class XGBSurrogate:
         pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
 
         return pipeline
-
-    # def train(self, features: np.ndarray) -> xgb.Booster:
-    #     """ Train an XGBoost model on the given training dataset and return the trained model. The input data should
-    #     have been properly encoded, the labels normalized and the entire dataset converted to an XGBoost DMatrix object
-    #     before this function is called. """
-    #
-    #     return xgb.train(self.hyperparams, self.get_dataset(data), num_boost_round=500)
 
     # TODO: Extend input types to include ConfigType and List[ConfigType]
     def fit(self, features: pd.DataFrame, labels: pd.DataFrame, perform_hpo: bool = True, test_size: float = 0.,
@@ -271,11 +206,6 @@ class XGBSurrogate:
         # self.ymean = labels.mean(axis=0)
         # self.ystd = labels.std(axis=0)
 
-        # Encode the input features
-        # xtrain = self.encode(features)
-        # if isinstance(xtrain, (dict, list)):
-        #     xtrain = pd.DataFrame(xtrain)
-
         # TODO: Consider replacing with GroupShuffleSplit to maintain integrity of model-wise data
         if test_size > 0.:
             xtrain, xtest, ytrain, ytest = sklearn.model_selection.train_test_split(
@@ -287,23 +217,15 @@ class XGBSurrogate:
         else:
             xtrain, ytrain = features, labels
 
-        # Fit a model to the data
-        # data = self.get_dataset(encodings=xtrain, labels=labels)
-        # self.model = self.train(data)
-        # self.model = xgb.train(self.hyperparams, data, num_boost_round=500)
         # TODO: Implement HPO with early stopping to determine correct final value for n_estimators - NASLib used a
         #  fixed value of 500, so this procedure may or may not be useful and certainly needs a reference. This is a
         #  method to prevent overfitting, analogous to cutting off NN training after a certain number of epochs.
-
-        # Create a model that can handle multiple regressands (dimensions of Y)
-        num_regressands = labels.columns.size
-        # tree = xgb.sklearn.XGBRegressor(n_estimators=500, **self.hyperparams)
-        # model = sklearn.multioutput.MultiOutputRegressor(estimator=tree, n_jobs=-1)
 
         # TODO: Revise scoring and CV split generation
         pipeline = self._get_simple_pipeline()
         if perform_hpo:
             hpo_search_space = {f"multiout__estimator__{k}": v for k, v in self._hpo_search_space.items()}
+            num_regressands = labels.columns.size
             # trainer = sklearn.model_selection.HalvingRandomSearchCV(
             #     pipeline, param_distributions=hpo_search_space, resource="multiout__estimator__n_estimators",
             #     random_state=random_state, factor=2, max_resources=self.estimators_per_output * num_regressands,
@@ -318,12 +240,14 @@ class XGBSurrogate:
         else:
             self.model = pipeline.fit(xtrain, ytrain)
 
+        if test_size > 0.:
+            # TODO: Generate test accuracy
+            score = self.model.score(xtest, ytest)
+            return score
+
     def predict(self, features: pd.DataFrame) -> pd.DataFrame:
         """ Given some input data, generate model predictions. The input data will be properly encoded when this
         function is called. """
 
-        # encodings = self.encode(features)
         ypredict = self.model.predict(features)
-        # ypredict = pd.DataFrame(ypredict, columns=self.label_headers)
-        # ypredict = ypredict.mul(self.ystd, axis=1).add(self.ymean, axis=1)  # De-normalize
         return ypredict
