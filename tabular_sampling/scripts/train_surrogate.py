@@ -44,19 +44,21 @@ def parse_cli():
                         help="A subset of the column labels under 'labels' in the DataFrame of the dataset which "
                              "specifies that the surrogate should be trained to predict only these outputs. If not "
                              "specified, all available outputs are used (default).")
+    parser.add_argument("--use_gpu", action="store_true", help="When this flag is given, enables usage of GPU "
+                                                               "accelerated model training.")
     args = parser.parse_args()
     return args
 
 
 def train_surrogate(datapth: Path, test_frac: float, data_frac: float = 1.0, disable_hpo: bool = False,
-                    hpo_budget: Any = None, outputs: Optional[Sequence[str]] = None):
+                    hpo_budget: Any = None, outputs: Optional[Sequence[str]] = None, use_gpu: bool = False):
     """ Train a surrogate model. """
 
     logger.info(f"Training surrogate using data from {datapth}, using {data_frac * 100:.2f}% of the available data, "
                 f"and splitting off {test_frac * 100:.2f}% of it as a test set. HPO is "
-                f"{'off' if disable_hpo else 'on'}."
+                f"{'off' if disable_hpo else 'on'}. GPU usage is {'on' if use_gpu else 'off'}."
                 f"{(' Chosen output columns:' + str(outputs)) * (outputs is not None)}")
-    surrogate = xgb.XGBSurrogate()
+    surrogate = xgb.XGBSurrogate(use_gpu=use_gpu)
     logger.info("Fetching data.")
     data = pd.read_pickle(datapth)
     logger.info("Finished loading data.")
@@ -70,7 +72,7 @@ def train_surrogate(datapth: Path, test_frac: float, data_frac: float = 1.0, dis
         data = data.loc[pd.IndexSlice[model_configs_sub.get_level_values(0), model_configs_sub.get_level_values(1), :],
                :]
 
-    logger.info(f"The valid dataset has {data.index.size} rows.")
+    logger.info(f"Model training will use {data.index.size} rows of data, including the test set (if any).")
     features = data.features
     labels = data.labels
 
