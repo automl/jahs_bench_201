@@ -283,14 +283,15 @@ if __name__ == "__main__":
         basedirs = portfolio.loc[:, fidelity_parameters].apply(fidelity_basedir_map, axis=1).rename("basedir")
         basedirs = basedirs.unique()
         if workerid + 1 > basedirs.size:
-            print(f"Worker {workerid + 1}: No preparatory work to do given that there are {basedirs.unique()} possible "
+            print(f"Worker {workerid + 1}: No preparatory work to do given that there are {basedirs.size} possible "
                   f"fidelity groupy defined in the given profile.")
             sys.exit(0)
         else:
+            basedir = args.rootdir / basedirs[workerid]
+            backupdir = args.backupdir / basedirs[workerid]
             _log.info(f"Worker {workerid + 1}: Preparing backup directory structure at {backupdir} for {basedir}.")
 
-        prepare_for_verification(basedir=args.rootdir / basedirs[workerid],
-                                 backupdir=args.backupdir / basedirs[workerid])
+        prepare_for_verification(basedir=basedir, backupdir=backupdir)
     elif args.mode == modes_of_operation[1]:
         clean_data(portfolio, rootdir=args.rootdir, backupdir=args.backupdir, worker_chkpt_dir=worker_chkpt_dir,
                    budget=args.budget)
