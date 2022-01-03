@@ -104,9 +104,9 @@ class XGBSurrogate:
         feature_preprocessing = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
 
         xgboost_estimator = xgb.sklearn.XGBRegressor(
-            n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto", **self.hyperparams)
+            n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto", n_jobs=1, **self.hyperparams)
         if multiout:
-            multi_regressor = sklearn.multioutput.MultiOutputRegressor(estimator=xgboost_estimator, n_jobs=-1)
+            multi_regressor = sklearn.multioutput.MultiOutputRegressor(estimator=xgboost_estimator, n_jobs=1)
             pipeline_steps = [
                 ("preprocess", feature_preprocessing),
                 ("multiout", multi_regressor)
