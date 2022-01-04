@@ -33,9 +33,11 @@ def parse_cli():
                         help="When this flag is given, data from incomplete runs will be not filtered out completely, "
                              "otherwise, all data for runs without the threshold number of epochs will be removed.")
     parser.add_argument("--keep_nan_configs", action="store_true",
-                        help="When this flag is given, if there are any NaN values in any of the metrics for any given "
-                             "epoch of a config, all data from that config will be removed. Otherwise, only the data "
-                             "for the epochs with NaN values will be removed.")
+                        help="When this flag is not given, if there are any NaN values in any of the metrics for any "
+                             "given epoch of a config, all data from that config will be removed. Otherwise, only the "
+                             "data for the epochs with NaN values will be removed. This is useful in certain cases, "
+                             "e.g. when divergent configs' accuracies have been labelled with NaNs and all epochs "
+                             "preceding the divergent epoch should be included.")
     parser.add_argument("--subsample", type=float, default=1.0,
                         help="Fraction of all available configs to be included in the cleaned data. Sub-sampling "
                              "occurs on a per-model-config basis, i.e. all epochs' data for each model config is "
@@ -47,25 +49,39 @@ def parse_cli():
 
 
 def subsample_df(df: pd.DataFrame, subsample_frac: float = 1.0) -> pd.DataFrame:
-    fids = metric_df_ops.get_configs(df=df)[constants.fidelity_params]
-    fids["check"] = True  # Just a low-cost placeholder for groupby count()
-    g = fids.groupby(constants.fidelity_params)
+    _log.info(f"Sub-sampling factor: {subsample_frac}")
+    # Figure out which models, irrespective of how many epochs they have, should be selected
+    fids = metric_df_ops.get_configs(df=df)[list(constants.fidelity_params)]
+    fids.loc[:, "check"] = True  # Just a low-cost placeholder for groupby count()
+    g = fids.groupby(list(constants.fidelity_params))
     counts = g.count()
-    configs = g.head(math.floor(counts.min() * subsample))
-    idx1 = df.index.to_frame()
-    idx2 = configs.index.to_frame()
-    sel = idx1.join(idx2, idx2.index.names, rsuffix="r_")  # Expand idx2 to also include the relevant epoch
+    min_sample_size = math.floor(counts.min() * subsample_frac)
+    _log.info(f"Reducing number of configs per fidelity group from an average of {counts.mean()} to {min_sample_size}.")
+    configs = g.head(min_sample_size)
+
+    # Create some placeholder dataframes for the two sets of indices we are concerned with - the full index of
+    # available data, including epoch numbers, and the subset of models we want to select
+    idx1 = pd.DataFrame(index=df.index)
+    idx1.loc[:, "check"] = True
+    idx2 = pd.DataFrame(index=configs.index)
+    idx2.loc[:, "check"] = True
+
+    # Effectively, expand idx2 to also include all the relevant epoch numbers for each model
+    sel = idx1.join(idx2, idx2.index.names, rsuffix="_r")
     sel = sel.notna().all(axis=1)  # Convert to a mask
+
+    # Select the relevant subset of rows
     df = df.loc[sel]
+    _log.info(f"Sub-sampling successful.")
     return df
 
 
-def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete_runs: bool = False,
+def clean(data_pth: Path, outfile: Path, epochs: int, keep_incomplete_runs: bool = False,
           keep_nan_configs: bool = False, subsample: float = 1.0):
     data: pd.DataFrame = pd.read_pickle(data_pth)
-    outfile = outdir / "cleaned_metrics.pkl.gz"
+    outfile = outfile.parent / f"{outfile.name}.pkl.gz"
 
-    # Throw away excess epochs' data
+    _log.info("Throwing away excess epochs' data.")
     data = data.loc[data.index.get_level_values("Epoch") <= epochs]
 
     if keep_incomplete_runs:
@@ -74,7 +90,7 @@ def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete_runs: bool 
         valid: pd.Series = nepochs.nepochs <= epochs
         data = data.loc[valid]
 
-    # Handle NaN values
+    _log.info("Handling NaN values.")
     nan_check = data.isna().any(axis=1)
     nan_ind: pd.MultiIndex = data.loc[nan_check].index
 
@@ -84,11 +100,11 @@ def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete_runs: bool 
 
     data = data.drop(nan_ind)
 
-    # Subsample the dataset if needed
+    _log.info("Subsampling the dataset if needed.")
     if subsample < 1.0:
         data = subsample_df(df=data, subsample_frac=subsample)
 
-    # Anonymize indices
+    _log.info("Anonymizing indices.")
     data = data.unstack("Epoch")
     idx = data.index.to_frame(index=False).reset_index(drop=True)  # Retain a copy of the original index mappings
     data.reset_index(drop=True, inplace=True)  # Assign unique ModelIndex values to each config
@@ -97,6 +113,7 @@ def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete_runs: bool 
     data.reset_index("Epoch", col_level=1, col_fill="Index", inplace=True)  # Make the Epoch value a column
     data.reset_index(col_level=1, col_fill="Index", inplace=True)  # The dataset is now in long-format
 
+    _log.info("Building dataset.")
     features = data["model_config"]
     features.loc[:, "Epoch"] = data["Index"]["Epoch"]
     outputs = data[pd.MultiIndex.from_product([["train", "valid", "test"], ["duration", "loss", "acc"]])]
@@ -107,10 +124,14 @@ def clean(data_pth: Path, outdir: Path, epochs: int, keep_incomplete_runs: bool 
 
     clean_data = pd.concat({"index": data["Index"], "features": features, "labels": outputs}, axis=1)
 
-    assert outdir.exists() and outdir.is_dir()
+    _log.info(f"Saving cleaned dataset, shape: {clean_data.shape}.")
     clean_data.to_pickle(outfile)
+
+    _log.info("Done.")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
+                        datefmt="%m/%d %H:%M:%S")
     args = parse_cli()
     clean(**vars(args))
