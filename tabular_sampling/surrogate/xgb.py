@@ -77,7 +77,19 @@ class XGBSurrogate:
         return params
 
     def __init__(self, config_space: Optional[cs.ConfigurationSpace] = joint_config_space,
-                 estimators_per_output: int = 500, encoders: Optional[dict] = None, use_gpu: Optional[bool] = None):
+                 estimators_per_output: int = 500, use_gpu: Optional[bool] = None):
+        """
+        Initialize the internal parameters needed for the surrogate to understand the data it is dealing with.
+        :param config_space: ConfigSpace.ConfigurationSpace
+            A config space to describe what each model config looks like.
+        :param estimators_per_output: int
+            The number of trees that each XGB forest should boost. Experimental, will probably be removed in favour of
+            a dynamic approach soon.
+        :param use_gpu: bool
+            A flag to ensure that a GPU is used for model training. If False (default), the decision is left up to
+            XGBoost itself, which in turn depends on being able to detect a GPU.
+        """
+
         self.config_space = config_space
         self.estimators_per_output = estimators_per_output
         self.hyperparams = None
@@ -85,6 +97,22 @@ class XGBSurrogate:
 
         # Both initializes some internal attributes as well as performs a sanity test
         self.set_random_hyperparams()  # Sets default hyperparameters
+
+
+    @property
+    def preprocessing_pipeline(self):
+        """ The pre-defined pre-processing pipeline used by the surrogate. """
+
+        params = self.config_space.get_hyperparameters()
+
+        # TODO: Add cache dir to speed up HPO
+        # TODO: Read categorical choices from the config space
+        onehot_columns = [p.name for p in params if isinstance(p, cs.CategoricalHyperparameter)]
+        onehot_enc = sklearn.preprocessing.OneHotEncoder(drop="if_binary")
+        transformers = [("OneHotEncoder", onehot_enc, onehot_columns)]
+        prep_pipe = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
+        return prep_pipe
+
 
     def _get_simple_pipeline(self, multiout: bool = True) -> sklearn.pipeline.Pipeline:
         """
@@ -95,34 +123,31 @@ class XGBSurrogate:
         :return: pipeline
         """
 
-        params = self.config_space.get_hyperparameters()
-
-        # TODO: Add cache dir to speed up HPO
-        onehot_columns = [p.name for p in params if isinstance(p, cs.CategoricalHyperparameter)]
-        onehot_enc = sklearn.preprocessing.OneHotEncoder(drop="if_binary")
-        transformers = [("OneHotEncoder", onehot_enc, onehot_columns)]
-        feature_preprocessing = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
-
+        prep_pipe = self.preprocessing_pipeline
         xgboost_estimator = xgb.sklearn.XGBRegressor(
             n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto", n_jobs=1, **self.hyperparams)
+
         if multiout:
             multi_regressor = sklearn.multioutput.MultiOutputRegressor(estimator=xgboost_estimator, n_jobs=1)
             pipeline_steps = [
-                ("preprocess", feature_preprocessing),
+                ("preprocess", prep_pipe),
                 ("multiout", multi_regressor)
             ]
         else:
             pipeline_steps = [
-                ("preprocess", feature_preprocessing),
+                ("preprocess", prep_pipe),
                 ("estimator", xgboost_estimator)
             ]
-        pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
 
+        pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
         return pipeline
 
     # TODO: Extend input types to include ConfigType and List[ConfigType]
-    def fit(self, features: pd.DataFrame, labels: pd.DataFrame, perform_hpo: bool = True, test_size: float = 0.,
-            random_state: np.random.RandomState = None, hpo_iters: int = 10, num_cv_splits: int = 5):
+    # TODO: Check if a train split (after valid and test have been taken out) would have sufficient representation in
+    #  terms of categorical values (at least one occurence of each), for the given validation and test set sizes
+    def fit(self, features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
+            perform_hpo: bool = True, test_size: float = 0., random_state: np.random.RandomState = None,
+            hpo_iters: int = 10, num_cv_splits: int = 5):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
         # Ensure the order of labels does not get messed up
@@ -137,24 +162,46 @@ class XGBSurrogate:
         # self.ymean = labels.mean(axis=0)
         # self.ystd = labels.std(axis=0)
 
-        # TODO: Consider replacing with GroupShuffleSplit to maintain integrity of model-wise data
         if test_size > 0.:
-            xtrain, xtest, ytrain, ytest = sklearn.model_selection.train_test_split(
-                features, labels, test_size=test_size, random_state=random_state, shuffle=True
-            )
+            if groups is None:
+                test_splitter = sklearn.model_selection.ShuffleSplit(
+                    n_splits=1, test_size=test_size, random_state=random_state)
+
+                idx_train, idx_test = next(test_splitter.split(features, labels))
+                xtrain = features.iloc[idx_train]
+                xtest = features.iloc[idx_test]
+                ytrain = labels.iloc[idx_train]
+                ytest = labels.iloc[idx_test]
+
+                cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
+            else:
+                test_splitter = sklearn.model_selection.GroupShuffleSplit(
+                    n_splits=1, test_size=test_size, random_state=random_state)
+
+                idx_train, idx_test = next(test_splitter.split(features, labels, groups=groups))
+                xtrain = features.iloc[idx_train]
+                xtest = features.iloc[idx_test]
+                ytrain = labels.iloc[idx_train]
+                ytest = labels.iloc[idx_test]
+                groups = groups.iloc[idx_train]
+
+                cv = sklearn.model_selection.GroupKFold(n_splits=num_cv_splits)
+
         elif test_size > 1.:
             raise ValueError(f"The test set fraction size 'test_size' must be in the range (0, 1), was given "
                              f"{test_size}")
         else:
             xtrain, ytrain = features, labels
+            cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
 
         # TODO: Implement HPO with early stopping to determine correct final value for n_estimators - NASLib used a
         #  fixed value of 500, so this procedure may or may not be useful and certainly needs a reference. This is a
         #  method to prevent overfitting, analogous to cutting off NN training after a certain number of epochs.
 
-        # TODO: Revise scoring and CV split generation
+        # TODO: Revise scoring
         num_regressands = labels.columns.size
         pipeline = self._get_simple_pipeline(multiout=num_regressands > 1)
+
         if perform_hpo:
             estimator_prefix = f"{'multiout__' * (num_regressands > 1)}estimator"
             hpo_search_space = {f"{estimator_prefix}__{k}": v for k, v in self._hpo_search_space.items()}
@@ -164,10 +211,10 @@ class XGBSurrogate:
             #     min_resources=2 * num_splits * num_regressands, cv=num_splits
             # )
             trainer = sklearn.model_selection.RandomizedSearchCV(
-                estimator=pipeline, param_distributions=hpo_search_space, n_iter=hpo_iters, cv=num_cv_splits,
-                random_state=random_state, refit=False
+                estimator=pipeline, param_distributions=hpo_search_space, n_iter=hpo_iters, cv=cv,
+                random_state=random_state, refit=True
             )
-            search_results = trainer.fit(xtrain, ytrain)
+            search_results = trainer.fit(xtrain, ytrain, groups=groups)
             self.model = search_results
         else:
             self.model = pipeline.fit(xtrain, ytrain)
