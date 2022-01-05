@@ -110,19 +110,19 @@ def clean(data_pth: Path, outfile: Path, epochs: int, keep_incomplete_runs: bool
     data.reset_index(drop=True, inplace=True)  # Assign unique ModelIndex values to each config
     data.index.set_names("ModelIndex", inplace=True)
     data = data.stack("Epoch")  # Now the index only has 2 levels - ModelIndex and Epoch
-    data.reset_index("Epoch", col_level=1, col_fill="Index", inplace=True)  # Make the Epoch value a column
-    data.reset_index(col_level=1, col_fill="Index", inplace=True)  # The dataset is now in long-format
+    data.reset_index("Epoch", col_level=1, col_fill="Groups", inplace=True)  # Make the Epoch value a column
+    data.reset_index(col_level=1, col_fill="Groups", inplace=True)  # The dataset is now in long-format
 
     _log.info("Building dataset.")
     features = data["model_config"]
-    features.loc[:, "Epoch"] = data["Index"]["Epoch"]
+    features.loc[:, "Epoch"] = data["Groups"]["Epoch"]
     outputs = data[pd.MultiIndex.from_product([["train", "valid", "test"], ["duration", "loss", "acc"]])]
     outputs.columns = metric_df_ops.collapse_index_names(outputs.columns, nlevels=2)
     diagnostics = data["diagnostic"][["FLOPS", "latency"]]
     outputs.loc[:, diagnostics.columns] = diagnostics
     outputs.loc[:, "size_MB"] = data["metadata"]["size_MB"]
 
-    clean_data = pd.concat({"index": data["Index"], "features": features, "labels": outputs}, axis=1)
+    clean_data = pd.concat({"groups": data["Groups"][["ModelIndex"]], "features": features, "labels": outputs}, axis=1)
 
     _log.info(f"Saving cleaned dataset, shape: {clean_data.shape}.")
     clean_data.to_pickle(outfile)
