@@ -112,6 +112,36 @@ class XGBSurrogate:
         prep_pipe = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
         return prep_pipe
 
+    def _random_data(self, nconfigs: int = 10, samples_per_config: int = 100, nlabel_dims: int = 2,
+                     label_names: Optional[Sequence[str]] = None,
+                     random_state: Optional[np.random.RandomState] = None) -> \
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """ A debugging tool. Generate a random dataset of arbitrary size using the stored config space representation.
+        Returns the randomly generated set of features, labels and groups as pandas DataFrame objects, in that
+        order. """
+
+        cs = copy.deepcopy(self.config_space)
+
+        if not isinstance(random_state, np.random.RandomState):
+            # Assume that rng is either None or a compatible source of entropy
+            rng = np.random.RandomState(rng)
+
+        cs.random = rng
+
+        features = cs.sample_configuration(nconfigs)
+        features = np.array([list(c.get_dictionary.values()) for c in features])
+        features = np.repeat(features, samples_per_config, axis=0)
+        features = pd.DataFrame(features, columns=cs.get_hyperparameter_names())
+
+        labels = rng.random((nconfigs * samples_per_config, nlabel_dims))
+        label_names = [f"Label_{i}" for i in range(nlabel_dims)] if label_names is None else label_names
+        labels = pd.DataFrame(labels, columns=label_names)
+
+        groups = np.repeat(np.arange(1, nconfigs + 1), samples_per_config, axis=0)
+        groups = pd.DataFrame(groups, columns="ModelIndex")
+
+        return features, labels, groups
+
     def _get_simple_pipeline(self, multiout: bool = True) -> sklearn.pipeline.Pipeline:
         """
         Get a Pipeline instance that can be used to train a new surrogat model. This is the simplest available pipeline
