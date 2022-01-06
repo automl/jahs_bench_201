@@ -129,21 +129,21 @@ class XGBSurrogate:
 
         if not isinstance(random_state, np.random.RandomState):
             # Assume that rng is either None or a compatible source of entropy
-            rng = np.random.RandomState(random_state)
+            random_state = np.random.RandomState(random_state)
 
-        cs.random = rng
+        cs.random = random_state
 
         features = cs.sample_configuration(nconfigs)
-        features = np.array([list(c.get_dictionary.values()) for c in features])
+        features = np.array([list(c.get_dictionary().values()) for c in features])
         features = np.repeat(features, samples_per_config, axis=0)
         features = pd.DataFrame(features, columns=cs.get_hyperparameter_names())
 
-        labels = rng.random((nconfigs * samples_per_config, nlabel_dims))
+        labels = random_state.random((nconfigs * samples_per_config, nlabel_dims))
         label_names = [f"Label_{i}" for i in range(nlabel_dims)] if label_names is None else label_names
         labels = pd.DataFrame(labels, columns=label_names)
 
         groups = np.repeat(np.arange(1, nconfigs + 1), samples_per_config, axis=0)
-        groups = pd.DataFrame(groups, columns="ModelIndex")
+        groups = pd.DataFrame(groups, columns=["ModelIndex"])
 
         return features, labels, groups
 
