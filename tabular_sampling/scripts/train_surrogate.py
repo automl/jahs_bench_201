@@ -8,7 +8,7 @@ import logging
 import math
 
 logger = logging.getLogger(__name__)
-
+_seed = 3501623856
 
 def parse_cli():
     parser = argparse.ArgumentParser("Train a surrogate model based on the given data.")
@@ -37,21 +37,25 @@ def parse_cli():
     parser.add_argument("--disable_hpo", action="store_true",
                         help="When this flag is given, no Hyper-parameter Optimization is performed on the surrogate's "
                              "hyper-parameters. Instead, only the default set of hyper-parameters is used.")
-    parser.add_argument("--hpo_budget", type=int, default=100,
+    # TODO: Revise HPO Algorithm
+    parser.add_argument("--hpo_budget", type=int, default=10,
                         help="The budget of the HPO procedure. The interpretation of this parameter depends on the "
-                             "type of HPO algorithm used. [NOT YET IMPLEMENTED]")  # TODO: Implement
+                             "type of HPO algorithm used.")
+    parser.add_argument("--cv_splits", type=int, default=3,
+                        help="The number of cross-validation splits to be used in case HPO is enabled.")
     parser.add_argument("--outputs", nargs="*", default=None,
                         help="A subset of the column labels under 'labels' in the DataFrame of the dataset which "
                              "specifies that the surrogate should be trained to predict only these outputs. If not "
                              "specified, all available outputs are used (default).")
-    parser.add_argument("--use_gpu", action="store_true", help="When this flag is given, enables usage of GPU "
-                                                               "accelerated model training.")
+    parser.add_argument("--use_gpu", action="store_true",
+                        help="When this flag is given, enables usage of GPU accelerated model training.")
     args = parser.parse_args()
     return args
 
 
 def train_surrogate(datapth: Path, test_frac: float, data_frac: float = 1.0, disable_hpo: bool = False,
-                    hpo_budget: Any = None, outputs: Optional[Sequence[str]] = None, use_gpu: bool = False):
+                    hpo_budget: Any = None, cv_splits: int = 3, outputs: Optional[Sequence[str]] = None,
+                    use_gpu: bool = False):
     """ Train a surrogate model. """
 
     logger.info(f"Training surrogate using data from {datapth}, using {data_frac * 100:.2f}% of the available data, "
@@ -73,6 +77,7 @@ def train_surrogate(datapth: Path, test_frac: float, data_frac: float = 1.0, dis
                :]
 
     logger.info(f"Model training will use {data.index.size} rows of data, including the test set (if any).")
+    groups = None if "groups" not in data.columns else data.groups
     features = data.features
     labels = data.labels
 
@@ -82,7 +87,8 @@ def train_surrogate(datapth: Path, test_frac: float, data_frac: float = 1.0, dis
     start = time.time()
     logger.info(f"Beginning model training.")
 
-    test_score = surrogate.fit(features, labels, test_size=test_frac, perform_hpo=not disable_hpo)
+    test_score = surrogate.fit(features, labels, groups=groups, test_size=test_frac, perform_hpo=not disable_hpo,
+                               random_state=_seed, hpo_iters=hpo_budget, num_cv_splits=cv_splits)
     end = time.time()
     logger.info(f"Model training took {end - start} seconds.")
     logger.info(f"Test R2 score: {test_score}")
