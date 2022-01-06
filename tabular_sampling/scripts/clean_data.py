@@ -1,16 +1,18 @@
 """ This script is intended to be used for cleaning up a raw metrics DataFrame and prepare it for being fed into the
 surrogate model training. """
 
+import argparse
 import logging
 import math
+from pathlib import Path
 
 import pandas as pd
-from pathlib import Path
-from tabular_sampling.lib.postprocessing import metric_df_ops
+
 from tabular_sampling.lib.core import constants
-import argparse
+from tabular_sampling.lib.postprocessing import metric_df_ops
 
 _log = logging.getLogger(__name__)
+
 
 def parse_cli():
     parser = argparse.ArgumentParser(
@@ -19,8 +21,9 @@ def parse_cli():
         "within each model config, filtering out incomplete models (if needed), filtering out NaN values (if needed), "
         "and sub-sampling the data."
     )
-    parser.add_argument("--data_pth", type=Path, help="The path to the raw metrics DataFrame file. Must be either a full "
-                                                  "path or a path relative to the current working directory.")
+    parser.add_argument("--data_pth", type=Path,
+                        help="The path to the raw metrics DataFrame file. Must be either a full "
+                             "path or a path relative to the current working directory.")
     parser.add_argument("--outfile", type=Path,
                         help="Name of the output file (including path) where the cleaned data is stored as a pandas "
                              "DataFrame. The parent directory must already exist. A file extension may be added.")
@@ -106,7 +109,7 @@ def clean(data_pth: Path, outfile: Path, epochs: int, keep_incomplete_runs: bool
 
     _log.info("Anonymizing indices.")
     data = data.unstack("Epoch")
-    idx = data.index.to_frame(index=False).reset_index(drop=True)  # Retain a copy of the original index mappings
+    _ = data.index.to_frame(index=False).reset_index(drop=True)  # Retain a copy of the original index mappings
     data.reset_index(drop=True, inplace=True)  # Assign unique ModelIndex values to each config
     data.index.set_names("ModelIndex", inplace=True)
     data = data.stack("Epoch")  # Now the index only has 2 levels - ModelIndex and Epoch
@@ -133,5 +136,5 @@ def clean(data_pth: Path, outfile: Path, epochs: int, keep_incomplete_runs: bool
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
                         datefmt="%m/%d %H:%M:%S")
-    args = parse_cli()
-    clean(**vars(args))
+    cli_args = parse_cli()
+    clean(**vars(cli_args))

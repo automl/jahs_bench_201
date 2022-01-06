@@ -1,14 +1,17 @@
-import pandas as pd
-from pathlib import Path
-from tabular_sampling.surrogate import xgb
 import argparse
-import time
-from typing import Any, Sequence, Optional
 import logging
 import math
+import time
+from pathlib import Path
+from typing import Any, Sequence, Optional
+
+import pandas as pd
+
+from tabular_sampling.surrogate import xgb
 
 logger = logging.getLogger(__name__)
 _seed = 3501623856
+
 
 def parse_cli():
     parser = argparse.ArgumentParser("Train a surrogate model based on the given data.")
@@ -73,8 +76,8 @@ def train_surrogate(datapth: Path, test_frac: float, data_frac: float = 1.0, dis
         if model_configs_sub.size == 0:
             raise ValueError(f"The given value of 'data_frac' {data_frac} is too small and caused the training dataset "
                              f"to be empty. The full dataset contains {model_configs.size} unique model configs.")
-        data = data.loc[pd.IndexSlice[model_configs_sub.get_level_values(0), model_configs_sub.get_level_values(1), :],
-               :]
+        data = data.loc[
+                pd.IndexSlice[model_configs_sub.get_level_values(0), model_configs_sub.get_level_values(1), :], :]
 
     logger.info(f"Model training will use {data.index.size} rows of data, including the test set (if any).")
     groups = None if "groups" not in data.columns else data.groups
@@ -97,5 +100,5 @@ def train_surrogate(datapth: Path, test_frac: float, data_frac: float = 1.0, dis
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
                         datefmt="%m/%d %H:%M:%S")
-    args = parse_cli()
-    train_surrogate(**vars(args))
+    cli_args = parse_cli()
+    train_surrogate(**vars(cli_args))

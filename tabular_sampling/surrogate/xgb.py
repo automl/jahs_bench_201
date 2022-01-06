@@ -1,24 +1,29 @@
 import copy
+import logging
+from typing import Union, Optional, Sequence, List, Tuple
+
+import ConfigSpace
 import numpy as np
 import pandas as pd
 import scipy.stats
 import sklearn
-import sklearn.model_selection, sklearn.pipeline, sklearn.preprocessing, sklearn.compose, sklearn.multioutput
+import sklearn.compose
+import sklearn.model_selection
+import sklearn.multioutput
+import sklearn.pipeline
+import sklearn.preprocessing
 import xgboost as xgb
+
 from tabular_sampling.search_space.configspace import joint_config_space
-import ConfigSpace as cs
-from typing import Union, Optional, Iterable, Sequence, Callable, List, Any, Dict, Tuple
-import typing_extensions as typingx
-import logging
 
 _log = logging.getLogger(__name__)
-ConfigType = Union[dict, cs.Configuration]
+ConfigType = Union[dict, ConfigSpace.Configuration]
 
 
 class XGBSurrogate:
     """ A surrogate model based on XGBoost. """
 
-    config_space: cs.ConfigurationSpace
+    config_space: ConfigSpace.ConfigurationSpace
     encoders: dict
     feature_headers: List[str]
     label_headers: List[str]
@@ -27,18 +32,18 @@ class XGBSurrogate:
     _trained = False
 
     _hpo_search_space = {
-            "objective": ["reg:squarederror"],
-            # "eval_metric": "rmse",
-            # 'early_stopping_rounds': 100,
-            "booster": ["gbtree"],
-            "max_depth": np.arange(1, 15),
-            "min_child_weight": list(range(1, 10)),
-            "colsample_bytree": scipy.stats.uniform(0.0, 1.0),
-            "learning_rate": scipy.stats.loguniform(0.001, 0.5),
-            # 'alpha': 0.24167936088332426,
-            # 'lambda': 31.393252465064943,
-            "colsample_bylevel": scipy.stats.uniform(0.0, 1.0),
-        }
+        "objective": ["reg:squarederror"],
+        # "eval_metric": "rmse",
+        # 'early_stopping_rounds': 100,
+        "booster": ["gbtree"],
+        "max_depth": np.arange(1, 15),
+        "min_child_weight": list(range(1, 10)),
+        "colsample_bytree": scipy.stats.uniform(0.0, 1.0),
+        "learning_rate": scipy.stats.loguniform(0.001, 0.5),
+        # 'alpha': 0.24167936088332426,
+        # 'lambda': 31.393252465064943,
+        "colsample_bylevel": scipy.stats.uniform(0.0, 1.0),
+    }
 
     @property
     def default_hyperparams(self) -> dict:
@@ -75,7 +80,7 @@ class XGBSurrogate:
         self.hyperparams = params
         return params
 
-    def __init__(self, config_space: Optional[cs.ConfigurationSpace] = joint_config_space,
+    def __init__(self, config_space: Optional[ConfigSpace.ConfigurationSpace] = joint_config_space,
                  estimators_per_output: int = 500, use_gpu: Optional[bool] = None):
         """
         Initialize the internal parameters needed for the surrogate to understand the data it is dealing with.
@@ -93,10 +98,10 @@ class XGBSurrogate:
         self.estimators_per_output = estimators_per_output
         self.hyperparams = None
         self.use_gpu = use_gpu
+        self.model = None
 
         # Both initializes some internal attributes as well as performs a sanity test
         self.set_random_hyperparams()  # Sets default hyperparameters
-
 
     @property
     def preprocessing_pipeline(self):
@@ -106,7 +111,7 @@ class XGBSurrogate:
 
         # TODO: Add cache dir to speed up HPO
         # TODO: Read categorical choices from the config space
-        onehot_columns = [p.name for p in params if isinstance(p, cs.CategoricalHyperparameter)]
+        onehot_columns = [p.name for p in params if isinstance(p, ConfigSpace.CategoricalHyperparameter)]
         onehot_enc = sklearn.preprocessing.OneHotEncoder(drop="if_binary")
         transformers = [("OneHotEncoder", onehot_enc, onehot_columns)]
         prep_pipe = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
@@ -124,7 +129,7 @@ class XGBSurrogate:
 
         if not isinstance(random_state, np.random.RandomState):
             # Assume that rng is either None or a compatible source of entropy
-            rng = np.random.RandomState(rng)
+            rng = np.random.RandomState(random_state)
 
         cs.random = rng
 
@@ -170,9 +175,9 @@ class XGBSurrogate:
         pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
         return pipeline
 
-
+    @staticmethod
     def _prepare_datasets_for_training(
-            self, features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
+            features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
             test_size: float = 0., random_state: Optional[np.random.RandomState] = None, num_cv_splits: int = 5
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame],
                sklearn.model_selection.BaseCrossValidator]:
@@ -245,7 +250,6 @@ class XGBSurrogate:
 
         _log.info("Dataset splits successfully generated.")
         return xtrain, xtest, ytrain, ytest, groups_train, cv
-
 
     # TODO: Extend input types to include ConfigType and List[ConfigType]
     # TODO: Check if a train split (after valid and test have been taken out) would have sufficient representation in
