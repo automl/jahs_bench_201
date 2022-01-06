@@ -10,9 +10,7 @@ Workflow:
 2.  Assign anonymized indices to each unique model config, as previously identified by the combination of "taskid" and
      "model_idx". Maintain a separate mapping of this.
 3.  Assign a unique index to each fidelity group present in the model. Maintain a separate mapping of this.
-4.  Rearrange the rows of the dataset such that the sampling distribution becomes agnostic to sub-indexing of the
-     anonymized model index in terms of the fidelity group.
-4a. Save the completed long-format data in order to avoid repeating the above mappings and ease maintenance of
+4.  Save the completed long-format data in order to avoid repeating the above mappings and ease maintenance of
      consistency across multiple data sub-sampling calls.
 5.  Filter out model configs' data as per the limits on the number of epochs - throw away excess data, check if configs
      with too few epochs are to be retained.
@@ -44,11 +42,22 @@ def parse_cli():
         "and sub-sampling the data."
     )
     parser.add_argument("--data_pth", type=Path,
-                        help="The path to the raw metrics DataFrame file. Must be either a full "
-                             "path or a path relative to the current working directory.")
-    parser.add_argument("--outfile", type=Path,
-                        help="Name of the output file (including path) where the cleaned data is stored as a pandas "
-                             "DataFrame. The parent directory must already exist. A file extension may be added.")
+                        help="The path to the raw metrics DataFrame file. Must be either a full path or a path "
+                             "relative to the current working directory. The name (and file extension) of this file is "
+                             "used to save the long-format version at 'outdir'. When '--long' is given, this file "
+                             "should instead be the aforementioned long-format version saved during a previous "
+                             "iteration of this script.")
+    parser.add_argument("--long", action="store_true",
+                        help="When this flag is given, it is assumed that the file specified by 'data_pth' was "
+                             "generated during a previous iteration of this script and is already in long-format. This "
+                             "saves computation time as well as avoids consistency pitfalls when generating multiple "
+                             "versions of the same dataset.")
+    parser.add_argument("--outdir", type=Path, default=Path().cwd(),
+                        help="Path to the directory where the cleaned data is to be stored as a pandas DataFrame. The "
+                             "parent directory must already exist. Default: current working directory.")
+    parser.add_argument("--output_filename", type=str, default="cleaned_metrics",
+                        help="The name of the file in which the cleaned data will be stored. Appropriate file "
+                             "extensions will automatically be added. Default: cleaned_metrics.")
     parser.add_argument("--epochs", type=int, default=200,
                         help="The number of epochs that a full run is expected to have lasted for. All runs that have "
                              "data for fewer than this many epochs will be considered incomplete "
@@ -84,14 +93,14 @@ def to_long_format(df: pd.DataFrame) -> pd.DataFrame:
     "metadata" is moved underneath "labels". The index itself is set to a simple RangeIndex. """
 
     # Separate out the features
-    features = df["model_config"]
+    features = df.loc[:, "model_config"]
     features.loc[:, "epoch"] = df.index.get_level_values("Epoch")
 
     # Separate out the labels
-    labels = df[["train", "valid", "test"]]
-    labels.index = metric_df_ops.collapse_index_names(df.columns)
+    labels = df.loc[:, ["train", "valid", "test"]]
+    labels.columns = metric_df_ops.collapse_index_names(labels.columns, nlevels=2)
     diagnostics = df["diagnostic"][["FLOPS", "latency"]]
-    labels.loc[:, diagnostics.columns] = diagnostics
+    labels.loc[:, diagnostics.columns.values] = diagnostics
     labels.loc[:, "size_MB"] = df["metadata"]["size_MB"]
 
     # Extract the original sampling index
@@ -166,6 +175,33 @@ def identify_fidelity_groups(df: pd.DataFrame, fids: List[str], inplace=False) -
         return fidelity_group_to_fidelity_id, new_index
 
 
+def filter_nepochs(df: pd.DataFrame, nepochs: int, keep_incomplete: bool = False):
+    """ Given a long-format metrics DataFrame, filter out only up to the given number of epochs' worth of training data
+    for each model config. If ´keep_incomplete=True´, model configs with fewer than ´nepochs´ worth of data are not
+    thrown away. Note: It is assumed that the epochs in the long-form table are 1-indexed, i.e. the first epoch's data
+    has been marked by the value "1" for the field ´features.epoch´. """
+
+    assert "sampling_index" in df.columns, "The input dataframe must be in a valid long-format."
+    assert "model_ID" in df.sampling_index.columns, "The input dataframe must be in a valid long-format."
+
+    _log.info("Throwing away excess epochs' data.")
+    model_valid = df.features.epoch <= nepochs
+
+    if keep_incomplete:
+        return df.loc[model_valid]
+
+    _log.info("Filtering out incomplete epochs' data.")
+    existing_epoch_counts = df.groupby(("sampling_index", "model_ID"))[[("features", "epoch")]].max()
+    existing_epoch_counts.columns = ["valid"]
+    existing_epoch_counts.index.rename("model_ID", inplace=True)  # Get rid of the extra index level name
+
+    models_complete = (existing_epoch_counts >= nepochs)
+    models_complete = df.sampling_index.join(models_complete, on="model_ID")["valid"]
+    df = df.loc[pd.concat([model_valid, models_complete], axis=1).all(axis=1)]
+
+    return df
+
+
 def subsample_df(df: pd.DataFrame, subsample_frac: float = 1.0) -> pd.DataFrame:
     _log.info(f"Sub-sampling factor: {subsample_frac}")
     # Figure out which models, irrespective of how many epochs they have, should be selected
@@ -219,19 +255,28 @@ def interleave_fidelitywise(df: pd.DataFrame, fids: List[str]) -> pd.DataFrame:
     fidelity_counts = g[[spare_cols[0]]].count()
 
 
-def clean(data_pth: Path, outfile: Path, epochs: int, keep_incomplete_runs: bool = False,
-          keep_nan_configs: bool = False, subsample: float = 1.0):
+def clean(data_pth: Path, outdir: Path, output_filename: str, epochs: int, long: bool = False,
+          keep_incomplete_runs: bool = False, keep_nan_configs: bool = False, subsample: float = 1.0):
+
+    outfile = outfdir / f"{output_filename}.pkl.gz"
+
+    _log.info(f"Loading {'long-format ' if long else 'raw'} metrics data from {data_pth}")
     data: pd.DataFrame = pd.read_pickle(data_pth)
-    outfile = outfile.parent / f"{outfile.name}.pkl.gz"
+    raw_shape = data.shape
+    _log.info(f"Read metrics DataFrame of shape {raw_shape}.")
 
-    _log.info("Throwing away excess epochs' data.")
-    data = data.loc[data.index.get_level_values("Epoch") <= epochs]
+    if not long:
+        _log.info("Converting raw data to long-format table.")
+        data = to_long_format(data)
+        long_shape = data.shape
+        assert long_shape == raw_shape, f"Unable to verify data integrity after conversion from raw table of shape " \
+                                        f"{raw_shape} to long table of shape {long_shape}."
+        _log.info("Successfully converted raw data to long-format.")
 
-    if keep_incomplete_runs:
-        nepochs: pd.DataFrame = metric_df_ops.get_nepochs(df=data)
-        nepochs = nepochs.reindex(index=data.index, method="ffill")
-        valid: pd.Series = nepochs.nepochs <= epochs
-        data = data.loc[valid]
+        _log.info(f"Saving long-format table to disk at {outdir}/long_{data_pth.name}.")
+        data.to_pickle(f"{outdir}/long_{data_pth.name}")
+
+    data = filter_nepochs(data, nepochs=epochs, keep_incomplete=keep_incomplete_runs)
 
     _log.info("Handling NaN values.")
     nan_check = data.isna().any(axis=1)
