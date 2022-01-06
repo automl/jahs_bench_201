@@ -1,5 +1,4 @@
-import functools
-
+import copy
 import numpy as np
 import pandas as pd
 import scipy.stats
@@ -8,7 +7,7 @@ import sklearn.model_selection, sklearn.pipeline, sklearn.preprocessing, sklearn
 import xgboost as xgb
 from tabular_sampling.search_space.configspace import joint_config_space
 import ConfigSpace as cs
-from typing import Union, Optional, Iterable, Sequence, Callable, List, Any, Dict
+from typing import Union, Optional, Iterable, Sequence, Callable, List, Any, Dict, Tuple
 import typing_extensions as typingx
 import logging
 
@@ -113,7 +112,6 @@ class XGBSurrogate:
         prep_pipe = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
         return prep_pipe
 
-
     def _get_simple_pipeline(self, multiout: bool = True) -> sklearn.pipeline.Pipeline:
         """
         Get a Pipeline instance that can be used to train a new surrogat model. This is the simplest available pipeline
@@ -142,6 +140,83 @@ class XGBSurrogate:
         pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
         return pipeline
 
+
+    def _prepare_datasets_for_training(
+            self, features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
+            test_size: float = 0., random_state: Optional[np.random.RandomState] = None, num_cv_splits: int = 5
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame],
+               sklearn.model_selection.BaseCrossValidator]:
+        """
+        Given a full dataset consisting of the input features, the labels to be predicted, and an optional
+        definition of groups for the data, ascertains the way the data should be split into a training, validation and
+        test set to be used for training a surrogate pipeline.
+
+        :param features: pandas.DataFrame
+        :param labels: pandas.DataFrame
+        :param groups: pandas.DataFrame or None
+            A set of additional numeric labels for each row in 'features' and 'labels' such that all rows with the same
+            label are assosciated with the same model config and as such will be treated as one unit during all dataset
+            shuffling and splitting operations. Can be omitted (i.e. set to None)
+        :param test_size: float
+            A real number in the range [0., 1.) to indicate what fraction of the given data should be split off into a
+            test dataset. A value of 0. (default) indicates that no test set should be generated.
+        :param random_state:
+        :param num_cv_splits: int
+            An integer >=2, the number of cross-validation splits to be generated from the training set. Can be an
+            arbitrary number that won't affect model training if no Cross-Validation is actually performed during model
+            training.
+        :return:
+            A tuple containing the training features, test features, training labels, test labels, an optional set of
+            corresponding groups for the training data and the cross-validation split generator, in that order. The
+            cross-validation split generator can be used to split the training data into training and validation splits
+            on the fly.
+        """
+
+        _log.info("Generating training and test splits, and the validation split generator.")
+        if test_size > 1. or test_size < 0.:
+            raise ValueError(f"The test set fraction size 'test_size' must be in the range [0, 1), was given "
+                             f"{test_size}")
+        elif test_size == 0.:
+            _log.debug("No test split will be generated.")
+            xtrain, ytrain = features, labels
+            xtest, ytest = None, None
+            if groups is None:
+                _log.debug("No data groups were given.")
+                cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
+            else:
+                _log.debug("Generating training and validation splits in accordance with the given data groups.")
+                cv = sklearn.model_selection.GroupKFold(n_splits=num_cv_splits)
+        else:
+            if groups is None:
+                _log.debug("No data groups were given.")
+                test_splitter = sklearn.model_selection.ShuffleSplit(
+                    n_splits=1, test_size=test_size, random_state=random_state)
+
+                idx_train, idx_test = next(test_splitter.split(features, labels))
+                xtrain = features.iloc[idx_train]
+                xtest = features.iloc[idx_test]
+                ytrain = labels.iloc[idx_train]
+                ytest = labels.iloc[idx_test]
+
+                cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
+            else:
+                _log.debug("Generating training, validation and test splits in accordance with the given data groups.")
+                test_splitter = sklearn.model_selection.GroupShuffleSplit(
+                    n_splits=1, test_size=test_size, random_state=random_state)
+
+                idx_train, idx_test = next(test_splitter.split(features, labels, groups=groups))
+                xtrain = features.iloc[idx_train]
+                xtest = features.iloc[idx_test]
+                ytrain = labels.iloc[idx_train]
+                ytest = labels.iloc[idx_test]
+                groups_train = groups.iloc[idx_train]
+
+                cv = sklearn.model_selection.GroupKFold(n_splits=num_cv_splits)
+
+        _log.info("Dataset splits successfully generated.")
+        return xtrain, xtest, ytrain, ytest, groups_train, cv
+
+
     # TODO: Extend input types to include ConfigType and List[ConfigType]
     # TODO: Check if a train split (after valid and test have been taken out) would have sufficient representation in
     #  terms of categorical values (at least one occurence of each), for the given validation and test set sizes
@@ -162,37 +237,10 @@ class XGBSurrogate:
         # self.ymean = labels.mean(axis=0)
         # self.ystd = labels.std(axis=0)
 
-        if test_size > 0.:
-            if groups is None:
-                test_splitter = sklearn.model_selection.ShuffleSplit(
-                    n_splits=1, test_size=test_size, random_state=random_state)
-
-                idx_train, idx_test = next(test_splitter.split(features, labels))
-                xtrain = features.iloc[idx_train]
-                xtest = features.iloc[idx_test]
-                ytrain = labels.iloc[idx_train]
-                ytest = labels.iloc[idx_test]
-
-                cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
-            else:
-                test_splitter = sklearn.model_selection.GroupShuffleSplit(
-                    n_splits=1, test_size=test_size, random_state=random_state)
-
-                idx_train, idx_test = next(test_splitter.split(features, labels, groups=groups))
-                xtrain = features.iloc[idx_train]
-                xtest = features.iloc[idx_test]
-                ytrain = labels.iloc[idx_train]
-                ytest = labels.iloc[idx_test]
-                groups = groups.iloc[idx_train]
-
-                cv = sklearn.model_selection.GroupKFold(n_splits=num_cv_splits)
-
-        elif test_size > 1.:
-            raise ValueError(f"The test set fraction size 'test_size' must be in the range (0, 1), was given "
-                             f"{test_size}")
-        else:
-            xtrain, ytrain = features, labels
-            cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
+        xtrain, xtest, ytrain, ytest, groups, cv = self._prepare_datasets_for_training(
+            features=features, labels=labels, groups=groups, test_size=test_size, random_state=random_state,
+            num_cv_splits=num_cv_splits
+        )
 
         # TODO: Implement HPO with early stopping to determine correct final value for n_estimators - NASLib used a
         #  fixed value of 500, so this procedure may or may not be useful and certainly needs a reference. This is a
@@ -220,7 +268,7 @@ class XGBSurrogate:
             self.model = pipeline.fit(xtrain, ytrain)
 
         if test_size > 0.:
-            # TODO: Generate test accuracy
+            # TODO: Revise test set scoring
             score = self.model.score(xtest, ytest)
             return score
 
