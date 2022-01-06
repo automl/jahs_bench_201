@@ -137,6 +137,8 @@ class XGBSurrogate:
         features = np.array([list(c.get_dictionary().values()) for c in features])
         features = np.repeat(features, samples_per_config, axis=0)
         features = pd.DataFrame(features, columns=cs.get_hyperparameter_names())
+        epochs = pd.Series(np.tile(np.arange(1, samples_per_config + 1), nconfigs), name="epoch")
+        features.loc[:, "epoch"] = epochs
 
         labels = random_state.random((nconfigs * samples_per_config, nlabel_dims))
         label_names = [f"Label_{i}" for i in range(nlabel_dims)] if label_names is None else label_names
