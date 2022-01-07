@@ -4,6 +4,7 @@ from typing import Union, Optional, Sequence, List, Tuple
 
 import ConfigSpace
 from functools import partial
+import joblib
 import numpy as np
 import pandas as pd
 import scipy.stats
@@ -25,12 +26,14 @@ class XGBSurrogate:
     """ A surrogate model based on XGBoost. """
 
     config_space: ConfigSpace.ConfigurationSpace
-    encoders: dict
-    feature_headers: List[str]
-    label_headers: List[str]
+    label_headers: Optional[pd.Index]
     hyperparams: dict
     estimators_per_output: int
-    _trained = False
+    _trained: bool
+
+    __params_filename = "params.pkl.gz"
+    __headers_filename = "label_headers.pkl.gz"
+    __model_filename = "model.pkl.gz"
 
     _hpo_search_space = {
         "objective": ["reg:squarederror"],
@@ -100,6 +103,8 @@ class XGBSurrogate:
         self.hyperparams = None
         self.use_gpu = use_gpu
         self.model = None
+        self.label_headers = None
+        self._trained = False
 
         # Both initializes some internal attributes as well as performs a sanity test
         self.set_random_hyperparams()  # Sets default hyperparameters
@@ -279,10 +284,10 @@ class XGBSurrogate:
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
         # Ensure the order of labels does not get messed up
-        # if self.label_headers is None:
-        #     self.label_headers = labels.columns.tolist()
-        # else:
-        #     labels = labels[self.label_headers]
+        if self.label_headers is None:
+            self.label_headers = labels.columns
+        else:
+            labels = labels.loc[:, self.label_headers]
 
         # TODO: Check if y-scaling is needed. Add an option to enable y-scaling by building a composite estimator that
         #  works so: scale down -> real model -> scale up
@@ -320,6 +325,8 @@ class XGBSurrogate:
         else:
             self.model = pipeline.fit(xtrain, ytrain)
 
+        self._trained = True
+
         if test_size > 0.:
             # TODO: Revise test set scoring
             score = self.model.score(xtest, ytest)
@@ -329,5 +336,38 @@ class XGBSurrogate:
         """ Given some input data, generate model predictions. The input data will be properly encoded when this
         function is called. """
 
-        ypredict = self.model.predict(features)
+        ypredict = self.model.predict(features.loc[:, self.label_headers])
         return ypredict
+
+    def dump(self, outdir: Path):
+        """ Save a trained surrogate to disk so that it can be loaded up later. """
+
+        params = {
+            "config_space": self.config_space,
+            "estimators_per_output": self.estimators_per_output,
+            "hyperparams": self.hyperparams,
+            "use_gpu": self.use_gpu,
+            "_trained": self._trained
+        }
+        joblib.dump(params, outdir / self.__params_filename)
+        if self._trained:
+            self.label_headers.to_series().to_pickle(outdir / self.__headers_filename)
+            joblib.dump(self.model, outdir / self.__model_filename)
+
+    @classmethod
+    def load(cls, outdir: Path) -> XGBSurrogate:
+        """ Load a previously saved surrogate from disk and return it. """
+        params: dict = joblib.load(outdir / cls.__params_filename)
+        surrogate = cls(config_space=params["config_space"], estimators_per_output=params["estimators_per_output"],
+                        use_gpu=params["use_gpu"])
+        surrogate.hyperparams = params["hyperparams"]
+        surrogate._trained = params["_trained"]
+
+        if surrogate._trained:
+            label_headers: pd.Series = pd.read_pickle(outdir / cls.__headers_filename)
+            model = joblib.load(outdir / cls.__model_filename)
+
+            surrogate.label_headers = pd.Index(label_headers)
+            surrogate.model = model
+
+        return surrogate
