@@ -22,13 +22,12 @@ Workflow:
 
 import argparse
 import logging
-import math
 from pathlib import Path
 from typing import List, Tuple, Optional
 
 import pandas as pd
+import sklearn.model_selection
 
-from tabular_sampling.lib.core import constants
 from tabular_sampling.lib.postprocessing import metric_df_ops
 
 _log = logging.getLogger(__name__)
@@ -46,7 +45,7 @@ def parse_cli():
                              "relative to the current working directory. The name (and file extension) of this file is "
                              "used to save the long-format version at 'outdir'. When '--long' is given, this file "
                              "should instead be the aforementioned long-format version saved during a previous "
-                             "iteration of this script.")
+                             "iteration of this script. This must be a .pkl.gz file containing a pandas DataFrame.")
     parser.add_argument("--long", action="store_true",
                         help="When this flag is given, it is assumed that the file specified by 'data_pth' was "
                              "generated during a previous iteration of this script and is already in long-format. This "
@@ -127,7 +126,8 @@ def identify_model_configs(df: pd.DataFrame, inplace=False) -> Tuple[pd.Series, 
     whereas the input DataFrame is modified in-place by adding a new column named "model_ID" under "sampling_index" and
     None is returned for the latter.
 
-    :param df:
+    :param df: pandas DataFrame
+    :param inplace: bool
     :return:
     """
 
@@ -154,10 +154,11 @@ def identify_fidelity_groups(df: pd.DataFrame, fids: List[str], inplace=False) -
     ´inplace=True`, only the former is returned whereas the input DataFrame is modified in-place by adding a new column
     named "fidelity_ID" under "sampling_index" and None is returned for the latter.
 
-    :param df:
+    :param df: pandas DataFrame
     :param fids: list of str
         A list of strings corresponding to the names of the fidelity parameters under "model_config" of the original
         metrics DataFrame and under "features" of the corresponding long-format DataFrame.
+    :param inplace: bool
     :return:
     """
 
@@ -203,62 +204,51 @@ def filter_nepochs(df: pd.DataFrame, nepochs: int, keep_incomplete: bool = False
 
 
 def subsample_df(df: pd.DataFrame, subsample_frac: float = 1.0) -> pd.DataFrame:
-    _log.info(f"Sub-sampling factor: {subsample_frac}")
+    """ Given a metrics DataFrame in long-format, with uniquely identifiable model IDs and fidelity IDs, selects a
+    specified fraction of all available model configs' data (regardless of number of epochs in each) while maintaining
+    the sampling distribution across fidelity groups. """
+
+    if subsample_frac > 1.:
+        raise ValueError(f"Sub-sampling only supported for a value in the range (0., 1.], was given {subsample_frac}.")
+    elif subsample_frac == 1.:
+        return df
+
+    _log.info(f"Sub-sampling factor: {subsample_frac}, original dataset size: {df.shape[0]}")
+
     # Figure out which models, irrespective of how many epochs they have, should be selected
-    fids = metric_df_ops.get_configs(df=df)[list(constants.fidelity_params)]
-    fids.loc[:, "check"] = True  # Just a low-cost placeholder for groupby count()
-    g = fids.groupby(list(constants.fidelity_params))
-    counts = g.count()
-    min_sample_size = math.floor(counts.min() * subsample_frac)
-    _log.info(f"Reducing number of configs per fidelity group from an average of {counts.mean()} to {min_sample_size}.")
-    configs = g.head(min_sample_size)
+    index = df.loc[:, ("sampling_index", slice(None))].drop_level(0, axis=1)
+    model_ids = index.loc[:, "model_ID"]
+    fidelity_groups = index.loc[:, "fidelity_ID"]
 
-    # Create some placeholder dataframes for the two sets of indices we are concerned with - the full index of
-    # available data, including epoch numbers, and the subset of models we want to select
-    idx1 = pd.DataFrame(index=df.index)
-    idx1.loc[:, "check"] = True
-    idx2 = pd.DataFrame(index=configs.index)
-    idx2.loc[:, "check"] = True
+    nunique_models = model_ids.drop_duplicates().shape[0]
+    nunique_fidelity_groups = fidelity_groups.drop_duplicates().shape[0]
+    counts = index.groupby("fidelity_ID").count()
+    _log.info(f"Original dataset has a total of {nunique_models} unique model configs spread over "
+              f"{nunique_fidelity_groups} unique fidelity groups, averaging to {counts.mean()} model configs in each "
+              f"group.")
 
-    # Effectively, expand idx2 to also include all the relevant epoch numbers for each model
-    sel = idx1.join(idx2, idx2.index.names, rsuffix="_r")
-    sel = sel.notna().all(axis=1)  # Convert to a mask
+    n_splits = int(1 / subsample_frac)
+    splitter = sklearn.model_selection.StratifiedGroupKFold(n_splits=n_splits, shuffle=False)
+    subsample_split, _ = next(splitter.split(index, fidelity_groups, groups=model_ids))
 
-    # Select the relevant subset of rows
-    df = df.loc[sel]
-    _log.info(f"Sub-sampling successful.")
+    df = df.loc[subsample_split, :]
+    index = df.loc[:, ("sampling_index", slice(None))].drop_level(0, axis=1)
+    model_ids = index.loc[:, "model_ID"]
+    fidelity_groups = index.loc[:, "fidelity_ID"]
+
+    nunique_models = model_ids.drop_duplicates().shape[0]
+    nunique_fidelity_groups = fidelity_groups.drop_duplicates().shape[0]
+    counts = index.groupby("fidelity_ID").count()
+    _log.info(f"Sub-sampled dataset has a total of {df.shape[0]} data points, a total of {nunique_models} unique model "
+              f"configs spread over {nunique_fidelity_groups} unique fidelity groups, averaging to {counts.mean()} "
+              f"model configs in each group.")
     return df
-
-
-def interleave_fidelitywise(df: pd.DataFrame, fids: List[str]) -> pd.DataFrame:
-    """
-    In order to ensure that shuffling and splitting operations don't inadvertently introduce biases to the data, it is
-    important to interleave the model configs of each fidelity group such that they are more or less uniformly
-    distributed along the rows of the DataFrame. This operation should precede any sort of sub-sampling or re-sampling
-    in order to maintain the legitimacy of any comparisons made on subsets of the whole dataset. Alternatively,
-    comparisons on subsets of the whole dataset are only valid for subsets generated after this operation.
-    :param df:
-    :param fids:
-        A list of strings denoting the column names corresponding to the fidelity parameters
-    :return:
-        A dataframe with the same data as df but re-arranged such that the distribution of model configs along the
-        rows is agnostic to index-based sampling.
-    """
-
-    fidelities: pd.DataFrame = df["model_config"][fids]
-    unique_fidelities = pd.MultiIndex.from_frame(fidelities).unique()
-    unique_fidelities.to_frame(index=False)
-    fidelity_index = pd.DataFrame(list(range(unique_fidelities.size)), index=unique_fidelities,
-                                  columns=["FidelityIndex"])
-    g = df["model_config"].groupby(fids)
-    spare_cols = df["model_config"].columns.difference(fids)
-    fidelity_counts = g[[spare_cols[0]]].count()
 
 
 def clean(data_pth: Path, outdir: Path, output_filename: str, epochs: int, long: bool = False,
           keep_incomplete_runs: bool = False, keep_nan_configs: bool = False, subsample: float = 1.0):
-
-    outfile = outfdir / f"{output_filename}.pkl.gz"
+    assert outdir.exists() and outdir.is_dir()
+    outfile = outdir / f"{output_filename}.pkl.gz"
 
     _log.info(f"Loading {'long-format ' if long else 'raw'} metrics data from {data_pth}")
     data: pd.DataFrame = pd.read_pickle(data_pth)
@@ -278,42 +268,22 @@ def clean(data_pth: Path, outdir: Path, output_filename: str, epochs: int, long:
 
     data = filter_nepochs(data, nepochs=epochs, keep_incomplete=keep_incomplete_runs)
 
-    _log.info("Handling NaN values.")
-    nan_check = data.isna().any(axis=1)
-    nan_ind: pd.MultiIndex = data.loc[nan_check].index
+    if not keep_nan_configs:
+        # TODO: Handle datasets that don't include validation data
+        _log.info("Handling NaN values.")
+        nan_check = data.labels.isna().any(axis=1)
+        nan_ind: pd.MultiIndex = data.loc[nan_check].index
 
-    if keep_nan_configs:
-        # Generalize the indices to be dropped to the entire config instead of just particular epochs.
-        nan_ind = nan_ind.droplevel("Epoch").drop_duplicates()
+        # if keep_nan_configs:
+        #     # Generalize the indices to be dropped to the entire config instead of just particular epochs.
+        #     nan_ind = nan_ind.droplevel("Epoch").drop_duplicates()
 
-    data = data.drop(nan_ind)
+        data = data.drop(nan_ind)
 
-    _log.info("Subsampling the dataset if needed.")
-    if subsample < 1.0:
-        data = subsample_df(df=data, subsample_frac=subsample)
+    data = subsample_df(df=data, subsample_frac=subsample)
 
-    _log.info("Anonymizing indices.")
-    data = data.unstack("Epoch")
-    _ = data.index.to_frame(index=False).reset_index(drop=True)  # Retain a copy of the original index mappings
-    data.reset_index(drop=True, inplace=True)  # Assign unique ModelIndex values to each config
-    data.index.set_names("ModelIndex", inplace=True)
-    data = data.stack("Epoch")  # Now the index only has 2 levels - ModelIndex and Epoch
-    data.reset_index("Epoch", col_level=1, col_fill="Groups", inplace=True)  # Make the Epoch value a column
-    data.reset_index(col_level=1, col_fill="Groups", inplace=True)  # The dataset is now in long-format
-
-    _log.info("Building dataset.")
-    features = data["model_config"]
-    features.loc[:, "Epoch"] = data["Groups"]["Epoch"]
-    outputs = data[pd.MultiIndex.from_product([["train", "valid", "test"], ["duration", "loss", "acc"]])]
-    outputs.columns = metric_df_ops.collapse_index_names(outputs.columns, nlevels=2)
-    diagnostics = data["diagnostic"][["FLOPS", "latency"]]
-    outputs.loc[:, diagnostics.columns] = diagnostics
-    outputs.loc[:, "size_MB"] = data["metadata"]["size_MB"]
-
-    clean_data = pd.concat({"groups": data["Groups"][["ModelIndex"]], "features": features, "labels": outputs}, axis=1)
-
-    _log.info(f"Saving cleaned dataset, shape: {clean_data.shape}.")
-    clean_data.to_pickle(outfile)
+    _log.info(f"Saving cleaned dataset, shape: {data.shape}.")
+    data.to_pickle(outfile)
 
     _log.info("Done.")
 
