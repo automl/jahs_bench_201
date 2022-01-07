@@ -3,6 +3,7 @@ import logging
 from typing import Union, Optional, Sequence, List, Tuple
 
 import ConfigSpace
+from functools import partial
 import numpy as np
 import pandas as pd
 import scipy.stats
@@ -180,7 +181,8 @@ class XGBSurrogate:
     @staticmethod
     def _prepare_datasets_for_training(
             features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
-            test_size: float = 0., random_state: Optional[np.random.RandomState] = None, num_cv_splits: int = 5
+            test_size: float = 0., random_state: Optional[np.random.RandomState] = None, num_cv_splits: int = 5,
+            stratify: bool = True, strata: Optional[pd.Series] = None
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame],
                sklearn.model_selection.BaseCrossValidator]:
         """
@@ -202,6 +204,15 @@ class XGBSurrogate:
             An integer >=2, the number of cross-validation splits to be generated from the training set. Can be an
             arbitrary number that won't affect model training if no Cross-Validation is actually performed during model
             training.
+        :param stratify: bool
+            When True, output strata distribution is also considered when splitting the data. Also consult ´strata´.
+        :param strata: None or string or pandas Series
+            The strata according to which splitting occurs, such that a best effort is made to maintain the
+            distribution of either the groups (if given) or the raw data rows across the given strata. If None, and
+            ´stratify=True´, the first column in the labels is used as the strata. A string can also be passed to
+            indicate which column from labels DataFrame is to be used as strata. Otherwise, this should be a pandas
+            Series or other iterable with a length corresponding to the number of rows in the dataset. No effect when
+            ´stratify=False´.
         :return:
             A tuple containing the training features, test features, training labels, test labels, an optional set of
             corresponding groups for the training data and the cross-validation split generator, in that order. The
@@ -224,24 +235,30 @@ class XGBSurrogate:
                 _log.debug("Generating training and validation splits in accordance with the given data groups.")
                 cv = sklearn.model_selection.GroupKFold(n_splits=num_cv_splits)
         else:
+            strata = labels.loc[:, labels.columns[0]] if strata is None else \
+                labels.loc[:, strata] if isinstance(strata, str) else strata
+
             if groups is None:
                 _log.debug("No data groups were given.")
-                test_splitter = sklearn.model_selection.ShuffleSplit(
-                    n_splits=1, test_size=test_size, random_state=random_state)
+                splitter_type = sklearn.model_selection.StratifiedShuffleSplit if stratify \
+                    else sklearn.model_selection.ShuffleSplit
+                test_splitter = splitter_type(n_splits=1, test_size=test_size, random_state=random_state)
 
-                idx_train, idx_test = next(test_splitter.split(features, labels))
+                idx_train, idx_test = next(test_splitter.split(features, strata))
                 xtrain = features.iloc[idx_train]
                 xtest = features.iloc[idx_test]
                 ytrain = labels.iloc[idx_train]
                 ytest = labels.iloc[idx_test]
 
+                # TODO: Enable random validation splits with reproducible RNG
                 cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
             else:
                 _log.debug("Generating training, validation and test splits in accordance with the given data groups.")
-                test_splitter = sklearn.model_selection.GroupShuffleSplit(
-                    n_splits=1, test_size=test_size, random_state=random_state)
+                splitter_type = partial(sklearn.model_selection.StratifiedGroupKFold, shuffle=True) if stratify \
+                    else sklearn.model_selection.GroupShuffleSplit
+                test_splitter = splitter_type(n_splits=int(1 / test_size), random_state=random_state)
 
-                idx_train, idx_test = next(test_splitter.split(features, labels, groups=groups))
+                idx_train, idx_test = next(test_splitter.split(features, strata, groups=groups))
                 xtrain = features.iloc[idx_train]
                 xtest = features.iloc[idx_test]
                 ytrain = labels.iloc[idx_train]
@@ -258,7 +275,7 @@ class XGBSurrogate:
     #  terms of categorical values (at least one occurence of each), for the given validation and test set sizes
     def fit(self, features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
             perform_hpo: bool = True, test_size: float = 0., random_state: np.random.RandomState = None,
-            hpo_iters: int = 10, num_cv_splits: int = 5):
+            hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True, strata: Optional[pd.Series] = None):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
         # Ensure the order of labels does not get messed up
@@ -275,7 +292,7 @@ class XGBSurrogate:
 
         xtrain, xtest, ytrain, ytest, groups, cv = self._prepare_datasets_for_training(
             features=features, labels=labels, groups=groups, test_size=test_size, random_state=random_state,
-            num_cv_splits=num_cv_splits
+            num_cv_splits=num_cv_splits, stratify=stratify, strata=strata
         )
 
         # TODO: Implement HPO with early stopping to determine correct final value for n_estimators - NASLib used a
