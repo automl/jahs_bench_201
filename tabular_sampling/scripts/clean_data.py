@@ -98,9 +98,9 @@ def to_long_format(df: pd.DataFrame) -> pd.DataFrame:
     # Separate out the labels
     labels = df.loc[:, ["train", "valid", "test"]]
     labels.columns = metric_df_ops.collapse_index_names(labels.columns, nlevels=2)
-    diagnostics = df["diagnostic"][["FLOPS", "latency"]]
-    labels.loc[:, diagnostics.columns.values] = diagnostics
-    labels.loc[:, "size_MB"] = df["metadata"]["size_MB"]
+    diagnostics = df.loc[:, ("diagnostic", ["FLOPS", "latency"])]
+    labels.loc[:, diagnostics.columns.get_level_values(1)] = diagnostics
+    labels.loc[:, "size_MB"] = df.loc[:, ("metadata", "size_MB")]
 
     # Extract the original sampling index
     sampling_index = df.index.to_frame(index=False)
@@ -170,7 +170,7 @@ def identify_fidelity_groups(df: pd.DataFrame, fids: List[str], inplace=False) -
     new_index = fidelity_groups.merge(fidelity_group_to_fidelity_id)
 
     if inplace:
-        df.loc[:, ("features", "fidelity_ID")] = new_index["fidelity_ID"]
+        df.loc[:, ("sampling_index", "fidelity_ID")] = new_index["fidelity_ID"]
         return fidelity_group_to_fidelity_id, None
     else:
         return fidelity_group_to_fidelity_id, new_index
@@ -216,7 +216,7 @@ def subsample_df(df: pd.DataFrame, subsample_frac: float = 1.0) -> pd.DataFrame:
     _log.info(f"Sub-sampling factor: {subsample_frac}, original dataset size: {df.shape[0]}")
 
     # Figure out which models, irrespective of how many epochs they have, should be selected
-    index = df.loc[:, ("sampling_index", slice(None))].drop_level(0, axis=1)
+    index = df.loc[:, ("sampling_index", slice(None))].droplevel(0, axis=1)
     model_ids = index.loc[:, "model_ID"]
     fidelity_groups = index.loc[:, "fidelity_ID"]
 
@@ -224,15 +224,15 @@ def subsample_df(df: pd.DataFrame, subsample_frac: float = 1.0) -> pd.DataFrame:
     nunique_fidelity_groups = fidelity_groups.drop_duplicates().shape[0]
     counts = index.groupby("fidelity_ID").count()
     _log.info(f"Original dataset has a total of {nunique_models} unique model configs spread over "
-              f"{nunique_fidelity_groups} unique fidelity groups, averaging to {counts.mean()} model configs in each "
-              f"group.")
+              f"{nunique_fidelity_groups} unique fidelity groups, averaging to {counts.mean().mean():.2f} data points "
+              f"in each group.")
 
     n_splits = int(1 / subsample_frac)
     splitter = sklearn.model_selection.StratifiedGroupKFold(n_splits=n_splits, shuffle=False)
-    subsample_split, _ = next(splitter.split(index, fidelity_groups, groups=model_ids))
+    _, subsample_split = next(splitter.split(index, fidelity_groups, groups=model_ids))
 
-    df = df.loc[subsample_split, :]
-    index = df.loc[:, ("sampling_index", slice(None))].drop_level(0, axis=1)
+    df = df.iloc[subsample_split]
+    index = df.loc[:, ("sampling_index", slice(None))].droplevel(0, axis=1)
     model_ids = index.loc[:, "model_ID"]
     fidelity_groups = index.loc[:, "fidelity_ID"]
 
@@ -240,8 +240,8 @@ def subsample_df(df: pd.DataFrame, subsample_frac: float = 1.0) -> pd.DataFrame:
     nunique_fidelity_groups = fidelity_groups.drop_duplicates().shape[0]
     counts = index.groupby("fidelity_ID").count()
     _log.info(f"Sub-sampled dataset has a total of {df.shape[0]} data points, a total of {nunique_models} unique model "
-              f"configs spread over {nunique_fidelity_groups} unique fidelity groups, averaging to {counts.mean()} "
-              f"model configs in each group.")
+              f"configs spread over {nunique_fidelity_groups} unique fidelity groups, averaging to "
+              f"{counts.mean().mean():.2f} data points in each group.")
     return df
 
 
@@ -250,7 +250,7 @@ def clean(data_pth: Path, outdir: Path, output_filename: str, epochs: int, long:
     assert outdir.exists() and outdir.is_dir()
     outfile = outdir / f"{output_filename}.pkl.gz"
 
-    _log.info(f"Loading {'long-format ' if long else 'raw'} metrics data from {data_pth}")
+    _log.info(f"Loading {'long-format' if long else 'raw'} metrics data from {data_pth}")
     data: pd.DataFrame = pd.read_pickle(data_pth)
     raw_shape = data.shape
     _log.info(f"Read metrics DataFrame of shape {raw_shape}.")
@@ -258,13 +258,18 @@ def clean(data_pth: Path, outdir: Path, output_filename: str, epochs: int, long:
     if not long:
         _log.info("Converting raw data to long-format table.")
         data = to_long_format(data)
+        sampling_index_to_model_id, _ = identify_model_configs(data, inplace=True)
+        fidelity_group_to_fidelity_id, _ = identify_fidelity_groups(data, fids=["N", "W", "Resolution"], inplace=True)
+        data.sort_index(axis=1, inplace=True)
         long_shape = data.shape
-        assert long_shape == raw_shape, f"Unable to verify data integrity after conversion from raw table of shape " \
-                                        f"{raw_shape} to long table of shape {long_shape}."
+        assert long_shape[0] == raw_shape[0], f"Unable to verify data integrity after conversion from raw table of " \
+                                              f"shape {raw_shape} to long table of shape {long_shape}."
         _log.info("Successfully converted raw data to long-format.")
 
         _log.info(f"Saving long-format table to disk at {outdir}/long_{data_pth.name}.")
-        data.to_pickle(f"{outdir}/long_{data_pth.name}")
+        data.to_pickle(outdir / f"long_{data_pth.name}")
+        sampling_index_to_model_id.to_pickle(outdir / "sampling_index_to_model_id.pkl.gz")
+        fidelity_group_to_fidelity_id.to_pickle(outdir / "fidelity_group_to_fidelity_id.pkl.gz")
 
     data = filter_nepochs(data, nepochs=epochs, keep_incomplete=keep_incomplete_runs)
 
