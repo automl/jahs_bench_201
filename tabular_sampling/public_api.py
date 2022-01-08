@@ -1,4 +1,6 @@
 import logging
+
+import numpy as np
 import pandas as pd
 from pathlib import Path
 import shutil
@@ -51,8 +53,10 @@ class Benchmark:
         features = pd.Series(config).to_frame().transpose()
         features.loc[:, "epoch"] = nepochs
 
-        outputs = surrogate.predict(features)
-        return {k: outputs[i] for i, k in enumerate(surrogate.label_headers.values)}
+        outputs: np.ndarray = surrogate.predict(features)
+        outputs = outputs.reshape(-1, surrogate.label_headers.size)
+
+        return {k: outputs[0][i] for i, k in enumerate(surrogate.label_headers.values)}
 
     @staticmethod
     def _benchmark_live(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Optional[int] = 200,
