@@ -45,13 +45,17 @@ def parse_cli():
     parser.add_argument("--use_gpu", action="store_true",
                         help="When this flag is given, enables usage of GPU accelerated model training. Otherwise, the "
                              "choice of using GPU acceleration is left up to the model.")
+    parser.add_argument("--fillna", action="store_true",
+                        help="When this flag is given, a best effort is made to automatically fill any NaN values in "
+                             "the labels with approrpriate numbers - 0 for any accuracy metrics and a very large "
+                             "number for duration/loss metrics.")
     args = parser.parse_args()
     return args
 
 
 def train_surrogate(datapth: Path, test_frac: float, disable_hpo: bool = False,
                     hpo_budget: Any = None, cv_splits: int = 3, outputs: Optional[Sequence[str]] = None,
-                    use_gpu: bool = False, save_dir: Optional[Path] = None):
+                    use_gpu: bool = False, save_dir: Optional[Path] = None, fillna: bool = False):
     """ Train a surrogate model. """
 
     logger.info(f"Training surrogate using data from {datapth} and splitting off {test_frac * 100:.2f}% of it as a "
@@ -67,10 +71,30 @@ def train_surrogate(datapth: Path, test_frac: float, disable_hpo: bool = False,
     groups = index["model_ID"]
     strata = index["fidelity_ID"]
     features = data.features
-    labels = data.labels
+    labels: pd.DataFrame = data.labels
 
     if outputs is not None:
-        labels = labels[outputs]
+        labels: pd.DataFrame = labels[outputs]
+
+    if fillna:
+        sel: pd.Series = labels.isna().any(axis=1)
+        subdf = labels.loc[sel]
+        if subdf.shape[0] == 0:
+            logger.info("Found no NaN values in the labels.")
+        else:
+            logger.info(f"Found {subdf.shape[0]} rows of data with NaN values in them. Attempting to fill NaN values.")
+            fillvals = {}
+            for c in sel.index:
+                if sel[c]:
+                    if "acc" in c:
+                        fillvals[c] = 0.
+                    elif "loss" in c or "duration" in c:
+                        fillvals[c] = 100 * labels[c].max()
+                    else:
+                        raise RuntimeError(f"Could not find appropriate fill value to replace NaNs with for metric: "
+                                           f"{c}")
+            logger.info(f"Filling NaN values according to the mapping: {fillvals}")
+            labels.fillna(fillvals, inplace=True)
 
     start = time.time()
     logger.info(f"Beginning model training.")
