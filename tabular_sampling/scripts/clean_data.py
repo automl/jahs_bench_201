@@ -99,7 +99,7 @@ def to_long_format(df: pd.DataFrame) -> pd.DataFrame:
     labels = df.loc[:, ["train", "valid", "test"]]
     labels.columns = metric_df_ops.collapse_index_names(labels.columns, nlevels=2)
     diagnostics = df.loc[:, ("diagnostic", ["FLOPS", "latency"])]
-    labels.loc[:, diagnostics.columns.get_level_values(1)] = diagnostics
+    labels.loc[:, diagnostics.columns.get_level_values(1)] = diagnostics.values
     labels.loc[:, "size_MB"] = df.loc[:, ("metadata", "size_MB")]
 
     # Extract the original sampling index
