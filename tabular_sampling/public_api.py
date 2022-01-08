@@ -25,9 +25,12 @@ def _map_dataset(dataset: str) -> Datasets:
 
 
 class Benchmark:
-    def __init__(self, use_surrogate: bool = True, surrogate_kwargs: Optional[dict] = None):
+    def __init__(self, use_surrogate: bool = True, model_path: Optional[Path] = True):
         if use_surrogate:
-            self.surrogate = XGBSurrogate(**surrogate_kwargs)
+            assert model_path is not None, "A path to a directory where a surrogate model was saved must be given " \
+                                           "when 'use_surrogate=True' is used."
+            assert model_path.exists() and model_path.is_dir()
+            self.surrogate = XGBSurrogate.load(model_path)
             self._call_fn = partial(Benchmark._benchmark_surrogate, surrogate=self.surrogate)
         else:
             self.surrogate = None
@@ -45,11 +48,11 @@ class Benchmark:
     def _benchmark_surrogate(surrogate: XGBSurrogate, config: dict, dataset: str, datadir: Union[str, Path],
                              nepochs: Optional[int] = 200, batch_size: Optional[int] = 256,
                              use_splits: Optional[bool] = True, train_config: Optional[dict] = None, **kwargs) -> dict:
-        features = pd.DataFrame(config.values(), columns=config.keys())
+        features = pd.Series(config).to_frame().transpose()
         features.loc[:, "epoch"] = nepochs
 
         outputs = surrogate.predict(features)
-        return outputs.to_dict()
+        return {k: outputs[i] for i, k in enumerate(surrogate.label_headers.values)}
 
     @staticmethod
     def _benchmark_live(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Optional[int] = 200,
