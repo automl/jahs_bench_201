@@ -1,15 +1,16 @@
 import copy
 import logging
-from typing import Union, Optional, Sequence, List, Tuple
+from functools import partial
+from typing import Union, Optional, Sequence, Tuple
 
 import ConfigSpace
-from functools import partial
 import joblib
 import numpy as np
 import pandas as pd
 import scipy.stats
 import sklearn
 import sklearn.compose
+import sklearn.metrics
 import sklearn.model_selection
 import sklearn.multioutput
 import sklearn.pipeline
@@ -327,10 +328,23 @@ class XGBSurrogate:
 
         self._trained = True
 
+        ypred_train = self.predict(xtrain)
+        train_r2 = sklearn.metrics.r2_score(ytest, ypred_train)
+        train_mse = sklearn.metrics.mean_squared_error(ytest, ypred_train)
+        scores = {
+            "train_r2": train_r2,
+            "train_mse": train_mse
+        }
+
         if test_size > 0.:
             # TODO: Revise test set scoring
-            score = self.model.score(xtest, ytest)
-            return score
+            ypred_test = self.predict(xtest)
+            test_r2 = sklearn.metrics.r2_score(ytest, ypred_test)
+            test_mse = sklearn.metrics.mean_squared_error(ytest, ypred_test)
+            scores["test_r2"] = test_r2
+            scores["test_mse"] = test_mse
+
+        return scores
 
     def predict(self, features: pd.DataFrame) -> pd.DataFrame:
         """ Given some input data, generate model predictions. The input data will be properly encoded when this
@@ -357,6 +371,7 @@ class XGBSurrogate:
     @classmethod
     def load(cls, outdir: Path) -> XGBSurrogate:
         """ Load a previously saved surrogate from disk and return it. """
+
         params: dict = joblib.load(outdir / cls.__params_filename)
         surrogate = cls(config_space=params["config_space"], estimators_per_output=params["estimators_per_output"],
                         use_gpu=params["use_gpu"])

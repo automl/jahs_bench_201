@@ -1,6 +1,5 @@
 import argparse
 import logging
-import math
 import time
 from pathlib import Path
 from typing import Any, Sequence, Optional
@@ -24,17 +23,12 @@ def parse_cli():
                         help="Fraction of the training data to be used as a test set i.e. held out and not used for "
                              "training. Must be a value in the range [0.0, 1.0). A value of 0.0 disables the creation "
                              "of a test set. ")
-    # parser.add_argument("--data_frac", type=float, default=1.0,
-    #                     help="Fraction of the whole dataset to be used, a value in the range (0.0, 1.0]. Default: 1.0. "
-    #                          "Can be set to a value lower than 1.0 to indicate that only a fraction of all the "
-    #                          "available data is to be used. The test set (if any) is carved out of this reduced "
-    #                          "dataset, e.g. when 'test_frac' is 0.2 and 'data_frac' is 0.8, (0.2 * 0.8 =) 16% of "
-    #                          "all the available data will be used as a test set and (0.8 * 0.8 =) 64% of it will be "
-    #                          "used to actually train the surrogate. When choosing a subset of data, the data is split "
-    #                          "such that all epochs' data from the same model is counted as a single whole, e.g. if "
-    #                          "there are 100 unique model configs' data with 100 epochs for each model, for a total of "
-    #                          "10,000 rows, then a 'data_frac' 0.8 would choose the all 100 epochs' data of the first "
-    #                          "80 model configs for a total of 8,000 rows.")
+    parser.add_argument("--save_dir", type=Path, default=None,
+                        help="Path (absolute or relative to the current working directory) to a directory where the "
+                             "trained model will be saved. Care should be taken that a single leaf directory in any "
+                             "directory tree should be used for saving only one model. Re-using the same directory for "
+                             "saving multiple models will result in the model files overwriting each other. If this is "
+                             "not specified, the model will not be saved.")
     parser.add_argument("--disable_hpo", action="store_true",
                         help="When this flag is given, no Hyper-parameter Optimization is performed on the surrogate's "
                              "hyper-parameters. Instead, only the default set of hyper-parameters is used.")
@@ -57,7 +51,7 @@ def parse_cli():
 
 def train_surrogate(datapth: Path, test_frac: float, disable_hpo: bool = False,
                     hpo_budget: Any = None, cv_splits: int = 3, outputs: Optional[Sequence[str]] = None,
-                    use_gpu: bool = False):
+                    use_gpu: bool = False, save_dir: Optional[Path] = None):
     """ Train a surrogate model. """
 
     logger.info(f"Training surrogate using data from {datapth} and splitting off {test_frac * 100:.2f}% of it as a "
@@ -81,12 +75,14 @@ def train_surrogate(datapth: Path, test_frac: float, disable_hpo: bool = False,
     start = time.time()
     logger.info(f"Beginning model training.")
 
-    test_score = surrogate.fit(features, labels, groups=groups, test_size=test_frac, perform_hpo=not disable_hpo,
-                               random_state=_seed, hpo_iters=hpo_budget, num_cv_splits=cv_splits, stratify=True,
-                               strata=strata)
+    test_scores = surrogate.fit(features, labels, groups=groups, test_size=test_frac, perform_hpo=not disable_hpo,
+                                random_state=_seed, hpo_iters=hpo_budget, num_cv_splits=cv_splits, stratify=True,
+                                strata=strata)
     end = time.time()
     logger.info(f"Model training took {end - start} seconds.")
-    logger.info(f"Test R2 score: {test_score}")
+    logger.info(f"Final scores: {test_scores}")
+    if save_dir is not None:
+        surrogate.dump(save_dir)
 
 
 if __name__ == "__main__":
