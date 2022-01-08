@@ -29,15 +29,18 @@ ConfigType = Union[dict, ConfigSpace.Configuration]
 class XGBSurrogate:
     """ A surrogate model based on XGBoost. """
 
+    estimators_per_output: int
+    hyperparams: dict
     config_space: ConfigSpace.ConfigurationSpace
     label_headers: Optional[pd.Index]
-    hyperparams: dict
-    estimators_per_output: int
-    _trained: bool
+    feature_headers: Optional[pd.Series]
+    trained_: bool
 
     __params_filename = "params.pkl.gz"
     __headers_filename = "label_headers.pkl.gz"
     __model_filename = "model.pkl.gz"
+    __param_keys = ["estimators_per_output", "hyperparams", "config_space", "label_headers", "feature_headers",
+                    "trained_"]
 
     _hpo_search_space = {
         "objective": ["reg:squarederror"],
@@ -107,8 +110,9 @@ class XGBSurrogate:
         self.hyperparams = None
         self.use_gpu = use_gpu
         self.model = None
+        self.feature_headers = None
         self.label_headers = None
-        self._trained = False
+        self.trained_ = False
 
         # Both initializes some internal attributes as well as performs a sanity test
         self.set_random_hyperparams()  # Sets default hyperparameters
@@ -287,6 +291,12 @@ class XGBSurrogate:
             hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True, strata: Optional[pd.Series] = None):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
+        # Ensure the order of the features does not get messed up and is always accessible
+        if self.feature_headers is None:
+            self.feature_headers = features.columns
+        else:
+            features = features.loc[:, self.feature_headers]
+
         # Ensure the order of labels does not get messed up and is always accessible
         if self.label_headers is None:
             self.label_headers = labels.columns
@@ -329,7 +339,7 @@ class XGBSurrogate:
         else:
             self.model = pipeline.fit(xtrain, ytrain)
 
-        self._trained = True
+        self.trained_ = True
 
         ypred_train = self.predict(xtrain)
         train_r2 = sklearn.metrics.r2_score(ytrain, ypred_train)
@@ -353,21 +363,16 @@ class XGBSurrogate:
         """ Given some input data, generate model predictions. The input data will be properly encoded when this
         function is called. """
 
+        features = features.loc[:, self.feature_headers]
         ypredict = self.model.predict(features)
         return ypredict
 
     def dump(self, outdir: Path):
         """ Save a trained surrogate to disk so that it can be loaded up later. """
 
-        params = {
-            "config_space": self.config_space,
-            "estimators_per_output": self.estimators_per_output,
-            "hyperparams": self.hyperparams,
-            "use_gpu": self.use_gpu,
-            "_trained": self._trained
-        }
+        params = {k: self.__getattribute__(k) for k in self.__param_keys}
         joblib.dump(params, outdir / self.__params_filename)
-        if self._trained:
+        if self.trained_:
             self.label_headers.to_series().to_pickle(outdir / self.__headers_filename)
             joblib.dump(self.model, outdir / self.__model_filename)
 
@@ -376,12 +381,11 @@ class XGBSurrogate:
         """ Load a previously saved surrogate from disk and return it. """
 
         params: dict = joblib.load(outdir / cls.__params_filename)
-        surrogate = cls(config_space=params["config_space"], estimators_per_output=params["estimators_per_output"],
-                        use_gpu=params["use_gpu"])
-        surrogate.hyperparams = params["hyperparams"]
-        surrogate._trained = params["_trained"]
+        surrogate = cls()
+        for k, v in params.items():
+            surrogate.__setattr__(k, v)
 
-        if surrogate._trained:
+        if surrogate.trained_:
             label_headers: pd.Series = pd.read_pickle(outdir / cls.__headers_filename)
             model = joblib.load(outdir / cls.__model_filename)
 
