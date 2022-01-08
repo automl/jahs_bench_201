@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import copy
 import logging
 from functools import partial
+from pathlib import Path
 from typing import Union, Optional, Sequence, Tuple
 
 import ConfigSpace
@@ -284,7 +287,7 @@ class XGBSurrogate:
             hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True, strata: Optional[pd.Series] = None):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
-        # Ensure the order of labels does not get messed up
+        # Ensure the order of labels does not get messed up and is always accessible
         if self.label_headers is None:
             self.label_headers = labels.columns
         else:
@@ -329,8 +332,8 @@ class XGBSurrogate:
         self._trained = True
 
         ypred_train = self.predict(xtrain)
-        train_r2 = sklearn.metrics.r2_score(ytest, ypred_train)
-        train_mse = sklearn.metrics.mean_squared_error(ytest, ypred_train)
+        train_r2 = sklearn.metrics.r2_score(ytrain, ypred_train)
+        train_mse = sklearn.metrics.mean_squared_error(ytrain, ypred_train)
         scores = {
             "train_r2": train_r2,
             "train_mse": train_mse
@@ -350,7 +353,7 @@ class XGBSurrogate:
         """ Given some input data, generate model predictions. The input data will be properly encoded when this
         function is called. """
 
-        ypredict = self.model.predict(features.loc[:, self.label_headers])
+        ypredict = self.model.predict(features)
         return ypredict
 
     def dump(self, outdir: Path):

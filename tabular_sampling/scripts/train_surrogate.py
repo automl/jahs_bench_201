@@ -63,9 +63,9 @@ def train_surrogate(datapth: Path, test_frac: float, disable_hpo: bool = False,
     logger.info("Finished loading data.")
 
     logger.info(f"Model training will use {data.index.size} rows of data, including the test set (if any).")
-    sample_index = data.loc[:, "sample_index"]
-    groups = sample_index["model_ID"]
-    strata = sample_index["fidelity_ID"]
+    index = data.loc[:, "sampling_index"]
+    groups = index["model_ID"]
+    strata = index["fidelity_ID"]
     features = data.features
     labels = data.labels
 
