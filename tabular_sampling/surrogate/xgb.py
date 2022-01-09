@@ -367,14 +367,14 @@ class XGBSurrogate:
         ypredict = self.model.predict(features)
         return ypredict
 
-    def dump(self, outdir: Path):
+    def dump(self, outdir: Path, protocol: int = 0):
         """ Save a trained surrogate to disk so that it can be loaded up later. """
 
         params = {k: self.__getattribute__(k) for k in self.__param_keys}
-        joblib.dump(params, outdir / self.__params_filename)
+        joblib.dump(params, outdir / self.__params_filename, protocol=protocol)
         if self.trained_:
-            self.label_headers.to_series().to_pickle(outdir / self.__headers_filename)
-            joblib.dump(self.model, outdir / self.__model_filename)
+            self.label_headers.to_series().to_pickle(outdir / self.__headers_filename, protocol=protocol)
+            joblib.dump(self.model, outdir / self.__model_filename, protocol=protocol)
 
     @classmethod
     def load(cls, outdir: Path) -> XGBSurrogate:
