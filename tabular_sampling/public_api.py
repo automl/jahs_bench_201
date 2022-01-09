@@ -27,8 +27,11 @@ def _map_dataset(dataset: str) -> Datasets:
 
 
 class Benchmark:
-    def __init__(self, use_surrogate: bool = True, model_path: Optional[Path] = True):
+    def __init__(self, use_surrogate: bool = True, model_path: Optional[Union[str, Path]] = True):
         if use_surrogate:
+            if isinstance(model_path, str):
+                datadir = Path(datadir)
+
             assert model_path is not None, "A path to a directory where a surrogate model was saved must be given " \
                                            "when 'use_surrogate=True' is used."
             assert model_path.exists() and model_path.is_dir()
@@ -99,6 +102,11 @@ class Benchmark:
 if __name__ == "__main__":
     from tabular_sampling.search_space.configspace import joint_config_space
     config = joint_config_space.get_default_configuration().get_dictionary()
-    res = Benchmark._benchmark_live(config=config, dataset="Cifar-10", datadir="/home/archit/thesis/datasets",
-                                    nepochs=3)
+
+    b = Benchmark(use_surrogate=False)
+    res = b(config=config, dataset="Cifar-10", datadir="/home/archit/thesis/datasets", nepochs=3)
+    print(res)
+
+    b = Benchmark(use_surrogate=True, model_path=Path("/home/archit/thesis/experiments/test/surrogates/full_data"))
+    res = b(config=config, nepochs=200)
     print(res)
