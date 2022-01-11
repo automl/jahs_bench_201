@@ -192,7 +192,7 @@ class XGBSurrogate:
         return pipeline
 
     @staticmethod
-    def _prepare_datasets_for_training(
+    def prepare_dataset_for_training(
             features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
             test_size: float = 0., random_state: Optional[np.random.RandomState] = None, num_cv_splits: int = 5,
             stratify: bool = True, strata: Optional[pd.Series] = None
@@ -309,7 +309,7 @@ class XGBSurrogate:
         # self.ymean = labels.mean(axis=0)
         # self.ystd = labels.std(axis=0)
 
-        xtrain, xtest, ytrain, ytest, groups, cv = self._prepare_datasets_for_training(
+        xtrain, xtest, ytrain, ytest, groups, cv = self.prepare_dataset_for_training(
             features=features, labels=labels, groups=groups, test_size=test_size, random_state=random_state,
             num_cv_splits=num_cv_splits, stratify=stratify, strata=strata
         )
@@ -365,6 +365,7 @@ class XGBSurrogate:
 
         features = features.loc[:, self.feature_headers]
         ypredict = self.model.predict(features)
+        ypredict = pd.DataFrame(ypredict, columns=self.label_headers)
         return ypredict
 
     def dump(self, outdir: Path, protocol: int = 0):

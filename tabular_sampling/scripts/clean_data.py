@@ -228,6 +228,8 @@ def subsample_df(df: pd.DataFrame, subsample_frac: float = 1.0) -> pd.DataFrame:
               f"in each group.")
 
     n_splits = int(1 / subsample_frac)
+    # For shuffle=False, StratifiedGroupKFold is deterministic w.r.t. an invariant dataset (i.e. the features, labels
+    # and groups must remain the same)
     splitter = sklearn.model_selection.StratifiedGroupKFold(n_splits=n_splits, shuffle=False)
     _, subsample_split = next(splitter.split(index, fidelity_groups, groups=model_ids))
 
