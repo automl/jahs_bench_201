@@ -692,9 +692,11 @@ def default_global_seed_gen(rng: Optional[np.random.RandomState] = None, global_
         raise ValueError("Cannot generate sequence of global seeds when both 'rng' and 'global_seed' are None.")
 
 
-def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optional[pd.DataFrame] = None,
-                       taskid: Optional[int] = None, opts: Optional[Union[Dict[str, Any], List[str]]] = None,
-                       suffix: Optional[str] = "_custom") -> bool:
+# TODO: Update documentation
+def adapt_search_space(original_space: Union[NASB201HPOSearchSpace, ConfigSpace.ConfigurationSpace],
+                       portfolio: Optional[pd.DataFrame] = None, taskid: Optional[int] = None,
+                       opts: Optional[Union[Dict[str, Any], List[str]]] = None, suffix: Optional[str] = "_custom") -> \
+        Union[Tuple[ConfigSpace.ConfigurationSpace, bool], bool]:
     """ Given a NASB201HPOSearchSpace object and a valid configuration, restricts the respective configuration space
     object and consequently the overall search space by setting the corresponding parameters to constant values. Such
     a configuration may be provided either by means of a portfolio file along with the relevant taskid or a dictionary
@@ -721,7 +723,13 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optiona
         opts = {k: v for k, v in zip(i, i)}
     new_consts = {**new_consts, **opts}
 
-    config_space = original_space.config_space
+    if hasattr(original_space, "config_space"):
+        config_space = original_space.config_space
+        flag_cs_attr = True
+    else:
+        config_space = original_space
+        flag_cs_attr = False
+
     known_params = {p.name: p for p in config_space.get_hyperparameters()}
 
     def param_interpretor(param, value):
@@ -748,7 +756,10 @@ def adapt_search_space(original_space: NASB201HPOSearchSpace, portfolio: Optiona
     if modified:
         new_config_space = ConfigSpace.ConfigurationSpace(f"{config_space.name}{suffix if suffix is not None else ''}")
         new_config_space.add_hyperparameters(known_params.values())
-        original_space.config_space = new_config_space
+        if flag_cs_attr:
+            original_space.config_space = new_config_space
+        else:
+            return new_config_space, modified
 
     return modified
 

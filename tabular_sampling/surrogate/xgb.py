@@ -4,7 +4,7 @@ import copy
 import logging
 from functools import partial
 from pathlib import Path
-from typing import Union, Optional, Sequence, Tuple
+from typing import Union, Optional, Sequence, Tuple, Dict
 
 import ConfigSpace
 import joblib
@@ -21,6 +21,7 @@ import sklearn.preprocessing
 import xgboost as xgb
 
 from tabular_sampling.search_space.configspace import joint_config_space
+from tabular_sampling.lib.core import utils
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]
@@ -133,13 +134,21 @@ class XGBSurrogate:
 
     def _random_data(self, nconfigs: int = 10, samples_per_config: int = 100, nlabel_dims: int = 2,
                      label_names: Optional[Sequence[str]] = None,
-                     random_state: Optional[np.random.RandomState] = None) -> \
+                     random_state: Optional[np.random.RandomState] = None,
+                     config_space_consts: Optional[Dict[str, Any]] = None) -> \
             Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """ A debugging tool. Generate a random dataset of arbitrary size using the stored config space representation.
         Returns the randomly generated set of features, labels and groups as pandas DataFrame objects, in that
-        order. """
+        order. A dictionary mapping the respective config space parameter names to appropriate values may be passed in
+        'config_space_consts' in order to restrict the sampling such that a subset of parameters always have the
+        specified values. Note that this affects the reproducibility as well as statistical independence of the
+        sampling procedure, in that these properties are only guaranteed for the modified search space. The resultant
+        configurations will still be compatible with the original search space and any assosciated pre-processing
+        pipelines, as long as the specified constant values are also compatible. """
 
         cs = copy.deepcopy(self.config_space)
+        if config_space_consts is not None:
+            cs, _ = utils.adapt_search_space(original_space=cs, opts=config_space_consts)
 
         if not isinstance(random_state, np.random.RandomState):
             # Assume that rng is either None or a compatible source of entropy
