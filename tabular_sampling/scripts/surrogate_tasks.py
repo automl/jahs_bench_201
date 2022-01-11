@@ -203,7 +203,11 @@ def evaluate_surrogate(datapth: Path, modelpth: Path, savepth: Optional[Path] = 
         xtest = features
         ytest = labels
 
+    logger.info("Generating predictions through the surrogate model.")
     ypred = surrogate.predict(xtest)
+    ypred.index = ytest.index
+
+    logger.info("Predictions successfully generated.")
     output = pd.concat({"features": xtest, "true": ytest, "predicted": ypred}, axis=1)
 
     if savepth is not None:
