@@ -135,7 +135,7 @@ class XGBSurrogate:
     def _random_data(self, nconfigs: int = 10, samples_per_config: int = 100, nlabel_dims: int = 2,
                      label_names: Optional[Sequence[str]] = None,
                      random_state: Optional[np.random.RandomState] = None,
-                     config_space_consts: Optional[Dict[str, Any]] = None) -> \
+                     config_space_constraints: Optional[Dict[str, Any]] = None) -> \
             Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """ A debugging tool. Generate a random dataset of arbitrary size using the stored config space representation.
         Returns the randomly generated set of features, labels and groups as pandas DataFrame objects, in that
@@ -147,8 +147,8 @@ class XGBSurrogate:
         pipelines, as long as the specified constant values are also compatible. """
 
         cs = copy.deepcopy(self.config_space)
-        if config_space_consts is not None:
-            cs, _ = utils.adapt_search_space(original_space=cs, opts=config_space_consts)
+        if config_space_constraints is not None:
+            cs, _ = utils.adapt_search_space(original_space=cs, opts=config_space_constraints)
 
         if not isinstance(random_state, np.random.RandomState):
             # Assume that rng is either None or a compatible source of entropy
