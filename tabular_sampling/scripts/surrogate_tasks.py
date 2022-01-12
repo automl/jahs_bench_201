@@ -260,7 +260,7 @@ def predict_surrogate(datapth: Path, modelpth: Path, savepth: Path):
     assert savepth.parent.exists(), "The parent directories of the file where the model predictions will be stored " \
                                     "must be created beforehand."
     logger.info(f"Saving the predictions to: {savepth}")
-    output.to_pickle(f"{savepth}.pkl.gz")
+    ypred.to_pickle(f"{savepth}.pkl.gz")
 
 
 if __name__ == "__main__":

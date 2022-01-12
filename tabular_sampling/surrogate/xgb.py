@@ -132,6 +132,7 @@ class XGBSurrogate:
         prep_pipe = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
         return prep_pipe
 
+    # TODO: Also handle assigning appropriate dtypes in Pandas DataFrame
     def _random_data(self, nconfigs: int = 10, samples_per_config: int = 100, nlabel_dims: int = 2,
                      label_names: Optional[Sequence[str]] = None,
                      random_state: Optional[np.random.RandomState] = None,
