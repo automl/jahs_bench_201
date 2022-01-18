@@ -193,6 +193,8 @@ def resume_work(basedir: Path, taskid: int, model_idx: int, datadir: Path, debug
         if debug:
             raise e
     else:
+        if dir_tree.model_error_description_file.exists():
+            dir_tree.model_error_description_file.unlink()
         del model  # Release memory
         dir_tree.model_idx = None  # Ensure that previously written data cannot be overwritten
 

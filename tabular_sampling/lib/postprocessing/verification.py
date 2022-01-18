@@ -85,6 +85,7 @@ def _verify_model_metrics(dtree: DirectoryTree, cleanup: Optional[bool] = False,
             (dtree.model_dir / MODIFIED_FLAG_FILENAME).touch()
 
 
+# TODO: Update return type and documentation
 def iterate_model_tree(basedir: Path, taskid: Optional[int] = None, model_idx: Optional[int] = None,
                        enumerate: Optional[bool] = False) -> \
         Union[Generator[DirectoryTree, None, None], Generator[Tuple[int, int, DirectoryTree], None, None]]:
