@@ -93,7 +93,7 @@ class XGBSurrogate:
         return params
 
     def __init__(self, config_space: Optional[ConfigSpace.ConfigurationSpace] = joint_config_space,
-                 estimators_per_output: int = 500, use_gpu: Optional[bool] = None):
+                 estimators_per_output: int = 500, use_gpu: Optional[bool] = None, hyperparams: dict = None):
         """
         Initialize the internal parameters needed for the surrogate to understand the data it is dealing with.
         :param config_space: ConfigSpace.ConfigurationSpace
@@ -108,7 +108,7 @@ class XGBSurrogate:
 
         self.config_space = config_space
         self.estimators_per_output = estimators_per_output
-        self.hyperparams = None
+        self.hyperparams = hyperparams
         self.use_gpu = use_gpu
         self.model = None
         self.feature_headers = None
@@ -116,7 +116,8 @@ class XGBSurrogate:
         self.trained_ = False
 
         # Both initializes some internal attributes as well as performs a sanity test
-        self.set_random_hyperparams()  # Sets default hyperparameters
+        if self.hyperparams is None:
+            self.set_random_hyperparams()  # Sets default hyperparameters
 
     @property
     def preprocessing_pipeline(self):
@@ -286,16 +287,17 @@ class XGBSurrogate:
                 xtest = features.iloc[idx_test]
                 ytrain = labels.iloc[idx_train]
                 ytest = labels.iloc[idx_test]
-                groups_train = groups.iloc[idx_train]
+                groups = groups.iloc[idx_train]
 
                 cv = sklearn.model_selection.GroupKFold(n_splits=num_cv_splits)
 
         _log.info("Dataset splits successfully generated.")
-        return xtrain, xtest, ytrain, ytest, groups_train, cv
+        return xtrain, xtest, ytrain, ytest, groups, cv
 
     # TODO: Extend input types to include ConfigType and List[ConfigType]
     # TODO: Check if a train split (after valid and test have been taken out) would have sufficient representation in
     #  terms of categorical values (at least one occurence of each), for the given validation and test set sizes
+    # TODO: Remove option to create a test set within fit. That functionality does not belong here.
     def fit(self, features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
             perform_hpo: bool = True, test_size: float = 0., random_state: np.random.RandomState = None,
             hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True, strata: Optional[pd.Series] = None):
