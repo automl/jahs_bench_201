@@ -89,6 +89,9 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Poetry
+poetry.lock
+
 # pyenv
 .python-version
 
