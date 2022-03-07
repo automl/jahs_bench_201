@@ -1,18 +1,24 @@
 [tool.poetry]
-name = "ourbench"
-version = "0.1.0"
+name = "JAHS Bench MF"
+version = "0.0.2"
 description = ""
-authors = ["Archit Bansal", "TODO?"]
+authors = ["Archit Bansal", "Danny Stoll"]
 readme = "README.md"
 license = "MIT"
 packages = [
-    { include = "ourbench" },
-    { include = "ourbench_examples" },
+    { include = "JAHS-Bench-MF" },
+    { include = "Examples" },
 ]
 
 
 [tool.poetry.dependencies]
 python = ">=3.7,<=3.10"
+scikit-learn = "~=1.0"
+scipy = "~=1.7"
+numpy = "~=1.21"
+pandas = "~=1.4"
+ConfigSpace = "~=0.4"
+xgboost = "~=1.5"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.10"
