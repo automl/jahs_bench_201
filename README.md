@@ -42,7 +42,7 @@ This should randomly sample a configuration and display the result of querying f
 ```python
 # Load the trained surrogate model
 from jahs_bench.public_api import Benchmark
-model_path = "jahs_bench_mf/JAHS-Bench-MF/surrogates/full_data"
+model_path = "jahs_bench_mf/JAHS-Bench-MF/surrogates/thesis_cifar10"
 b = Benchmark(model_path=model_path)
 
 # Generate a random configuration
