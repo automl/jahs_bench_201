@@ -1,5 +1,4 @@
 import ConfigSpace as CS
-from .constants import Activations
 
 joint_config_space = CS.ConfigurationSpace("jahs_bench_config_space")
 joint_config_space.add_hyperparameters([
@@ -39,7 +38,7 @@ joint_config_space.add_hyperparameters([
 # Add Optimizer related HyperParamters
 optimizers = CS.CategoricalHyperparameter("Optimizer", choices=["SGD"], default_value="SGD",
                                           meta=dict(help="Which optimizer to use for training this model. This is "
-                                                         "mostly a placeholder for now, to be used properly in future "
+                                                         "just a placeholder for now, to be used properly in future "
                                                          "versions."))
 lr = CS.UniformFloatHyperparameter("LearningRate", lower=1e-3, upper=1e0, default_value=1e-1, log=True,
                                    meta=dict(help="The learning rate for the optimizer used during model training. "
