@@ -26,7 +26,7 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "numpy >=1.21",
-        "pandas >=1.4",
+        "pandas >=1.3",
         "scipy >=1.7",
         "scikit-learn >=1.0",
         "xgboost >= 1.5",
