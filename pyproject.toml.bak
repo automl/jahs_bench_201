@@ -7,7 +7,6 @@ readme = "README.md"
 license = "MIT"
 packages = [
     { include = "JAHS-Bench-MF" },
-    { include = "Examples" },
 ]
 
 
@@ -38,7 +37,7 @@ profile = 'black'
 line_length = 90
 
 [tool.mypy]
-files = ["ourbench"]
+files = ["JAHS-Bench-MF"]
 namespace_packages = true
 follow_imports = "skip"
 ignore_missing_imports = true

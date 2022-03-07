@@ -13,7 +13,7 @@ _log.setLevel(logging.WARNING)
 
 
 class Benchmark:
-    def __init__(self, model_path: Optional[Union[str, Path]] = True):
+    def __init__(self, model_path: Optional[Union[str, Path]]):
         if isinstance(model_path, str):
             model_path = Path(model_path)
 
@@ -40,7 +40,8 @@ class Benchmark:
 
 if __name__ == "__main__":
     conf = joint_config_space.sample_configuration().get_dictionary()
-    model_path = Path("surrogates/full_data").resolve()
+    model_path = Path(__file__).parent.parent / "surrogates" / "full_data"
+#     model_path = model_path / Path("../surrogates/full_data").resolve()
     print(f"Attempting to read surrogate model from: {model_path}")
     b = Benchmark(model_path=model_path)
     res = b(config=conf, nepochs=200)
