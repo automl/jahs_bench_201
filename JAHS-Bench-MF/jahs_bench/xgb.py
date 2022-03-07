@@ -20,8 +20,8 @@ import sklearn.pipeline
 import sklearn.preprocessing
 import xgboost as xgb
 
-from tabular_sampling.search_space.configspace import joint_config_space
-from tabular_sampling.lib.core import utils
+from jahs_bench.search_space.configspace import joint_config_space
+from jahs_bench.lib.core import utils
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]

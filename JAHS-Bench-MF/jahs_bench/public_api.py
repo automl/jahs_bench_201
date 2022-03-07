@@ -7,11 +7,11 @@ import shutil
 from typing import Optional, Union
 from functools import partial
 
-from tabular_sampling.distributed_nas_sampling import run_task
-from tabular_sampling.lib.core.constants import Datasets
-from tabular_sampling.lib.core.utils import DirectoryTree, MetricLogger, AttrDict
+from jahs_bench.distributed_nas_sampling import run_task
+from jahs_bench.lib.core.constants import Datasets
+from jahs_bench.lib.core.utils import DirectoryTree, MetricLogger, AttrDict
 
-from tabular_sampling.surrogate.xgb import XGBSurrogate
+from jahs_bench.surrogate.xgb import XGBSurrogate
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.WARNING)
@@ -102,7 +102,7 @@ class Benchmark:
 
 
 if __name__ == "__main__":
-    from tabular_sampling.search_space.configspace import joint_config_space
+    from jahs_bench.search_space.configspace import joint_config_space
     config = joint_config_space.get_default_configuration().get_dictionary()
 
     b = Benchmark(use_surrogate=False)

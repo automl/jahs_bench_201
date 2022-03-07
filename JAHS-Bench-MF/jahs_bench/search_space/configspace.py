@@ -1,13 +1,10 @@
 import ConfigSpace as CS
 from .constants import Activations
 
-joint_config_space = CS.ConfigurationSpace("NASB201HPO_joint_config_space")
+joint_config_space = CS.ConfigurationSpace("jahs_bench_config_space")
 joint_config_space.add_hyperparameters([
-    CS.OrdinalHyperparameter("N", sequence=[1, 3, 5], default_value=1, meta=dict(help="Number of cell repetitions")),
-    # CS.OrdinalHyperparameter("W", sequence=list(range(1, 4)), default_value=1,
-    #                          meta=dict(help="The width of the three channels in the cell. The value of this "
-    #                                         "parameter corresponds to one of three levels:\n1 - (4, 8, 16)\n"
-    #                                         "2 - (8, 16, 32)\n3 - (16, 32, 64)")),
+    CS.OrdinalHyperparameter("N", sequence=[1, 3, 5], default_value=1,
+                             meta=dict(help="Number of cell repetitions")),
     CS.OrdinalHyperparameter("W", sequence=[4, 8, 16], default_value=4,
                              meta=dict(help="The width of the first channel in the cell. Each of the subsequent "
                                             "cell's first channels is twice as wide as the previous cell's, thus, for "
@@ -40,10 +37,10 @@ joint_config_space.add_hyperparameters([
 ])
 
 # Add Optimizer related HyperParamters
-optimizers = CS.CategoricalHyperparameter("Optimizer", choices=["AdamW", "SGD"], default_value="SGD",
-                                          meta=dict(help="Which optimizer to use for training this model. SGD refers "
-                                                         "to SGD with Nesterov momentum and a momentum of 0.9. AdamW "
-                                                         "refers to AdamW with betas fixed to 0.9 and 0.999."))
+optimizers = CS.CategoricalHyperparameter("Optimizer", choices=["SGD"], default_value="SGD",
+                                          meta=dict(help="Which optimizer to use for training this model. This is "
+                                                         "mostly a placeholder for now, to be used properly in future "
+                                                         "versions."))
 lr = CS.UniformFloatHyperparameter("LearningRate", lower=1e-3, upper=1e0, default_value=1e-1, log=True,
                                    meta=dict(help="The learning rate for the optimizer used during model training. "
                                                   "In the case of adaptive learning rate optimizers such as Adam, "
