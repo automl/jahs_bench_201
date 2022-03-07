@@ -1,6 +1,8 @@
 """ A collection of constant values that are or may be re-used throughout the rest of the
 code base. """
 
+import enum
+
 datasets = ["cifar10", "colorectal_histology"]
 fidelity_types = {"N": int, "W": int, "Resolution": float}
 fidelity_params = tuple(fidelity_types.keys())
@@ -14,7 +16,12 @@ OP_NAMES = ['Identity', 'Zero', 'ConvBN3x3', 'ConvBN1x1', 'AvgPool1x1']
 EDGE_LIST = ((1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4))
 
 # Available choices for activation function.
-activations = ["ReLU", "Hardswish", "Mish"]
+
+@enum.unique
+class Activations(enum.Enum):
+    ReLU = enum.auto()
+    Hardswish = enum.auto()
+    Mish = enum.auto()
 
 # Mapping from the original NASBench-201 dataset's naming convention to NASLib's naming
 # convention

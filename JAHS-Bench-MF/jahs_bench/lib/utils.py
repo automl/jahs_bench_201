@@ -2,16 +2,15 @@ from typing import Dict, Union, Any, Optional, List, Tuple
 
 import ConfigSpace
 import pandas as pd
-from jahs_bench.search_space import NASB201HPOSearchSpace
 
 
 # TODO: Update documentation
-def adapt_search_space(original_space: Union[NASB201HPOSearchSpace, ConfigSpace.ConfigurationSpace],
+def adapt_search_space(original_space: Union[ConfigSpace.ConfigurationSpace, Any],
                        portfolio: Optional[pd.DataFrame] = None, taskid: Optional[int] = None,
                        opts: Optional[Union[Dict[str, Any], List[str]]] = None,
                        suffix: Optional[str] = "_custom") -> \
         Union[Tuple[ConfigSpace.ConfigurationSpace, bool], bool]:
-    """ Given a NASB201HPOSearchSpace object and a valid configuration, restricts the respective configuration space
+    """ Given a ConfigurationSpace object and a valid configuration, restricts the respective configuration space
     object and consequently the overall search space by setting the corresponding parameters to constant values. Such
     a configuration may be provided either by means of a portfolio file along with the relevant taskid or a dictionary
     'opts' mapping strings to values of any type, or both in which case values in 'opts' take precedence. In both

@@ -1,4 +1,5 @@
 import ConfigSpace as CS
+from jahs_bench.lib.constants import Activations
 
 joint_config_space = CS.ConfigurationSpace("jahs_bench_config_space")
 joint_config_space.add_hyperparameters([

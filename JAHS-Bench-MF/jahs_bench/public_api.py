@@ -6,6 +6,7 @@ from typing import Optional, Union
 import numpy as np
 import pandas as pd
 from jahs_bench.lib.surrogate import XGBSurrogate
+from jahs_bench.lib.configspace import joint_config_space
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.WARNING)
@@ -31,18 +32,16 @@ class Benchmark:
         features = pd.Series(config).to_frame().transpose()
         features.loc[:, "epoch"] = nepochs
 
-        outputs: np.ndarray = surrogate.predict(features)
+        outputs: np.ndarray = surrogate.predict(features).values
         outputs = outputs.reshape(-1, surrogate.label_headers.size)
 
         return {k: outputs[0][i] for i, k in enumerate(surrogate.label_headers.values)}
 
 
 if __name__ == "__main__":
-    from jahs_bench.search_space.configspace import joint_config_space
     conf = joint_config_space.sample_configuration().get_dictionary()
-
-    b = Benchmark(
-        model_path=Path("/home/archit/thesis/experiments/test/surrogates/full_data")
-    )
+    model_path = Path("surrogates/full_data").resolve()
+    print(f"Attempting to read surrogate model from: {model_path}")
+    b = Benchmark(model_path=model_path)
     res = b(config=conf, nepochs=200)
     print(res)
