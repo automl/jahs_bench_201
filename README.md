@@ -1,6 +1,6 @@
-# Ourbench
+# JAHS-Bench-MF
 
-TODO: Sentence describing ourbench. (+ Reference documentation page once it exists)
+TODO: Sentence describing JAHS-Bench-MF. (+ Reference documentation page once it exists)
 
 Features:
 
@@ -32,7 +32,7 @@ Here is a minimum working example to test whether or not the installation succee
 
 ```
 cd jahs_bench_mf
-python jahs_bench_mf/JAHS-Bench-MF/jahs_bench/public_api.py
+python JAHS-Bench-MF/jahs_bench/public_api.py
 ```
 
 This should randomly sample a configuration and display the result of querying for that configuration on the surrogate.
