@@ -64,7 +64,8 @@ class Benchmark:
     @staticmethod
     def _benchmark_live(config: dict, dataset: str, datadir: Union[str, Path], nepochs: Optional[int] = 200,
                         batch_size: Optional[int] = 256, use_splits: Optional[bool] = True,
-                        train_config: Optional[dict] = None, **kwargs) -> dict:
+                        train_config: Optional[dict] = None, worker_dir: Optional[Path] = None,
+                        clean_tmp_files : bool = True, **kwargs) -> dict:
         """ Simple wrapper around the base benchmark data generation capabilities offered by
         tabular_sampling.distributed_nas_samplig.run_task(). Providing 'train_config' and 'kwargs' dicts can be used to
         access the full range of customizations offered by 'run_task()' - consults its documentation if needed. This
@@ -78,7 +79,7 @@ class Benchmark:
                                 warmup_epochs=0, disable_checkpointing=True, checkpoint_interval_seconds=3600,
                                 checkpoint_interval_epochs=50)
 
-        basedir = Path("/tmp") / "tabular_sampling"
+        basedir = (Path("/tmp") if worker_dir is None else worker_dir) / "neps_bench"
         basedir.mkdir(exist_ok=True)
         dataset = _map_dataset(dataset)
 
@@ -88,13 +89,14 @@ class Benchmark:
         run_task(**args)
 
         dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)
-        metric_pth = MetricLogger._get_sorted_metric_paths(pth=dtree.model_metrics_dir)
+        metric_pth = MetricLogger._get_sorted_metric_paths(pth=dtree.model_metrics_dir)[-1]
         df = pd.read_pickle(metric_pth)
 
         # Model metrics dataframe does not have a MultiIndex index - it's simply the epochs and their metrics!
         nepochs = df.index.max()
         latest = df.loc[nepochs]
-        shutil.rmtree(dtree.basedir, ignore_errors=True)
+        if clean_tmp_files:
+            shutil.rmtree(dtree.basedir, ignore_errors=True)
 
         return latest.to_dict()
 
