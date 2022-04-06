@@ -55,6 +55,9 @@ print(res)
 
 ```
 
+**Caution:** The repeatability of the surrogate model's predictions is still under investigation and carries no 
+guarantees.
+
 ## Contributing
 
 Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTRIBUTING.md).
