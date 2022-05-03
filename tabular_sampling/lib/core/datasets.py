@@ -15,7 +15,7 @@ from tabular_sampling.lib.core.aug_lib import TrivialAugment
 from icgen.vision_dataset import ICVisionDataset
 
 """
-Adapted in large part from the original NASBench-201 code repository at 
+Adapted in large part from the original NASBench-201 code repository at
 https://github.com/D-X-Y/AutoDL-Projects/tree/bc4c4692589e8ee7d6bab02603e69f8e5bd05edc
 """
 
@@ -31,7 +31,7 @@ def get_dataloaders(dataset: constants.Datasets, batch_size: int, cutout: int = 
 
     dataset_fns = {**{
         constants.Datasets.cifar10: dset.CIFAR10,
-        constants.Datasets.fashionMNIST: dset.FashionMNIST,
+        # constants.Datasets.fashionMNIST: dset.FashionMNIST,
     }, **{d: partial(load_icgen_dataset, name=d.name) for d in constants.icgen_datasets}}
 
     name_str, image_size, nchannels, nclasses, mean, std, train_size, test_size = dataset.value

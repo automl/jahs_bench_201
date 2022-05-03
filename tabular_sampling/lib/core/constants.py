@@ -52,16 +52,16 @@ class Datasets(Enum):
     """
 
     cifar10 = "Cifar-10", 32, 3, 10, [0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2616], 50_000, 10_000
-    fashionMNIST = "FashionMNIST", 28, 1, 10, [0.2860, ], [0.3530, ], 60_000, 10_000
 
     # For ICGen datasets, the mean and std will be read from the accompanying JSON file and not stored statically.
     # This is an ugly hack, but was necessary at the time. In future iterations, either Cifar10/fashionMNIST will also
     # be read as ICGen datasets or a different approach will be adopted than this Enum.
     uc_merced = "UC-Merced", 32, 3, 21, [0., 0., 0.], [1., 1., 1.], 1_890, 210
     colorectal_histology = "Colorectal Histology", 32, 3, 8, [0., 0., 0.], [1., 1., 1.], 4_504, 496
+    fashion_mnist = "FashionMNIST", 32, 1, 10, [0., ], [0., ], 63_000, 7_000
 
 
-icgen_datasets = (Datasets.uc_merced, Datasets.colorectal_histology)
+icgen_datasets = (Datasets.uc_merced, Datasets.colorectal_histology, Datasets.fashion_mnist)
 
 ## Metric DataFrame constant
 class MetricDFIndexLevels(Enum):
