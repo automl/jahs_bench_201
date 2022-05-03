@@ -97,6 +97,7 @@ if __name__ == "__main__":
     else:
         basedir = args.basedir
         outdir = args.basedir
+        wid = 0
 
     _log.info(f"Worker {wid}: Beginning metric data collation at {basedir}.")
 
@@ -109,7 +110,7 @@ if __name__ == "__main__":
 
     outfile: Path = outdir / "metrics.pkl.gz" if args.file is None else args.file.resolve()
     if collated_df is None:
-        _log.info(f"Worker {wid}: No valid metric data found at: {args.basedir / subdir}")
+        _log.info(f"Worker {wid}: No valid metric data found at: {args.basedir}")
     else:
         collated_df.to_pickle(outfile)
 
