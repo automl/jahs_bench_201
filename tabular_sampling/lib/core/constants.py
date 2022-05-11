@@ -10,6 +10,9 @@ training_config = {
     "split": dict(action="store_true", help="Split training dataset into training and validation sets."),
     "warmup_epochs": dict(type=int, default=0,
                           help="When set to a positive integer, this many epochs are used to warm-start the training."),
+    "sched_max_temp": dict(type=int, default=200,
+                   help="Property of the learning rate scheduler, determines the maximum number of epochs that the "
+                        "scheduler decays the learning rate over. Default: 200"),
     "disable_checkpointing": dict(
         action="store_true",
         help="When given, overrides the values of --checkpoint_interval_seconds and --checkpoint_internal_epochs "
@@ -35,7 +38,7 @@ training_config = {
              "satisfied first. On the flip side, if neither --checkpoint_interval_epochs nor "
              "--checkpoint_interval_seconds is specified, logging of model training is disabled entirely. Even if "
              "either or both these values are specified, checkpointing of model weights can be forcefully disabled by "
-             "the flag --disable_checkpointing.")
+             "the flag --disable_checkpointing."),
 }
 
 

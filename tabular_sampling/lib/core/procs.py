@@ -21,12 +21,12 @@ def construct_model_optimizer(model: NASB201HPOSearchSpace, train_config: AttrDi
     optimizer = optim_type.construct(model, model.config)
     if optim_type == utils.Optimizers.SGD:
         # Potentially stabilize SGD with Warm-up
-        scheduler = CosineAnnealingLR(optimizer, warmup_epochs=train_config.warmup_epochs, epochs=train_config.epochs,
-                                      T_max=train_config.epochs, eta_min=0.)
+        scheduler = CosineAnnealingLR(optimizer, warmup_epochs=train_config.warmup_epochs, epochs=train_config.sched_max_temp,
+                                      T_max=train_config.sched_max_temp, eta_min=0.)
     else:
         # No need to use warmup epochs for Adam and AdamW
-        scheduler = CosineAnnealingLR(optimizer, warmup_epochs=0, epochs=train_config.epochs,
-                                      T_max=train_config.epochs, eta_min=0.)
+        scheduler = CosineAnnealingLR(optimizer, warmup_epochs=0, epochs=train_config.sched_max_temp,
+                                      T_max=train_config.sched_max_temp, eta_min=0.)
     loss_fn = torch.nn.CrossEntropyLoss()
 
     return optimizer, scheduler, loss_fn
