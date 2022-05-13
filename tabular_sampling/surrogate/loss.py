@@ -1,7 +1,10 @@
+import itertools
+
 import numpy as np
 import sklearn.metrics._regression as skregression
 import logging
 from typing import Optional
+import functools
 
 _log = logging.getLogger(__name__)
 
@@ -33,9 +36,7 @@ def exponential_bounds(y_true, y_pred, *, y_lim: float, argmin: Optional[float] 
     :param multioutput:
     :return:
     """
-    assert isinstance(kind, str)
-    kind = kind.lower()
-    assert kind in ["upper", "lower"]
+
     y_type, y_true, y_pred, multioutput = skregression._check_reg_targets(
         y_true, y_pred, multioutput
     )
@@ -56,7 +57,13 @@ def exponential_bounds(y_true, y_pred, *, y_lim: float, argmin: Optional[float] 
 
     return grad, hess
 
-def squared_error(y_true, y_pred):
+def squared_error(y_true, y_pred, multioutput: str = "raw_values"):
+
+    y_type, y_true, y_pred, multioutput = skregression._check_reg_targets(
+        y_true, y_pred, multioutput
+    )
+    skregression.check_consistent_length(y_true, y_pred)
+
     # loss = np.power(y_true - y_pred, 2)
     grad = 2 * (y_pred - y_true)
     hess = 2 * np.ones_like(y_pred)
@@ -74,20 +81,18 @@ def mix_objectives(*funcs, weights=None):
     functions using `functools.partial`. """
 
     if weights is None:
-        weights = 0.5 * np.ones_like(len(funcs))
+        n = len(funcs)
+        weights = np.ones(n) / n
     else:
         weights = np.array(weights).squeeze()
         assert weights.shape[0] == len(funcs)
         assert weights.ndim == 1
 
-    def mix(y_true, y_pred):
-        grad = np.zeros_like(y_true)
-        hess = np.zeros_like(y_true)
-        for f, w in zip(funcs, weights):
-            g, h = f(y_true, y_pred)
-            grad += w * g
-            hess += w * h
-
+    def mix_fn(y_true, y_pred):
+        res = map(lambda f: f(y_true, y_pred), funcs)
+        res = itertools.starmap(lambda r, w: (r[0] * w, r[1] * w), zip(res, weights))
+        grad, hess = functools.reduce(lambda acc, new: (acc[0] + new[0], acc[1] + new[1]),
+                                      res)
         return grad, hess
 
-    return mix
+    return mix_fn
