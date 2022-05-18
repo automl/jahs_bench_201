@@ -23,7 +23,7 @@ def exponential_bounds(y_true, y_pred, *, y_lim: float, argmin: Optional[float] 
     :param y_pred: array-like
         The predicted regression values.
     :param y_lim: float or None
-        The upper/lower limit on the regressand, depending on `kind`.
+        The upper/lower limit on the regressand.
     :param argmin: float or None
         The value of y_pred at which the boundary function should decay to a very small
         value. If not given, it will be implicitly determined by the value of `c`.
@@ -33,7 +33,10 @@ def exponential_bounds(y_true, y_pred, *, y_lim: float, argmin: Optional[float] 
     :param min_val: float or None
         The minimum value of the boudnary loss. If None, `c` and `argmin` must be given
         and `min-val` is automatically calculated.
-    :param multioutput:
+    :param multioutput: str
+        Corresponds with the equivalent parameter of SKLearn compatible metrics.
+        Currently present for compatibility purposes only and effectively only implements
+        the default "raw_metrics" feature.
     :return:
     """
 
@@ -58,15 +61,28 @@ def exponential_bounds(y_true, y_pred, *, y_lim: float, argmin: Optional[float] 
     return grad, hess
 
 def squared_error(y_true, y_pred, multioutput: str = "raw_values"):
+    """
+    Implements the squared error loss. Returns the gradient and hessian for corrected
+    squared error loss i.e. 0.5 * ||y_pred - y_true||^2.
+
+    :param y_true: array-like
+        The true labels/expected regression targets.
+    :param y_pred: array-like
+        The predicted regression values.
+    :param multioutput: str
+        Corresponds with the equivalent parameter of SKLearn compatible metrics.
+        Currently present for compatibility purposes only and effectively only implements
+        the default "raw_metrics" feature.
+    """
 
     y_type, y_true, y_pred, multioutput = skregression._check_reg_targets(
         y_true, y_pred, multioutput
     )
     skregression.check_consistent_length(y_true, y_pred)
 
-    # loss = np.power(y_true - y_pred, 2)
-    grad = 2 * (y_pred - y_true)
-    hess = 2 * np.ones_like(y_pred)
+    # loss = 0.5 * np.power(y_true - y_pred, 2)
+    grad = y_pred - y_true
+    hess = np.ones_like(y_pred)
 
     return grad, hess
 

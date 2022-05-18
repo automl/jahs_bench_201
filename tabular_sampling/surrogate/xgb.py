@@ -4,7 +4,7 @@ import copy
 import logging
 from functools import partial
 from pathlib import Path
-from typing import Union, Optional, Sequence, Tuple, Dict
+from typing import Union, Optional, Sequence, Tuple, Dict, Callable
 
 import ConfigSpace
 import joblib
@@ -19,9 +19,12 @@ import sklearn.multioutput
 import sklearn.pipeline
 import sklearn.preprocessing
 import xgboost as xgb
+import yacs.config as config
 
 from tabular_sampling.search_space.configspace import joint_config_space
-from tabular_sampling.lib.core import utils
+from tabular_sampling.lib.core import utils as benchmark_utils
+from tabular_sampling.surrogate import utils as surrogate_utils
+from tabular_sampling.surrogate import constants as constants
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]
@@ -150,7 +153,7 @@ class XGBSurrogate:
 
         cs = copy.deepcopy(self.config_space)
         if config_space_constraints is not None:
-            cs, _ = utils.adapt_search_space(original_space=cs, opts=config_space_constraints)
+            cs, _ = benchmark_utils.adapt_search_space(original_space=cs, opts=config_space_constraints)
 
         if not isinstance(random_state, np.random.RandomState):
             # Assume that rng is either None or a compatible source of entropy
@@ -201,6 +204,17 @@ class XGBSurrogate:
 
         pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
         return pipeline
+
+    def _build_pipeline(self, pipeline_config: config.CfgNode):
+        """ Construct a customized pipeline using various parameters. """
+
+        loss_type = constants.RegressionLossFuncTypes(pipeline_config.loss)
+        if loss_type is constants.RegressionLossFuncTypes.custom:
+            objective = surrogate_utils.custom_loss_function(pipeline_config.loss_params)
+        else:
+            objective = loss_type.value
+
+
 
     @staticmethod
     def prepare_dataset_for_training(
@@ -300,7 +314,8 @@ class XGBSurrogate:
     # TODO: Remove option to create a test set within fit. That functionality does not belong here.
     def fit(self, features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
             perform_hpo: bool = True, test_size: float = 0., random_state: np.random.RandomState = None,
-            hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True, strata: Optional[pd.Series] = None):
+            hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True, strata: Optional[pd.Series] = None,
+            objective: Union[str, Callable] = 'reg:squarederror'):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
         # Ensure the order of the features does not get messed up and is always accessible
