@@ -44,11 +44,16 @@ root.params = [default_base_loss_configs[f].value.clone() for f in root.funcs]
 root.weights = [1./3.] * 3
 default_mixed_loss_config = root
 
-# The default configuration for the
+# The default configuration for the transformations to be applied to the target variable
+root = config.CfgNode()
+root.transform = "MinMax"
+root.params = config.CfgNode({"feature_range": (0., 1.)})
+default_target_config = root
 
 # The default configuration for a surrogate pipeline
 default_pipeline_config = config.CfgNode()
 default_pipeline_config.loss = RegressionLossFuncTypes.custom.value
 default_pipeline_config.loss_params = default_mixed_loss_config.clone()
 default_pipeline_config.config_dir = None
+default_pipeline_config.target_config = default_target_config
 del root

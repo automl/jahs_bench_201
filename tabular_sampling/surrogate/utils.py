@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Tuple, List, Callable
+
 import yacs.config as config
 
 from tabular_sampling.surrogate import loss, constants
@@ -21,7 +22,7 @@ def custom_loss_function(loss_params: config.CfgNode) -> Callable:
     funcs = []
     weights = []
     for f, p, w in zip(loss_params.funcs, loss_params.params, loss_params.weights):
-        if f == "":
+        if not f:
             continue
         funcs.append(functools.partial(func_map[f], **p))
         weights.append(w)
@@ -34,6 +35,7 @@ def load_pipeline_config(*params) -> config.CfgNode:
     converts them into an appropriate pipeline configuration. """
 
     pipeline_config = constants.default_pipeline_config.clone()
+    pipeline_config.set_new_allowed(True)
     pipeline_config.merge_from_list(params)
 
     try:
@@ -49,7 +51,7 @@ def load_pipeline_config(*params) -> config.CfgNode:
     # Assume it's a custom loss function
     try:
         for f in pipeline_config.loss_params.funcs:
-            if f == "":
+            if not f:
                 continue
             _ =  constants.default_base_loss_configs(f)
     except ValueError as e:
@@ -62,6 +64,17 @@ def load_pipeline_config(*params) -> config.CfgNode:
         # The parameters may be specified by passing in a filename instead
         if isinstance(p, str):
             cfg_file = Path(pipeline_config.config_dir) / p
-            loss_params.params[i] = config.CfgNode().merge_from_file(cfg_file)
+            new_params = config.CfgNode(new_allowed=True).merge_from_file(cfg_file)
+            loss_params.params[i] = new_params
 
+    target_config = pipeline_config.target_config
+    for i, p in enumerate(target_config.params):
+        # The parameters may be specified by passing in a filename instead
+        if isinstance(p, str):
+            cfg_file = Path(pipeline_config.config_dir) / p
+            new_params = config.CfgNode(new_allowed=True).merge_from_file(cfg_file)
+            target_config.params = new_params
+
+    pipeline_config.set_new_allowed(False)
+    pipeline_config.freeze()
     return pipeline_config

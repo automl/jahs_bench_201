@@ -30,6 +30,11 @@ _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]
 
 
+# Valid transformations for the target variable
+class TargetTransforms(Enum):
+    MinMax = sklearn.preprocessing.MinMaxScaler
+
+
 class XGBSurrogate:
     """ A surrogate model based on XGBoost. """
 
@@ -45,9 +50,10 @@ class XGBSurrogate:
     __model_filename = "model.pkl.gz"
     __param_keys = ["estimators_per_output", "hyperparams", "config_space", "label_headers", "feature_headers",
                     "trained_"]
+    __objective = "reg:squarederror"
 
     _hpo_search_space = {
-        "objective": ["reg:squarederror"],
+        "objective": [__objective],
         # "eval_metric": "rmse",
         # 'early_stopping_rounds': 100,
         "booster": ["gbtree"],
@@ -63,7 +69,7 @@ class XGBSurrogate:
     @property
     def default_hyperparams(self) -> dict:
         params = {
-            "objective": "reg:squarederror",
+            "objective": self.__objective,
             # "eval_metric": "rmse",
             "booster": "gbtree",
             "max_depth": 6,
@@ -80,7 +86,8 @@ class XGBSurrogate:
             params = self.default_hyperparams.copy()
         else:
             params = {
-                "objective": "reg:squarederror",
+                # "objective": "reg:squarederror",
+                "objective": self.__objective,
                 # "eval_metric": "rmse",
                 # 'early_stopping_rounds': 100,
                 "booster": "gbtree",
@@ -208,13 +215,38 @@ class XGBSurrogate:
     def _build_pipeline(self, pipeline_config: config.CfgNode):
         """ Construct a customized pipeline using various parameters. """
 
+        # Construct the objective function
         loss_type = constants.RegressionLossFuncTypes(pipeline_config.loss)
         if loss_type is constants.RegressionLossFuncTypes.custom:
-            objective = surrogate_utils.custom_loss_function(pipeline_config.loss_params)
+            self.__objective = \
+                surrogate_utils.custom_loss_function(pipeline_config.loss_params)
         else:
-            objective = loss_type.value
+            self.__objective = loss_type.value
 
+        # Build basic pipeline components
+        prep_pipe = self.preprocessing_pipeline
+        xgboost_estimator = xgb.sklearn.XGBRegressor(
+            n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto",
+            n_jobs=1, **self.hyperparams)
 
+        # Target processing pipeline steps
+        target_config = pipeline_config.target_config
+        if not target_config.transform:
+            transformer = TargetTransforms[target_config.transform]
+            transformer = transformer(**target_config.params)
+            estimator = sklearn.compose.TransformedTargetRegressor(
+                regressor=xgboost_estimator, transformer=transformer)
+        else:
+            estimator = xgboost_estimator
+
+        # Final pipeline generation - multiout will be handled by the public API
+        pipeline_steps = [
+            ("preprocess", prep_pipe),
+            ("estimator", estimator)
+        ]
+
+        pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
+        return pipeline
 
     @staticmethod
     def prepare_dataset_for_training(
@@ -312,10 +344,12 @@ class XGBSurrogate:
     # TODO: Check if a train split (after valid and test have been taken out) would have sufficient representation in
     #  terms of categorical values (at least one occurence of each), for the given validation and test set sizes
     # TODO: Remove option to create a test set within fit. That functionality does not belong here.
-    def fit(self, features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
-            perform_hpo: bool = True, test_size: float = 0., random_state: np.random.RandomState = None,
-            hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True, strata: Optional[pd.Series] = None,
-            objective: Union[str, Callable] = 'reg:squarederror'):
+    def fit(self, features: pd.DataFrame, labels: pd.DataFrame,
+            groups: Optional[pd.DataFrame] = None, perform_hpo: bool = True,
+            test_size: float = 0., random_state: np.random.RandomState = None,
+            hpo_iters: int = 10, num_cv_splits: int = 5, stratify: bool = True,
+            strata: Optional[pd.Series] = None,
+            pipeline_config: Optional[config.CfgNode] = None):
         """ Pre-process the given dataset, fit an XGBoost model on it and return the training error. """
 
         # Ensure the order of the features does not get messed up and is always accessible
@@ -330,12 +364,6 @@ class XGBSurrogate:
         else:
             labels = labels.loc[:, self.label_headers]
 
-        # TODO: Check if y-scaling is needed. Add an option to enable y-scaling by building a composite estimator that
-        #  works so: scale down -> real model -> scale up
-        # Tree based models only benefit from normalizing the target values, not the features
-        # self.ymean = labels.mean(axis=0)
-        # self.ystd = labels.std(axis=0)
-
         xtrain, xtest, ytrain, ytest, groups, cv = self.prepare_dataset_for_training(
             features=features, labels=labels, groups=groups, test_size=test_size, random_state=random_state,
             num_cv_splits=num_cv_splits, stratify=stratify, strata=strata
@@ -347,7 +375,8 @@ class XGBSurrogate:
 
         # TODO: Revise scoring
         num_regressands = labels.columns.size
-        pipeline = self._get_simple_pipeline(multiout=num_regressands > 1)
+        pipeline = self._get_simple_pipeline(multiout=num_regressands > 1) \
+            if not pipeline_config else self._build_pipeline(pipeline_config)
 
         if perform_hpo:
             estimator_prefix = f"{'multiout__' * (num_regressands > 1)}estimator"
