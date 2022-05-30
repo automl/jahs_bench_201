@@ -4,7 +4,7 @@ import copy
 import logging
 from functools import partial
 from pathlib import Path
-from typing import Union, Optional, Sequence, Tuple, Dict, Callable
+from typing import Union, Optional, Sequence, Tuple, Dict
 
 import ConfigSpace
 import joblib
@@ -21,18 +21,13 @@ import sklearn.preprocessing
 import xgboost as xgb
 import yacs.config as config
 
-from tabular_sampling.search_space.configspace import joint_config_space
 from tabular_sampling.lib.core import utils as benchmark_utils
-from tabular_sampling.surrogate import utils as surrogate_utils
+from tabular_sampling.search_space.configspace import joint_config_space
 from tabular_sampling.surrogate import constants as constants
+from tabular_sampling.surrogate import utils as surrogate_utils
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]
-
-
-# Valid transformations for the target variable
-class TargetTransforms(Enum):
-    MinMax = sklearn.preprocessing.MinMaxScaler
 
 
 class XGBSurrogate:
@@ -48,7 +43,8 @@ class XGBSurrogate:
     __params_filename = "params.pkl.gz"
     __headers_filename = "label_headers.pkl.gz"
     __model_filename = "model.pkl.gz"
-    __param_keys = ["estimators_per_output", "hyperparams", "config_space", "label_headers", "feature_headers",
+    __param_keys = ["estimators_per_output", "hyperparams", "config_space",
+                    "label_headers", "feature_headers",
                     "trained_"]
     __objective = "reg:squarederror"
 
@@ -102,8 +98,10 @@ class XGBSurrogate:
         self.hyperparams = params
         return params
 
-    def __init__(self, config_space: Optional[ConfigSpace.ConfigurationSpace] = joint_config_space,
-                 estimators_per_output: int = 500, use_gpu: Optional[bool] = None, hyperparams: dict = None):
+    def __init__(self, config_space: Optional[
+        ConfigSpace.ConfigurationSpace] = joint_config_space,
+                 estimators_per_output: int = 500, use_gpu: Optional[bool] = None,
+                 hyperparams: dict = None):
         """
         Initialize the internal parameters needed for the surrogate to understand the data it is dealing with.
         :param config_space: ConfigSpace.ConfigurationSpace
@@ -137,18 +135,21 @@ class XGBSurrogate:
 
         # TODO: Add cache dir to speed up HPO
         # TODO: Read categorical choices from the config space
-        onehot_columns = [p.name for p in params if isinstance(p, ConfigSpace.CategoricalHyperparameter)]
+        onehot_columns = [p.name for p in params if
+                          isinstance(p, ConfigSpace.CategoricalHyperparameter)]
         onehot_enc = sklearn.preprocessing.OneHotEncoder(drop="if_binary")
         transformers = [("OneHotEncoder", onehot_enc, onehot_columns)]
-        prep_pipe = sklearn.compose.ColumnTransformer(transformers=transformers, remainder="passthrough")
+        prep_pipe = sklearn.compose.ColumnTransformer(transformers=transformers,
+                                                      remainder="passthrough")
         return prep_pipe
 
     # TODO: Also handle assigning appropriate dtypes in Pandas DataFrame
-    def _random_data(self, nconfigs: int = 10, samples_per_config: int = 100, nlabel_dims: int = 2,
+    def _random_data(self, nconfigs: int = 10, samples_per_config: int = 100,
+                     nlabel_dims: int = 2,
                      label_names: Optional[Sequence[str]] = None,
                      random_state: Optional[np.random.RandomState] = None,
                      config_space_constraints: Optional[Dict[str, Any]] = None) -> \
-            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """ A debugging tool. Generate a random dataset of arbitrary size using the stored config space representation.
         Returns the randomly generated set of features, labels and groups as pandas DataFrame objects, in that
         order. A dictionary mapping the respective config space parameter names to appropriate values may be passed in
@@ -160,7 +161,8 @@ class XGBSurrogate:
 
         cs = copy.deepcopy(self.config_space)
         if config_space_constraints is not None:
-            cs, _ = benchmark_utils.adapt_search_space(original_space=cs, opts=config_space_constraints)
+            cs, _ = benchmark_utils.adapt_search_space(original_space=cs,
+                                                       opts=config_space_constraints)
 
         if not isinstance(random_state, np.random.RandomState):
             # Assume that rng is either None or a compatible source of entropy
@@ -172,11 +174,13 @@ class XGBSurrogate:
         features = np.array([list(c.get_dictionary().values()) for c in features])
         features = np.repeat(features, samples_per_config, axis=0)
         features = pd.DataFrame(features, columns=cs.get_hyperparameter_names())
-        epochs = pd.Series(np.tile(np.arange(1, samples_per_config + 1), nconfigs), name="epoch")
+        epochs = pd.Series(np.tile(np.arange(1, samples_per_config + 1), nconfigs),
+                           name="epoch")
         features.loc[:, "epoch"] = epochs
 
         labels = random_state.random((nconfigs * samples_per_config, nlabel_dims))
-        label_names = [f"Label_{i}" for i in range(nlabel_dims)] if label_names is None else label_names
+        label_names = [f"Label_{i}" for i in
+                       range(nlabel_dims)] if label_names is None else label_names
         labels = pd.DataFrame(labels, columns=label_names)
 
         groups = np.repeat(np.arange(1, nconfigs + 1), samples_per_config, axis=0)
@@ -195,10 +199,12 @@ class XGBSurrogate:
 
         prep_pipe = self.preprocessing_pipeline
         xgboost_estimator = xgb.sklearn.XGBRegressor(
-            n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto", n_jobs=1, **self.hyperparams)
+            n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto",
+            n_jobs=1, **self.hyperparams)
 
         if multiout:
-            multi_regressor = sklearn.multioutput.MultiOutputRegressor(estimator=xgboost_estimator, n_jobs=1)
+            multi_regressor = sklearn.multioutput.MultiOutputRegressor(
+                estimator=xgboost_estimator, n_jobs=1)
             pipeline_steps = [
                 ("preprocess", prep_pipe),
                 ("multiout", multi_regressor)
@@ -215,15 +221,19 @@ class XGBSurrogate:
     def _build_pipeline(self, pipeline_config: config.CfgNode):
         """ Construct a customized pipeline using various parameters. """
 
+        _log.debug(f"Constructing a custom pipeline using the given pipeline "
+                   f"configuration.")
+
         # Construct the objective function
         loss_type = constants.RegressionLossFuncTypes(pipeline_config.loss)
+        _log.debug(f"Using the '{loss_type.name}' objective.")
         if loss_type is constants.RegressionLossFuncTypes.custom:
             self.__objective = \
                 surrogate_utils.custom_loss_function(pipeline_config.loss_params)
         else:
             self.__objective = loss_type.value
 
-        # Build basic pipeline components
+        # Build input preprocessing pipeline and bare-bones XGBoost estimator
         prep_pipe = self.preprocessing_pipeline
         xgboost_estimator = xgb.sklearn.XGBRegressor(
             n_estimators=500, tree_method="gpu_hist" if self.use_gpu else "auto",
@@ -231,13 +241,30 @@ class XGBSurrogate:
 
         # Target processing pipeline steps
         target_config = pipeline_config.target_config
+        assert target_config.transform is None or isinstance(target_config.transform, str)
+
         if not target_config.transform:
-            transformer = TargetTransforms[target_config.transform]
-            transformer = transformer(**target_config.params)
-            estimator = sklearn.compose.TransformedTargetRegressor(
-                regressor=xgboost_estimator, transformer=transformer)
-        else:
             estimator = xgboost_estimator
+        # elif target_config.transform.lower() == "pipeline":
+        # Construct a target transformation pipeline from the components specified
+        # in the target config.
+        # transformers = [
+        #     (f"target_transform_{f}", surrogate_utils.get_transform(f, **kwargs))
+        #     for f, kwargs in zip(target_config.params["funcs"],
+        #                          target_config.params["params"])]
+        # transformer_pipeline = sklearn.pipeline.Pipeline(steps=transformers)
+        # estimator = sklearn.compose.TransformedTargetRegressor(
+        #     regressor=xgboost_estimator, transformer=transformer_pipeline)
+        # else:
+        #     _log.debug(f"Attaching target value transformer to the pipeline, as per the "
+        #                f"config:\n{target_config}")
+        #     transformer = surrogate_utils.get_transform(target_config.transform,
+        #                                                 **target_config.params)
+        # transformer = TargetTransforms[target_config.transform].value
+        # transformer = transformer(**target_config.params)
+        else:
+            estimator = surrogate_utils.apply_target_transform(
+                target_config=target_config, final_estimator=xgboost_estimator)
 
         # Final pipeline generation - multiout will be handled by the public API
         pipeline_steps = [
@@ -246,15 +273,19 @@ class XGBSurrogate:
         ]
 
         pipeline = sklearn.pipeline.Pipeline(steps=pipeline_steps)
+        _log.debug(f"Finished generating new pipeline.")
         return pipeline
 
     @staticmethod
     def prepare_dataset_for_training(
-            features: pd.DataFrame, labels: pd.DataFrame, groups: Optional[pd.DataFrame] = None,
-            test_size: float = 0., random_state: Optional[np.random.RandomState] = None, num_cv_splits: int = 5,
-            stratify: bool = True, strata: Optional[pd.Series] = None
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame],
-               sklearn.model_selection.BaseCrossValidator]:
+        features: pd.DataFrame, labels: pd.DataFrame,
+        groups: Optional[pd.DataFrame] = None,
+        test_size: float = 0., random_state: Optional[np.random.RandomState] = None,
+        num_cv_splits: int = 5,
+        stratify: bool = True, strata: Optional[pd.Series] = None
+    ) -> Tuple[
+        pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Optional[pd.DataFrame],
+        sklearn.model_selection.BaseCrossValidator]:
         """
         Given a full dataset consisting of the input features, the labels to be predicted, and an optional
         definition of groups for the data, ascertains the way the data should be split into a training, validation and
@@ -290,10 +321,12 @@ class XGBSurrogate:
             on the fly.
         """
 
-        _log.info("Generating training and test splits, and the validation split generator.")
+        _log.info(
+            "Generating training and test splits, and the validation split generator.")
         if test_size > 1. or test_size < 0.:
-            raise ValueError(f"The test set fraction size 'test_size' must be in the range [0, 1), was given "
-                             f"{test_size}")
+            raise ValueError(
+                f"The test set fraction size 'test_size' must be in the range [0, 1), was given "
+                f"{test_size}")
         elif test_size == 0.:
             _log.debug("No test split will be generated.")
             xtrain, ytrain = features, labels
@@ -302,7 +335,8 @@ class XGBSurrogate:
                 _log.debug("No data groups were given.")
                 cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
             else:
-                _log.debug("Generating training and validation splits in accordance with the given data groups.")
+                _log.debug(
+                    "Generating training and validation splits in accordance with the given data groups.")
                 cv = sklearn.model_selection.GroupKFold(n_splits=num_cv_splits)
         else:
             strata = labels.loc[:, labels.columns[0]] if strata is None else \
@@ -312,7 +346,8 @@ class XGBSurrogate:
                 _log.debug("No data groups were given.")
                 splitter_type = sklearn.model_selection.StratifiedShuffleSplit if stratify \
                     else sklearn.model_selection.ShuffleSplit
-                test_splitter = splitter_type(n_splits=1, test_size=test_size, random_state=random_state)
+                test_splitter = splitter_type(n_splits=1, test_size=test_size,
+                                              random_state=random_state)
 
                 idx_train, idx_test = next(test_splitter.split(features, strata))
                 xtrain = features.iloc[idx_train]
@@ -323,12 +358,16 @@ class XGBSurrogate:
                 # TODO: Enable random validation splits with reproducible RNG
                 cv = sklearn.model_selection.KFold(n_splits=num_cv_splits, shuffle=False)
             else:
-                _log.debug("Generating training, validation and test splits in accordance with the given data groups.")
-                splitter_type = partial(sklearn.model_selection.StratifiedGroupKFold, shuffle=True) if stratify \
+                _log.debug(
+                    "Generating training, validation and test splits in accordance with the given data groups.")
+                splitter_type = partial(sklearn.model_selection.StratifiedGroupKFold,
+                                        shuffle=True) if stratify \
                     else sklearn.model_selection.GroupShuffleSplit
-                test_splitter = splitter_type(n_splits=int(1 / test_size), random_state=random_state)
+                test_splitter = splitter_type(n_splits=int(1 / test_size),
+                                              random_state=random_state)
 
-                idx_train, idx_test = next(test_splitter.split(features, strata, groups=groups))
+                idx_train, idx_test = next(
+                    test_splitter.split(features, strata, groups=groups))
                 xtrain = features.iloc[idx_train]
                 xtest = features.iloc[idx_test]
                 ytrain = labels.iloc[idx_train]
@@ -365,7 +404,8 @@ class XGBSurrogate:
             labels = labels.loc[:, self.label_headers]
 
         xtrain, xtest, ytrain, ytest, groups, cv = self.prepare_dataset_for_training(
-            features=features, labels=labels, groups=groups, test_size=test_size, random_state=random_state,
+            features=features, labels=labels, groups=groups, test_size=test_size,
+            random_state=random_state,
             num_cv_splits=num_cv_splits, stratify=stratify, strata=strata
         )
 
@@ -380,14 +420,16 @@ class XGBSurrogate:
 
         if perform_hpo:
             estimator_prefix = f"{'multiout__' * (num_regressands > 1)}estimator"
-            hpo_search_space = {f"{estimator_prefix}__{k}": v for k, v in self._hpo_search_space.items()}
+            hpo_search_space = {f"{estimator_prefix}__{k}": v for k, v in
+                                self._hpo_search_space.items()}
             # trainer = sklearn.model_selection.HalvingRandomSearchCV(
             #     pipeline, param_distributions=hpo_search_space, resource="multiout__estimator__n_estimators",
             #     random_state=random_state, factor=2, max_resources=self.estimators_per_output * num_regressands,
             #     min_resources=2 * num_splits * num_regressands, cv=num_splits
             # )
             trainer = sklearn.model_selection.RandomizedSearchCV(
-                estimator=pipeline, param_distributions=hpo_search_space, n_iter=hpo_iters, cv=cv,
+                estimator=pipeline, param_distributions=hpo_search_space,
+                n_iter=hpo_iters, cv=cv,
                 random_state=random_state, refit=True
             )
             search_results = trainer.fit(xtrain, ytrain, groups=groups)
@@ -430,7 +472,8 @@ class XGBSurrogate:
         params = {k: self.__getattribute__(k) for k in self.__param_keys}
         joblib.dump(params, outdir / self.__params_filename, protocol=protocol)
         if self.trained_:
-            self.label_headers.to_series().to_pickle(outdir / self.__headers_filename, protocol=protocol)
+            self.label_headers.to_series().to_pickle(outdir / self.__headers_filename,
+                                                     protocol=protocol)
             joblib.dump(self.model, outdir / self.__model_filename, protocol=protocol)
 
     @classmethod
