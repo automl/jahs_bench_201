@@ -54,6 +54,7 @@ def exponential_bounds(y_true, y_pred, *, y_lim: float, argmin: Optional[float] 
     else:
         raise RuntimeError("Only one of `c` and `min_val` should be specified.")
 
+    # TODO: Check for numerical overflows and implement a solution e.g. cap this value
     loss = np.exp(c * (y_pred - y_lim))
     grad = c * loss
     hess = (c ** 2) * loss

@@ -232,6 +232,7 @@ class XGBSurrogate:
                 surrogate_utils.custom_loss_function(pipeline_config.loss_params)
         else:
             self.__objective = loss_type.value
+        self.hyperparams["objective"] = self.__objective
 
         # Build input preprocessing pipeline and bare-bones XGBoost estimator
         prep_pipe = self.preprocessing_pipeline
