@@ -27,13 +27,12 @@ def _map_dataset(dataset: str) -> Datasets:
 
 
 class Benchmark:
-    def __init__(self, use_surrogate: bool = True, model_path: Optional[Union[str, Path]] = True):
+    def __init__(self, use_surrogate: bool = True, model_path: Optional[Union[str, Path]] = None):
         if use_surrogate:
-            if isinstance(model_path, str):
-                datadir = Path(datadir)
-
             assert model_path is not None, "A path to a directory where a surrogate model was saved must be given " \
                                            "when 'use_surrogate=True' is used."
+            if isinstance(model_path, str):
+                model_path = Path(model_path)
             assert model_path.exists() and model_path.is_dir()
             self.surrogate = XGBSurrogate.load(model_path)
             self._call_fn = partial(Benchmark._benchmark_surrogate, surrogate=self.surrogate)

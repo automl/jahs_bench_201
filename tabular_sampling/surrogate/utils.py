@@ -5,6 +5,7 @@ from typing import Callable
 import numpy as np
 import sklearn.base
 import yacs.config as config
+from enum import Enum
 
 from tabular_sampling.surrogate import loss, constants
 

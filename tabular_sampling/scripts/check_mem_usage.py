@@ -18,11 +18,6 @@ from tabular_sampling.search_space.constants import OP_NAMES
 _log = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    fmt = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
-    ch = logging.StreamHandler(stream=sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(fmt)
-    _log.addHandler(ch)
 
     parser = argparse.ArgumentParser("Test whether or not the maximum expected memory load on a particular dataset is "
                                      "viable for a given resource allocation.")
@@ -48,11 +43,19 @@ if __name__ == "__main__":
     else:
         _log.setLevel(logging.INFO)
 
-    if args.workerid < 0:
+    wid = args.workerid
+
+    if wid < 0:
         raise ValueError(f"Worker id must be a non-negative integer, was {args.workerid}.")
 
+    fmt = logging.Formatter(f"*Worker {wid}* [%(asctime)s] %(name)s %(levelname)s: "
+                            f"%(message)s", datefmt="%m/%d %H:%M:%S")
+    ch = logging.StreamHandler(stream=sys.stdout)
+    ch.setLevel(logging.DEBUG)
+    ch.setFormatter(fmt)
+    _log.addHandler(ch)
+
     fids = {"N": [1, 3, 5], "W": [4, 8, 16], "Resolution": [0.25, 0.5, 1.0]}
-    wid = args.workerid
     if wid >= 27:
         sys.exit(0)
     n, w, r = fids["N"][wid % 3], fids["W"][(wid // 3) % 3], fids["Resolution"][(wid // 9) % 3]
