@@ -15,6 +15,7 @@ OP_NAMES = ['Identity', 'Zero', 'ConvBN3x3', 'ConvBN1x1', 'AvgPool1x1']
 # 2-tuples, (in-node, out-node), that uniquely identify cell edges
 EDGE_LIST = ((1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4))
 
+
 # Available choices for activation function.
 
 @enum.unique
@@ -22,6 +23,7 @@ class Activations(enum.Enum):
     ReLU = enum.auto()
     Hardswish = enum.auto()
     Mish = enum.auto()
+
 
 # Mapping from the original NASBench-201 dataset's naming convention to NASLib's naming
 # convention
@@ -33,7 +35,8 @@ nb201_to_ops = {
     'none': 'Zero',
 }
 
-# Mapping from NASLib's naming conversion to the original NASBench-201 dataset's naming convention
+# Mapping from NASLib's naming conversion to the original NASBench-201 dataset's naming
+# convention
 ops_to_nb201 = {
     'AvgPool1x1': 'avg_pool_3x3',
     'ConvBN1x1': 'nor_conv_1x1',
@@ -41,4 +44,3 @@ ops_to_nb201 = {
     'Identity': 'skip_connect',
     'Zero': 'none',
 }
-

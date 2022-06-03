@@ -5,8 +5,8 @@ from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
-from jahs_bench.lib.surrogate import XGBSurrogate
-from jahs_bench.lib.configspace import joint_config_space
+from jahs_bench.core.configspace import joint_config_space
+from jahs_bench.surrogate.model import XGBSurrogate
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.WARNING)
@@ -41,7 +41,7 @@ class Benchmark:
 if __name__ == "__main__":
     conf = joint_config_space.sample_configuration().get_dictionary()
     model_path = Path(__file__).parent.parent / "surrogates" / "thesis_cifar10"
-#     model_path = model_path / Path("../surrogates/full_data").resolve()
+    #     model_path = model_path / Path("../surrogates/full_data").resolve()
     print(f"Attempting to read surrogate model from: {model_path}")
     b = Benchmark(model_path=model_path)
     res = b(config=conf, nepochs=200)

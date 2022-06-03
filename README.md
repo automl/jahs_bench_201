@@ -42,11 +42,13 @@ This should randomly sample a configuration and display the result of querying f
 ```python
 # Load the trained surrogate model
 from jahs_bench.public_api import Benchmark
+
 model_path = "jahs_bench_mf/JAHS-Bench-MF/surrogates/thesis_cifar10"
 b = Benchmark(model_path=model_path)
 
 # Generate a random configuration
-from jahs_bench.lib.configspace import joint_config_space
+from jahs_bench.core.configspace import joint_config_space
+
 conf = joint_config_space.sample_configuration().get_dictionary()
 
 # Query the configuration
@@ -55,7 +57,7 @@ print(res)
 
 ```
 
-**Caution:** The repeatability of the surrogate model's predictions is still under investigation and carries no 
+**Caution:** The repeatability of the surrogate model's predictions is still under investigation and carries no
 guarantees.
 
 ## Contributing
