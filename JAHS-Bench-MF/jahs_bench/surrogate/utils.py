@@ -148,3 +148,47 @@ def _get_single_transform(name: str, **params) -> sklearn.base.BaseEstimator:
     else:
         # Use an existing Transformer
         return TargetTransforms[name].value(**params)
+
+
+def adjust_dataset(datapth: Path, outputs: Optional[Sequence[str]] = None,
+                   fillna: bool = False):
+    logger.info(f"Adjusting data from {datapth}. "
+                f"{(' Chosen output columns: ' + str(outputs)) * (outputs is not None)}. "
+                f"{'Filling ' if fillna else 'Not filling '} in NaN values. ")
+    logger.info("Fetching data.")
+    data = pd.read_pickle(datapth)
+    logger.info("Finished loading data.")
+
+    logger.info(f"There are {data.index.size} rows of data, including the test set (if "
+                f"any).")
+    index = data.loc[:, "sampling_index"]
+    groups = index["model_ID"]
+    strata = index["fidelity_ID"]
+    features = data.features
+    labels: pd.DataFrame = data.labels
+
+    if outputs is not None:
+        labels: pd.DataFrame = labels[outputs]
+
+    if fillna:
+        sel: pd.Series = labels.isna().any(axis=1)
+        subdf = labels.loc[sel]
+        if subdf.shape[0] == 0:
+            logger.info("Found no NaN values in the labels.")
+        else:
+            logger.info(f"Found {subdf.shape[0]} rows of data with NaN values in them. "
+                        f"Attempting to fill NaN values.")
+            fillvals = {}
+            for c in sel.index:
+                if sel[c]:
+                    if "acc" in c:
+                        fillvals[c] = 0.
+                    elif "loss" in c or "duration" in c:
+                        fillvals[c] = 100 * labels[c].max()
+                    else:
+                        raise RuntimeError(f"Could not find appropriate fill value to "
+                                           f"replace NaNs with for metric: {c}")
+            logger.info(f"Filling NaN values according to the mapping: {fillvals}")
+            labels.fillna(fillvals, inplace=True)
+
+    return features, labels, groups, strata
