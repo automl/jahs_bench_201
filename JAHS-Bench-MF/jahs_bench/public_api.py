@@ -40,7 +40,8 @@ class Benchmark:
 
 if __name__ == "__main__":
     conf = joint_config_space.sample_configuration().get_dictionary()
-    model_path = Path(__file__).parent.parent / "surrogates" / "thesis_cifar10"
+    model_path = Path(__file__).parent.parent / "trained_surrogate_models" / \
+                 "thesis_cifar10"
     #     model_path = model_path / Path("../surrogates/full_data").resolve()
     print(f"Attempting to read surrogate model from: {model_path}")
     b = Benchmark(model_path=model_path)

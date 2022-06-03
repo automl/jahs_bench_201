@@ -22,7 +22,7 @@ import xgboost as xgb
 import yacs.config as config
 from jahs_bench.core import utils as core_utils
 from jahs_bench.core.configspace import joint_config_space
-from jahs_bench.surrogate import surrogate_utils
+from jahs_bench.surrogate import utils as surrogate_utils
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]
