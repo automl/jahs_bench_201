@@ -1,9 +1,11 @@
 import functools
 import logging
 from enum import Enum
-from typing import Callable
+from pathlib import Path
+from typing import Callable, Optional, Sequence
 
 import numpy as np
+import pandas as pd
 import sklearn.base
 import yacs.config as config
 
@@ -108,7 +110,7 @@ class CustomTransforms(Enum):
 
 
 def apply_target_transform(target_config: config.CfgNode, final_estimator) -> \
-        sklearn.base.BaseEstimator:
+    sklearn.base.BaseEstimator:
     """ Given a configuration describing how the targets should be transformed and a
     corresponding estimator, returns a MetaEstimator containing a pipeline such that the
     required transformations are applied to the targets before passed to
@@ -152,15 +154,15 @@ def _get_single_transform(name: str, **params) -> sklearn.base.BaseEstimator:
 
 def adjust_dataset(datapth: Path, outputs: Optional[Sequence[str]] = None,
                    fillna: bool = False):
-    logger.info(f"Adjusting data from {datapth}. "
-                f"{(' Chosen output columns: ' + str(outputs)) * (outputs is not None)}. "
-                f"{'Filling ' if fillna else 'Not filling '} in NaN values. ")
-    logger.info("Fetching data.")
+    _log.info(f"Adjusting data from {datapth}. "
+              f"{(' Chosen output columns: ' + str(outputs)) * (outputs is not None)}. "
+              f"{'Filling ' if fillna else 'Not filling '} in NaN values. ")
+    _log.info("Fetching data.")
     data = pd.read_pickle(datapth)
-    logger.info("Finished loading data.")
+    _log.info("Finished loading data.")
 
-    logger.info(f"There are {data.index.size} rows of data, including the test set (if "
-                f"any).")
+    _log.info(f"There are {data.index.size} rows of data, including the test set (if "
+              f"any).")
     index = data.loc[:, "sampling_index"]
     groups = index["model_ID"]
     strata = index["fidelity_ID"]
@@ -174,10 +176,10 @@ def adjust_dataset(datapth: Path, outputs: Optional[Sequence[str]] = None,
         sel: pd.Series = labels.isna().any(axis=1)
         subdf = labels.loc[sel]
         if subdf.shape[0] == 0:
-            logger.info("Found no NaN values in the labels.")
+            _log.info("Found no NaN values in the labels.")
         else:
-            logger.info(f"Found {subdf.shape[0]} rows of data with NaN values in them. "
-                        f"Attempting to fill NaN values.")
+            _log.info(f"Found {subdf.shape[0]} rows of data with NaN values in them. "
+                      f"Attempting to fill NaN values.")
             fillvals = {}
             for c in sel.index:
                 if sel[c]:
@@ -188,7 +190,7 @@ def adjust_dataset(datapth: Path, outputs: Optional[Sequence[str]] = None,
                     else:
                         raise RuntimeError(f"Could not find appropriate fill value to "
                                            f"replace NaNs with for metric: {c}")
-            logger.info(f"Filling NaN values according to the mapping: {fillvals}")
+            _log.info(f"Filling NaN values according to the mapping: {fillvals}")
             labels.fillna(fillvals, inplace=True)
 
     return features, labels, groups, strata
