@@ -89,14 +89,14 @@ def load_pipeline_config(*params) -> config.CfgNode:
 class CustomTransformFunctions:
     @staticmethod
     def sigmoid(arr: np.array, k: float = 1.):
-        if k > 0:
+        if k <= 0:
             raise ValueError(f"The parameter 'k' for a sigmoid function must be a "
                              f"positive real number, was {k}.")
         return np.power(1 + np.exp(-k * arr), -1)
 
     @staticmethod
     def inverse_sigmoid(arr: np.array, k: float = 1.):
-        if k > 0:
+        if k <= 0:
             raise ValueError(f"The parameter 'k' for an inverse sigmoid function must be "
                              f"a positive real number, was {k}.")
         if not (arr.min() > 0. and arr.max() < 1.0):

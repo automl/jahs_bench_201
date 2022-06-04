@@ -48,12 +48,12 @@ class Benchmark:
     def __call__(self, config: dict, nepochs: Optional[int] = 200):
         return self._call_fn(config=config, nepochs=nepochs)
 
-    def _benchmark_surrogate(config: dict, nepochs: Optional[int] = 200) -> dict:
+    def _benchmark_surrogate(self, config: dict, nepochs: Optional[int] = 200) -> dict:
         features = pd.Series(config).to_frame().transpose()
         features.loc[:, "epoch"] = nepochs
 
         outputs = {}
-        for o, model in self.surrogates:
+        for o, model in self.surrogates.items():
             outputs[o] = model.predict(features)
 
         outputs: pd.DataFrame = pd.concat(outputs, axis=1)
