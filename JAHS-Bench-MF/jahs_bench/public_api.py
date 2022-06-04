@@ -1,7 +1,7 @@
 import logging
 from functools import partial
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Sequence
 
 import numpy as np
 import pandas as pd
@@ -36,7 +36,7 @@ class Benchmark:
         assert model_path.exists() and model_path.is_dir()
 
         if outputs is None:
-            outputs = [p.name for p in model_path.iterdir()]
+            outputs = [p.name for p in model_path.iterdir() if p.is_dir()]
 
         self.surrogates = {}
         for o in outputs:

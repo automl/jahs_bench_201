@@ -22,7 +22,7 @@ import xgboost as xgb
 import yacs.config as config
 from jahs_bench.core import utils as core_utils
 from jahs_bench.core.configspace import joint_config_space
-from jahs_bench.surrogate import utils as surrogate_utils
+from jahs_bench.surrogate import utils as surrogate_utils, config
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]
@@ -229,9 +229,9 @@ class XGBSurrogate:
                    f"configuration.")
 
         # Construct the objective function
-        loss_type = constants.RegressionLossFuncTypes(pipeline_config.loss)
+        loss_type = config.RegressionLossFuncTypes(pipeline_config.loss)
         _log.debug(f"Using the '{loss_type.name}' objective.")
-        if loss_type is constants.RegressionLossFuncTypes.custom:
+        if loss_type is config.RegressionLossFuncTypes.custom:
             self.__objective = \
                 surrogate_utils.custom_loss_function(pipeline_config.loss_params)
         else:
