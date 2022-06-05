@@ -269,9 +269,9 @@ def clean(data_pth: Path, outdir: Path, output_filename: str, epochs: int, long:
         _log.info("Successfully converted raw data to long-format.")
 
         _log.info(f"Saving long-format table to disk at {outdir}/long_{data_pth.name}.")
-        data.to_pickle(outdir / f"long_{data_pth.name}")
-        sampling_index_to_model_id.to_pickle(outdir / "sampling_index_to_model_id.pkl.gz")
-        fidelity_group_to_fidelity_id.to_pickle(outdir / "fidelity_group_to_fidelity_id.pkl.gz")
+        data.to_pickle(outdir / f"long_{data_pth.name}", protocol=4)
+        sampling_index_to_model_id.to_pickle(outdir / "sampling_index_to_model_id.pkl.gz", protocol=4)
+        fidelity_group_to_fidelity_id.to_pickle(outdir / "fidelity_group_to_fidelity_id.pkl.gz", protocol=4)
 
     data = filter_nepochs(data, nepochs=epochs, keep_incomplete=keep_incomplete_runs)
 
@@ -290,7 +290,7 @@ def clean(data_pth: Path, outdir: Path, output_filename: str, epochs: int, long:
     data = subsample_df(df=data, subsample_frac=subsample)
 
     _log.info(f"Saving cleaned dataset, shape: {data.shape}.")
-    data.to_pickle(outfile)
+    data.to_pickle(outfile, protocol=4)
 
     _log.info("Done.")
 
