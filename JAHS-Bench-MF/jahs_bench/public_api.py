@@ -95,6 +95,7 @@ class Benchmark:
         # Make the DataFrame indexable by configurations
         table.set_index(table[["features"]].columns.tolist(), inplace=True)
         table.index.names = features.tolist()
+        table = table.droplevel(0, axis=1)
         self._table = table
         self._call_fn = self._benchmark_tabular
 
@@ -118,9 +119,10 @@ class Benchmark:
                                         "memory - a tabular query cannot be made."
         query = config.copy()
         query["epoch"] = nepochs
-        query = (query[k] for k in self._table.index.names)
+        query = tuple((query[k] for k in self._table.index.names))
         try:
-            output = self._table.loc[query].to_dict()
+            output = self._table.loc[query].to_dict(orient="index")
+            output = list(output.values())[0]
         except KeyError as e:
             _log.debug(f"Registered a key-error while querying the performance dataset "
                        f"for the configuration: {config} at {nepochs} epochs. The "
@@ -146,8 +148,14 @@ class Benchmark:
 
         if self._table is not None:
             query = random_state.choice(self._table.index)
-            output = self._table.loc[query].to_dict()
-            return query.to_dict(), output
+            query = {self._table.index.names[i]: query[i] for i in range(len(query))}
+            # output = self._table.loc[query].to_dict(orient="index")
+            # return list(output.keys())[0], list(output.values())[0]
+
+            # Quite convoluted and redundant, but this helps maintain consistency.
+            nepochs = query.pop("epoch")
+            output = self(config=query, nepochs=nepochs)
+            return {**query, **{"epoch": nepochs}}, output
         else:
             raise NotImplementedError("Random sampling has been implemented only for "
                                       "the performance dataset.")
