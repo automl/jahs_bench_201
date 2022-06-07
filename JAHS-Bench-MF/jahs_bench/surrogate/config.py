@@ -45,6 +45,7 @@ class default_base_loss_configs(Enum):
 # the loss functions and their corresponding keyword-arguments, respectively. The
 # 'weights' are the mixture weights for the corresponding functions. The number of
 # functions used here is flexible.
+
 root = config.CfgNode()
 root.funcs = ["exp_lower_bound", "exp_upper_bound", "se"]
 root.params = [default_base_loss_configs[f].value.clone() for f in root.funcs]
@@ -77,8 +78,14 @@ default_target_config = root
 # be the name of a .yaml file that resides in 'config_dir' in order to load the
 # corresponding values from there.
 default_pipeline_config = config.CfgNode()
-default_pipeline_config.loss = RegressionLossFuncTypes.custom.value
-default_pipeline_config.loss_params = default_mixed_loss_config.clone()
+
+## Flexible config to mix multiple cost functions disabled since this causes model
+## pickling to fail. TODO: Fix!
+# default_pipeline_config.loss = RegressionLossFuncTypes.custom.value
+# default_pipeline_config.loss_params = default_mixed_loss_config.clone()
+default_pipeline_config.loss = RegressionLossFuncTypes.squared_error.value
+default_pipeline_config.loss_params = ""
+
 default_pipeline_config.config_dir = None
 default_pipeline_config.target_config = default_target_config
 default_pipeline_config.set_new_allowed(False)

@@ -1,7 +1,7 @@
 import logging
 from functools import partial
 from pathlib import Path
-from typing import Optional, Union, Sequence
+from typing import Optional, Union, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -133,8 +133,8 @@ class Benchmark:
 
         return output
 
-    def random_sample(self,
-                      random_state: Optional[Union[int, np.random.RandomState]] = None):
+    def random_sample(self, random_state: Optional[\
+                      Union[int, np.random.RandomState]] = None) -> Tuple[dict, dict]:
         """ Randomly query the benchmark for a configuration. If a tabular benchmark has
         been loaded, a sample from the set of known configurations is queried. Otherwise,
         a random configuration is sampled from the search space and queried on the
