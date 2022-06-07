@@ -34,7 +34,7 @@ xgb_hp_space = {
 }
 
 def train_surrogate(working_directory: Path, train_data: pd.DataFrame,
-                    valid_data: pd.DataFrame **config):
+                    valid_data: pd.DataFrame, **config_dict):
     """
 
     :param working_directory:
@@ -47,33 +47,31 @@ def train_surrogate(working_directory: Path, train_data: pd.DataFrame,
         validation data. Level 0 should contain the columns "features" and "labels".
         Level 1 can contain arbitrary columns, but they should match those in
         `train_data`.
-    :param config: keyword-arguments
+    :param config_dict: keyword-arguments
         These specify the various hyperparameters to be used for the model.
     :return:
     """
-    train_data = data["train"]
+
     xtrain = train_data["features"]
     ytrain = train_data["labels"]
 
-    valid_data = data["valid"]
     xvalid = valid_data["features"]
     yvalid = valid_data["labels"]
 
-    _log.info(f"Preparing to train surrogate for output: {output}")
-    pipeline_config = cfg.default_pipeline_config.copy()
-    xgb_params = config.copy()
-    sigmoid_k = xgb_params.pop("sigmoid_k", default=None)
+    pipeline_config = cfg.default_pipeline_config.clone()
+    xgb_params = config_dict.copy()
+    sigmoid_k = xgb_params.pop("sigmoid_k", None)
 
     if sigmoid_k is not None:
         pipeline_config.defrost()
-        pipeline_config.target_config.params.params.k = sigmoid_k
+        pipeline_config.target_config.params.params[1].k = sigmoid_k
         pipeline_config.freeze()
 
     surrogate = model.XGBSurrogate(hyperparams=xgb_params)
 
     _log.info("Training surrogate.")
     random_state = None
-    scores = surrogate.fit(xtrain, ytrain[[output]], random_state=random_state,
+    scores = surrogate.fit(xtrain, ytrain, random_state=random_state,
                            pipeline_config=pipeline_config)
     _log.info(f"Trained surrogate has scores: {scores}")
 
@@ -100,18 +98,18 @@ def load_data(datadir: Path, output: Optional[str]) -> Tuple[pd.DataFrame, pd.Da
     valid_data: pd.DataFrame = pd.read_pickle(datadir / "valid_set.pkl.gz")
     _log.info(f"Loaded validation data of shape {valid_data.shape}")
 
-    features = train_data["features"].columns.names
-    labels = train_data["labels"].columns.names
+    features = train_data["features"].columns
+    labels = train_data["labels"].columns
 
-    assert all([l in valid_data["features"].columns.names] for l in labels), \
+    assert features.difference(valid_data["features"].columns).size == 0, \
         "Mismatch between the input features in the training and validation sets."
-    assert all([l in valid_data["labels"].columns.names] for l in labels), \
+    assert labels.difference(valid_data["labels"].columns).size == 0, \
         "Mismatch between the output labels in the training and validation sets."
 
     if output is not None:
         assert output in labels, f"The chosen prediction label {output} is not present " \
                                  f"in the training data."
-        selected_cols = train_data[["features"]].columns.tolist() + [("features", output)]
+        selected_cols = train_data[["features"]].columns.tolist() + [("labels", output)]
         train_data = train_data.loc[:, selected_cols]
         valid_data = valid_data.loc[:, selected_cols]
 
@@ -156,6 +154,9 @@ def parse_cli():
     return args
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO,
+                        format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
+                        datefmt="%m/%d %H:%M:%S")
     _log.setLevel(logging.INFO)
     args = parse_cli()
     perform_hpo(**vars(args))
