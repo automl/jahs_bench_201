@@ -58,6 +58,7 @@ def train_surrogate(working_directory: Path, train_data: pd.DataFrame,
     xvalid = valid_data["features"]
     yvalid = valid_data["labels"]
 
+    _log.info(f"Preparing to train surrogate.")
     pipeline_config = cfg.default_pipeline_config.clone()
     xgb_params = config_dict.copy()
     sigmoid_k = xgb_params.pop("sigmoid_k", None)
@@ -67,7 +68,7 @@ def train_surrogate(working_directory: Path, train_data: pd.DataFrame,
         pipeline_config.target_config.params.params[1].k = sigmoid_k
         pipeline_config.freeze()
 
-    surrogate = model.XGBSurrogate(hyperparams=xgb_params)
+    surrogate = model.XGBSurrogate(hyperparams=xgb_params, use_gpu=True)
 
     _log.info("Training surrogate.")
     random_state = None
