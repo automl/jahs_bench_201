@@ -65,7 +65,7 @@ def train_surrogate(working_directory: Path, train_data: pd.DataFrame,
 
     if sigmoid_k is not None:
         pipeline_config.defrost()
-        pipeline_config.target_config.params.params[1].k = sigmoid_k
+        pipeline_config.target_config.params.params[1].k = float(sigmoid_k)
         pipeline_config.freeze()
 
     surrogate = model.XGBSurrogate(hyperparams=xgb_params, use_gpu=True)
@@ -88,7 +88,8 @@ def train_surrogate(working_directory: Path, train_data: pd.DataFrame,
     valid_score = scipy.stats.kendalltau(yvalid, ypred)
 
     _log.info(f"Trained surrogate has validation score: {valid_score}")
-    return valid_score.correlation
+    # Return negative KT correlation since NEPS minimizes the loss
+    return -valid_score.correlation
 
 def load_data(datadir: Path, output: Optional[str]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     _log.info("Loading training data.")
