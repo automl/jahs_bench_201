@@ -3,12 +3,12 @@ A small script to extract the best performing models from all available configur
 generated after an HPO run using the NEPS framework.
 """
 import argparse
-import itertools
+import functools 
 import logging
 from pathlib import Path
 import shutil
 import yaml
-from typing import Sequence, Generator, Dict, Tuple
+from typing import Sequence, Iterator, Dict, Tuple, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def get_loss(config_dir: Path) -> float:
 
     return result["loss"]
 
-def iterate_configs(metric_dir: Path) -> Generator[Path]:
+def iterate_configs(metric_dir: Path) -> Iterator[Path]:
     """ Given the working directory corresponding to a single metric, iterate over all
     the individual configurations' working directories. """
 
@@ -31,7 +31,7 @@ def iterate_configs(metric_dir: Path) -> Generator[Path]:
         yield config_dir
 
 def iterate_metrics(root_dir: Path, common_suffix_dirs: Optional[Sequence[str]] = None) \
-        -> Generator[Tuple[str, Path]]:
+        -> Iterator[Tuple[str, Path]]:
     """ Given a root directory within which, after descending down an optional sequence
     of sub-directories common to each directory tree, the working directories for each
     metric can be found, return a generator to iterate over these working directories. """
@@ -40,8 +40,8 @@ def iterate_metrics(root_dir: Path, common_suffix_dirs: Optional[Sequence[str]] 
         metric_dir = subdir
         metric_name = subdir.name
         if common_suffix_dirs is not None:
-            metric_dir = itertools.accumulate(common_suffix_dirs, lambda a, x: a / x,
-                                              metric_dir)
+            metric_dir = functools.reduce(lambda a, x: a / x, common_suffix_dirs, 
+                                          metric_dir)
         yield metric_name, metric_dir
 
 def identify_best_configs(root_dir: Path, common_suffix_dirs: Optional[
@@ -110,7 +110,8 @@ def parse_cli():
     parser.add_argument("--root_dir", type=Path,
                         help="Path to the working directory where, for a single task, "
                              "all the metrics' evaluated configurations are stored.")
-    parser.add_argument("--common_suffix_dirs", type=str, nargs="*", default=None,
+    parser.add_argument("--common_suffix_dirs", type=str, default=None,
+                        nargs=argparse.REMAINDER, 
                         help="An optional sequence of strings defining further "
                              "sub-directories beyond 'root_dir/<metric_name/' to be "
                              "traversed for each metric before the directory containing "
@@ -121,4 +122,8 @@ def parse_cli():
 
 if __name__ == "__main__":
     args = parse_cli()
+    logging.basicConfig(level=logging.INFO,
+                        format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
+                        datefmt="%m/%d %H:%M:%S")
+    _log.setLevel(logging.INFO)
     main(**vars(args))
