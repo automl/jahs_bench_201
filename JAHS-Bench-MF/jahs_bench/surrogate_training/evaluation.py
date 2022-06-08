@@ -3,14 +3,15 @@ import logging
 from pathlib import Path
 from typing import Optional, Sequence
 
-import numpy as np
 import pandas as pd
-# Make sure that the system path contains the correct repository
-from jahs_bench.surrogate import model, utils
+import scipy.stats
+import sklearn.metrics
+from jahs_bench.surrogate import model
 
 _default_test_set_fn = "test_set.pkl.gz"
 _default_test_pred_fn = "test_pred.pkl.gz"
 _log = logging.getLogger(__name__)
+
 
 def load_test_set(testset_file: Path, outputs: Optional[Sequence[str]] = None) -> \
                   pd.DataFrame:
@@ -32,6 +33,7 @@ def load_test_set(testset_file: Path, outputs: Optional[Sequence[str]] = None) -
 
     _log.info(f"Successfully loaded test set of shape {test_set.shape}.")
     return test_set
+
 
 def evaluate_test_set(test_set: pd.DataFrame, model_dir: Path,
                       outputs: Optional[Sequence[str]] = None,
@@ -87,10 +89,10 @@ def score_predictions(test_set: pd.DataFrame, ypred: pd.DataFrame):
     _log.info(f"Generated scores:\n{scores}")
     return scores
 
+
 def main(testset_file: Path, model_dir: Optional[Path] = None,
          outputs: Optional[Sequence[str]] = None, scores_only: bool = False,
          save_dir: Optional[Path] = None):
-
     assert testset_file is not None
     test_set = load_test_set(testset_file, outputs)
 
@@ -102,6 +104,7 @@ def main(testset_file: Path, model_dir: Optional[Path] = None,
         ypred = evaluate_test_set(test_set, model_dir, outputs, save_dir)
 
     score_predictions(test_set, ypred)
+
 
 def parse_cli():
     parser = argparse.ArgumentParser(
@@ -145,4 +148,3 @@ if __name__ == "__main__":
                         datefmt="%m/%d %H:%M:%S")
     _log.setLevel(logging.INFO)
     main(**vars(args))
-
