@@ -33,7 +33,7 @@ def load_test_set(testset_file: Path, outputs: Optional[Sequence[str]] = None) -
     _log.info(f"Successfully loaded test set of shape {test_set.shape}.")
     return test_set
 
-def evaluate_test_set(test_set: pd.DataFrame, modeldir: Path,
+def evaluate_test_set(test_set: pd.DataFrame, model_dir: Path,
                       outputs: Optional[Sequence[str]] = None,
                       save_dir: Optional[Path] = None) -> pd.DataFrame:
     """ Evaluate the model on the given test set and returns the predictions as a pandas
@@ -52,7 +52,7 @@ def evaluate_test_set(test_set: pd.DataFrame, modeldir: Path,
     ypred = {}
     for output in outputs:
         _log.info(f"Preparing to load surrogate for output: {output}")
-        model_subdir = modeldir / str(output)
+        model_subdir = model_dir / str(output)
         surrogate = model.XGBSurrogate.load(model_subdir)
 
         _log.info(f"Generating surrogate predictions.")
@@ -61,6 +61,7 @@ def evaluate_test_set(test_set: pd.DataFrame, modeldir: Path,
     _log.info("Concatenating predictions.")
     ypred = pd.concat(ypred, axis=1)
     if save_dir is not None:
+        save_dir.mkdir(exist_ok=False, parents=True)
         ypred.to_pickle(save_dir / _default_test_pred_fn)
 
     return ypred
@@ -86,7 +87,7 @@ def score_predictions(test_set: pd.DataFrame, ypred: pd.DataFrame):
     _log.info(f"Generated scores:\n{scores}")
     return scores
 
-def main(testset_file: Path, modeldir: Optional[Path] = None,
+def main(testset_file: Path, model_dir: Optional[Path] = None,
          outputs: Optional[Sequence[str]] = None, scores_only: bool = False,
          save_dir: Optional[Path] = None):
 
@@ -97,8 +98,8 @@ def main(testset_file: Path, modeldir: Optional[Path] = None,
         assert save_dir is not None
         ypred = pd.read_pickle(save_dir / "test_pred.pkl.gz")
     else:
-        assert modeldir is not None
-        ypred = evaluate_test_set(test_set, modeldir, outputs, save_dir)
+        assert model_dir is not None
+        ypred = evaluate_test_set(test_set, model_dir, outputs, save_dir)
 
     score_predictions(test_set, ypred)
 
@@ -108,11 +109,11 @@ def parse_cli():
     )
     parser.add_argument("--testset-file", type=Path, default=None,
                         help="A path to the file which contains the test set.")
-    parser.add_argument("--modeldir", type=Path, default=None,
+    parser.add_argument("--model-dir", type=Path, default=None,
                         help="The directory where the trained surrogate models for each "
                              "relevant output are stored. Optional only when "
                              "--scores-only is given.")
-    parser.add_argument("--save_dir", type=Path, default=None,
+    parser.add_argument("--save-dir", type=Path, default=None,
                         help="An optional directory where the pandas DataFrame of "
                              "predictions made by this script will be stored in a file "
                              "called 'test_pred.pkl.gz'. If not provided, the "
@@ -124,7 +125,7 @@ def parse_cli():
                              "previous run are expected to be readable from "
                              "'save-dir/test_pred.pkl.gz'. Scores are generated using "
                              "these predictions. When this flag is given, there is no "
-                             "need to provide --modeldir, but --save-dir must be given.")
+                             "need to provide --model_dir, but --save-dir must be given.")
     parser.add_argument("--outputs", type=str, default=None,
                         nargs=argparse.REMAINDER,
                         help="Strings, separated by spaces, that indicate which of the "
@@ -143,5 +144,5 @@ if __name__ == "__main__":
                         format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
                         datefmt="%m/%d %H:%M:%S")
     _log.setLevel(logging.INFO)
-    generate_splits(**vars(args))
+    main(**vars(args))
 
