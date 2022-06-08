@@ -1,20 +1,21 @@
-import pandas as pd
-import numpy as np
+import argparse
+import logging
 from pathlib import Path
-import joblib
 from typing import Optional, Sequence
 
+import numpy as np
+import pandas as pd
 # Make sure that the system path contains the correct repository
-import sys
-from jahs_bench.surrogate import model, loss, config, utils
-import logging
+from jahs_bench.surrogate import model, utils
+
 _seed = 3501623856
 
 _log = logging.getLogger(__name__)
 
+
 def generate_splits(datadir: Path, datafile: str, test_size: float,
-                   valid_size: Optional[float] = None,
-                   outputs: Optional[Sequence[str]] = None, seed: Optional[int] = _seed):
+                    valid_size: Optional[float] = None,
+                    outputs: Optional[Sequence[str]] = None, seed: Optional[int] = _seed):
     _log.info(f"Setting up the output directory and random state using the seed {seed}.")
     subdir = datadir / f"valid-{valid_size}-test-{test_size}"
     subdir.mkdir(exist_ok=False, parents=False)
@@ -78,6 +79,7 @@ def generate_splits(datadir: Path, datafile: str, test_size: float,
 
     _log.info(f"Finished generating splits for test size {test_size}.")
 
+
 def parse_cli():
     parser = argparse.ArgumentParser(
         "Script to prepare the performance dataset for use in training a surrogate model."
@@ -104,6 +106,7 @@ def parse_cli():
     args = parser.parse_args()
     return args
 
+
 if __name__ == "__main__":
     args = parse_cli()
     logging.basicConfig(level=logging.INFO,
@@ -111,3 +114,4 @@ if __name__ == "__main__":
                         datefmt="%m/%d %H:%M:%S")
     _log.setLevel(logging.INFO)
     generate_splits(**vars(args))
+
