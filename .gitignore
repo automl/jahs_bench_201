@@ -12,7 +12,9 @@
 # slurm scripts
 slurm_scripts/*
 
-src/*
+# experiments
+src/backup/
+src/results/
 
 # IDE related
 .vscode/

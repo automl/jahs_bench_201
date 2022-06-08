@@ -32,7 +32,7 @@ setup(
         "pandas >=1.3",
         "scipy >=1.7",
         "scikit-learn >=1.0",
-        "xgboost >= 1.5, <1.6",
+        "xgboost >= 1.5",
         "ConfigSpace >= 0.4, <0.5"
     ]
 )
