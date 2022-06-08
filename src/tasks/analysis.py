@@ -8,12 +8,11 @@ import hpbandster.core.result as hpres
 import hpbandster.visualization as hpvis
 from utils.exp_plot import (
     set_general_plot_style,
-    set_size,
     incumbent_plot,
     save_fig
 )
 
-BASE_PATH = Path(__file__).parent.parent.parent
+BASE_PATH = Path(__file__).parent.parent / "results"
 
 EXPERIMENTS = {
     "RQ_1": ["RS", "RS_just_hpo", "RS_just_nas"],
@@ -45,14 +44,10 @@ def get_seed_info(path, seed, get_loss_from_run_fn=lambda r: r.loss):
     # get all executed runs
     all_runs = result.get_all_runs()
 
-    dataset = list(filter(None, list(map(lambda _d: _d if _d in path else None, DATASETS.keys()))))[0]
-    print(dataset)
-    # if "cifar10" in path:
-    #     dataset = "cifar10"
-    # elif "colorectal_histology" in path:
-    #     dataset = "colorectal_histology"
-    # else:
-    #     dataset = "fashionMNIST"
+    dataset = list(filter(
+        None,
+        list(map(lambda _d: _d if _d in path else None, MAX_BUDGET.keys()))
+    ))[0]
 
     data = []
     for r in all_runs:
@@ -87,9 +82,6 @@ for experiment, strategies_to_plot in EXPERIMENTS.items():
     fig, axs = plt.subplots(
         nrows=1,
         ncols=len(MAX_BUDGET.keys()),
-        # figsize=(set_size(width_pt=WIDTH_PT * 0.8,
-        # subplots=(1, len(MAX_BUDGET.keys())))[0],
-        # 2.0),
         figsize=(5.3, 2.2),
 
     )
