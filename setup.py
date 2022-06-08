@@ -17,8 +17,11 @@ setup(
         "Multi-Fidelity, Multi-Objective joint NAS and HPO."),
     license = "MIT",
     keywords = "NAS HPO Benchmark Multi-Fidelity Multi-Objective",
-    url = "https://github.com/automl/jahs_bench_mf",
-    packages=find_packages('JAHS-Bench-MF', include=['jahs_bench', 'jahs_bench.lib']),
+    url = "https://github.com/automl/jahs_bench_201",
+    packages=find_packages('JAHS-Bench-MF', include=['jahs_bench',
+                                                     'jahs_bench.core',
+                                                     'jahs_bench.surrogate'
+                                                     ]),
     long_description=read('README.md'),
     package_dir={
         '': 'JAHS-Bench-MF',
