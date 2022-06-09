@@ -92,10 +92,12 @@ class Benchmark:
             table.drop([("labels", l) for l in labels.difference(outputs)], axis=1,
                        inplace=True)
 
+        # TODO: Deal with the issue of the index being possibly non-unique, since there
+        #  are no guarantees that a configuration wasn't sampled twice.
         # Make the DataFrame indexable by configurations
-        table.set_index(table[["features"]].columns.tolist(), inplace=True)
-        table.index.names = features.tolist()
-        table = table.droplevel(0, axis=1)
+        # table.set_index(table[["features"]].columns.tolist(), inplace=True)
+        # table.index.names = features.tolist()
+        # table = table.droplevel(0, axis=1)
         self._table = table
         self._call_fn = self._benchmark_tabular
 
@@ -115,6 +117,8 @@ class Benchmark:
 
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
                            suppress_keyerror: bool = False) -> dict:
+        raise NotImplementedError("The functionality for directly querying the tabular "
+                                  "performance dataset is still under construction.")
         assert self._table is not None, "No performance dataset has been loaded into " \
                                         "memory - a tabular query cannot be made."
         query = config.copy()
@@ -147,15 +151,22 @@ class Benchmark:
             random_state = np.random.RandomState(random_state)
 
         if self._table is not None:
-            query = random_state.choice(self._table.index)
-            query = {self._table.index.names[i]: query[i] for i in range(len(query))}
-            # output = self._table.loc[query].to_dict(orient="index")
-            # return list(output.keys())[0], list(output.values())[0]
+            index = random_state.choice(self._table.index)
+            row = self._table.loc[index]
+            query = row["features"].to_dict()
+            output = row["labels"].to_dict()
+
+            return query, output
+
+            # TODO: Reinstate the functionality to query the table itself for consistency
+            #  once the issue of non-unique indices has been fixed
+            # query = random_state.choice(self._table.index)
+            # query = {self._table.index.names[i]: query[i] for i in range(len(query))}
 
             # Quite convoluted and redundant, but this helps maintain consistency.
-            nepochs = query.pop("epoch")
-            output = self(config=query, nepochs=nepochs)
-            return {**query, **{"epoch": nepochs}}, output
+            # nepochs = query.pop("epoch")
+            # output = self(config=query, nepochs=nepochs)
+            # return {**query, **{"epoch": nepochs}}, output
         else:
             raise NotImplementedError("Random sampling has been implemented only for "
                                       "the performance dataset.")
