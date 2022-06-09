@@ -81,7 +81,7 @@ def score_predictions(test_set: pd.DataFrame, ypred: pd.DataFrame):
     _log.info(f"Generating quality of fit scores for {ypred.shape[0]} samples and "
               f"{ypred.shape[1]} outputs.")
     scores = {}
-    for output in test_set.columns:
+    for output in ytest.columns:
         scores[output] = {
             "R2": sklearn.metrics.r2_score(ytest[output], ypred[output]),
             "KT": scipy.stats.kendalltau(ytest[output], ypred[output])
