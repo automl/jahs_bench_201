@@ -3,7 +3,7 @@ A small script to extract the best performing models from all available configur
 generated after an HPO run using the NEPS framework.
 """
 import argparse
-import functools 
+import functools
 import logging
 from pathlib import Path
 import shutil
@@ -22,12 +22,14 @@ def get_loss(config_dir: Path) -> float:
 
     return result["loss"]
 
-def iterate_configs(metric_dir: Path) -> Iterator[Path]:
+def iterate_configs(metric_dir: Path, max_configs: Optional[int] = None) -> Iterator[Path]:
     """ Given the working directory corresponding to a single metric, iterate over all
     the individual configurations' working directories. """
 
     subdir = metric_dir / "results"
-    for config_dir in subdir.iterdir():
+    config_dirs = subdir.iterdir() if max_configs is None \
+        else [subdir / f"config_{i}" for i in range(1, max_configs + 1)]
+    for config_dir in config_dirs:
         yield config_dir
 
 def iterate_metrics(root_dir: Path, common_suffix_dirs: Optional[Sequence[str]] = None) \
@@ -40,23 +42,25 @@ def iterate_metrics(root_dir: Path, common_suffix_dirs: Optional[Sequence[str]] 
         metric_dir = subdir
         metric_name = subdir.name
         if common_suffix_dirs is not None:
-            metric_dir = functools.reduce(lambda a, x: a / x, common_suffix_dirs, 
+            metric_dir = functools.reduce(lambda a, x: a / x, common_suffix_dirs,
                                           metric_dir)
         yield metric_name, metric_dir
 
 def identify_best_configs(root_dir: Path, common_suffix_dirs: Optional[
-                          Sequence[str]] = None) -> Dict[str, Tuple[Path, float]]:
+                          Sequence[str]] = None, max_configs: Optional[int] = None) \
+        -> Dict[str, Tuple[Path, float]]:
     """ Given a root directory containing all the metric directories for a single
     dataset's surrogates (after optionally further descending down a common set of
     sub-directories), returns a dictionary mapping each metric to the working directory
-    of the best performing model configuration and its loss value. """
+    of the best performing model configuration and its loss value. When 'max_configs' is
+    given, only the first 'max_configs' configurations are considered. """
 
     best_configs = {}
     for metric, metric_dir in iterate_metrics(root_dir, common_suffix_dirs):
         best_config = None
         min_loss = None
         _log.info(f"Identifying best configuration for metric {metric}.")
-        for config_dir in iterate_configs(metric_dir):
+        for config_dir in iterate_configs(metric_dir, max_configs):
             loss = get_loss(config_dir)
             if best_config is None:
                 min_loss = loss
@@ -85,14 +89,14 @@ def assemble_surrogate(best_configs: Dict[str, Tuple[Path, float]], final_dir: P
 
     return final_dir
 
-def main(final_dir: Path, root_dir: Path,
+def main(final_dir: Path, root_dir: Path, max_configs: Optional[int] = None,
          common_suffix_dirs: Optional[Sequence[str]] = None):
     """ Executes the main program control. """
 
     assert root_dir.exists() and root_dir.is_dir()
     _log.info(f"Identifying the best configuration for each metric from those present "
               f"in {root_dir}.")
-    best_configs = identify_best_configs(root_dir, common_suffix_dirs)
+    best_configs = identify_best_configs(root_dir, common_suffix_dirs, max_configs)
 
     _log.info(f"Assembling the individual models into one directory at {final_dir}.")
     final_model_dir = assemble_surrogate(best_configs, final_dir)
@@ -110,8 +114,13 @@ def parse_cli():
     parser.add_argument("--root_dir", type=Path,
                         help="Path to the working directory where, for a single task, "
                              "all the metrics' evaluated configurations are stored.")
+    parser.add_argument("--max_configs", type=int, default=None,
+                        help="Maximum number of configs to consider when choosing the "
+                             "best performing config. When given, only the first "
+                             "'max-configs' configs are considered, otherwise all "
+                             "available configs are considered.")
     parser.add_argument("--common_suffix_dirs", type=str, default=None,
-                        nargs=argparse.REMAINDER, 
+                        nargs=argparse.REMAINDER,
                         help="An optional sequence of strings defining further "
                              "sub-directories beyond 'root_dir/<metric_name/' to be "
                              "traversed for each metric before the directory containing "
