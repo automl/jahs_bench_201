@@ -120,14 +120,14 @@ def wide_to_long_format(data: pd.DataFrame, output_type: LongFormatOutputTypes) 
     return long_data
 
 
-def _rank_labels(outputs: pd.DataFrame, axis: int = 0) -> pd.DataFrame:
+def _rank_labels(outputs: pd.DataFrame, axis: int = 0, inplace=False) -> pd.DataFrame:
     """ Given a DataFrame containing the values for any number of outputs in long-format,
     where all output values are under a single column 'value', return a similar DataFrame
     where the 'value' column's contents are replaced by their respective ranks within the
     original dataframe. """
 
-    x = outputs.copy()
-    label_cols = outputs[["labels"]].columns.tolist()
+    x = outputs.copy() if not inplace else outputs
+    label_cols = x[["labels"]].columns.tolist()
     ranks = x[label_cols].rank(axis=axis)
     x.loc[:, label_cols] = ranks
     return x
@@ -146,53 +146,59 @@ def map_index(index: pd.MultiIndex, mapping: dict, level: int = 0) -> pd.MultiIn
 def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_outputs: Sequence[str] = None,
                       adjust_for_minimization: bool = True) -> \
         (pd.DataFrame, Sequence[str]):
-    """ Filter out the full dataset according to the given set of fidelities and the required outputs, returning a
-    proper long-format DataFrame. Also returns the DataFrame structure in the form of a list containing the
-    identifier variables, which includes the list of input features (configuration) and 'output_type', which
-    indicates whether a value belongs to the set of actual observations (output_type="True") or the set of
-    surrogate predictions (output_type="Predicted"). The value variables are always placed in 'output_vars' and the
-    actual values are always placed in 'value'. The flag 'adjust_for_minimization', when True (default), adjusts a
-    number of metrics such that they are suitable for use in minimization. This includes all accuracy metrics,
-    identified by the suffix '-acc' and the metric FLOPS. Accuracy metrics are relabeled to '-err' to indicate
-    Error% instead of Accuracy%. """
+    """ Filter out the full dataset according to the given set of fidelities and the
+    required outputs. The flag 'adjust_for_minimization', when True (default), adjusts a
+    number of metrics such that they are suitable for use in minimization. This includes
+    all accuracy metrics, identified by the suffix '-acc' and the metric FLOPS.
+    Accuracy metrics are relabeled to '-err' to indicate Error% instead of Accuracy%. """
+
+    _log.debug(f"Cleaning up input data of shape {data.shape}.")
 
     # Handle the case-sensitivity issues with the "Epoch" parameter
+    _log.debug(f"Renaming fidelity 'epoch' to 'Epoch' for consistency.")
     mapping = {"epoch": "Epoch"}
     data.columns = map_index(data.columns, mapping, level=1)
 
-    # Make sure that it is always possible to numerically identify which samples belong together
+    # Make sure that it is always possible to numerically identify which samples belong
+    # together
+    _log.debug(f"Renaming fidelity 'epoch' to 'Epoch' for consistency.")
     data = data.rename_axis(["Sample ID"], axis=0).reset_index(col_fill="sampling_index",
                                                                col_level=1)
     relevant_index = extract_relevant_indices(data.features, relevant_fidelity)
-    relevant_data = data.loc[relevant_index].copy()
+    data = data.loc[relevant_index]
 
     rename_accs = {}
     if adjust_for_minimization:
-        # Convert accuracy to error in order to enable all outputs to have the same ordering i.e. a smaller value
-        # is better
-        acc_cols = [c for c in relevant_data.columns if "-acc" in c[1]]
-        relevant_data.loc[:, acc_cols] = relevant_data.loc[:, acc_cols].rsub(100).values
+        _log.debug(f"Adjusting metrics values to accomodate minimization.")
+        # Convert accuracy to error in order to enable all outputs to have the same
+        # ordering i.e. a smaller value is better
+        acc_cols = [c for c in data.columns if "-acc" in c[1]]
+        data.loc[:, acc_cols] = data.loc[:, acc_cols].rsub(100).values
         rename_accs = {c[1]: c[1].replace("-acc", "-err") for c in acc_cols}
 
-        flops_cols = [c for c in relevant_data.columns if "FLOPS" in c[1]]
-        relevant_data.loc[:, flops_cols] = relevant_data.loc[:, flops_cols].mul(-1).values
+        flops_cols = [c for c in data.columns if "FLOPS" in c[1]]
+        data.loc[:, flops_cols] = data.loc[:, flops_cols].mul(-1).values
 
     # Re-scale size_MB to size_KB in order to make plotting easier
-    size_cols = [c for c in relevant_data.columns if "size_MB" in c[1]]
-    relevant_data.loc[:, size_cols] = relevant_data.loc[:, size_cols].mul(1000).values
+    size_cols = [c for c in data.columns if "size_MB" in c[1]]
+    data.loc[:, size_cols] = data.loc[:, size_cols].mul(1000).values
     rename_sizes = {c[1]: c[1].replace("_MB", "_KB") for c in size_cols}
 
     # Filter out the outputs if needed
     if relevant_outputs is not None:
-        drop_cols = relevant_data.labels.columns.difference(relevant_outputs)
-        relevant_data = relevant_data.drop([("labels", c) for c in drop_cols], axis=1)
+        _log.debug(f"Restricting the chosen set of labels to {relevant_outputs}.")
+        drop_cols = data.labels.columns.difference(relevant_outputs)
+        data = data.drop([("labels", c) for c in drop_cols], axis=1)
 
+    _log.debug(f"Renaming metrics, if needed.")
     rename_map = {**rename_accs, **rename_sizes}
-    relevant_data.columns = map_index(relevant_data.columns, rename_map, level=1)
-    return relevant_data
+    data.columns = map_index(data.columns, rename_map, level=1)
+
+    _log.debug(f"Finished cleaning up input data of shape {data.shape}.")
+    return data
 
 
-def get_correlations(data: pd.DataFrame) -> pd.DataFrame:
+def get_correlations(data: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
     """ Given a wide-format DataFrame, rank the outputs specified under the top-level
     column 'labels' across all the given indices and return a DataFrame containing the
     corresponding Kendall's tau rank correlation values and p-values, with the relevant
@@ -200,9 +206,11 @@ def get_correlations(data: pd.DataFrame) -> pd.DataFrame:
     "correlation" and "p-value". This DataFrame will be of shape [l, 2*l], where
     'l' is the number of columns under 'labels'. """
 
-    ranks = _rank_labels(data)
+    _log.debug(f"Generating ranks.")
+    ranks = _rank_labels(data, inplace=inplace)
     index = ranks.labels.columns.copy()
-    
+
+    _log.debug(f"Generating correlations.")
     corrdf = pd.DataFrame(None, index=index, columns=index)
     pvaldf = pd.DataFrame(None, index=index, columns=index)
 
@@ -217,6 +225,7 @@ def get_correlations(data: pd.DataFrame) -> pd.DataFrame:
 
     correlations = pd.concat({"correlations": corrdf, "p-values": pvaldf}, axis=1)
 
+    _log.debug(f"Correlations DataFrame has shape: {correlations.shape}")
     return correlations
 
 
@@ -282,5 +291,3 @@ def get_filtered_corr(data: pd.DataFrame, extra_group_by: Sequence[str] = None):
 # maxcapacity = Fidelity(N=[5], W=[16], Resolution=[1.0], Epoch=list(range(1, 201)))
 # maxbudget = Fidelity(N=[1, 3, 5], W=[4, 8, 16], Resolution=[0.25, 0.5, 1.0], Epoch=[200])
 fids = ["Resolution", "W", "N", "Epoch"]
-
-

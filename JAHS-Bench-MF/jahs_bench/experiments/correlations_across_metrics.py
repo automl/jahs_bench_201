@@ -7,13 +7,15 @@ top-level columns "features" and "labels".
 2. Filter out only the metrics specified, if needed.
 3. For each pair of ranked metrics, calculate KT scores.
 """
-import pandas as pd
-import numpy as np
+import logging
 from pathlib import Path
 from typing import Optional, Sequence
-import logging
+
+import pandas as pd
+
 _log = logging.getLogger(__name__)
 from tabular_sampling.lib.postprocessing import surrogate_analysis as analysis
+import argparse
 
 
 def main(metrics_file: Path, save_dir: Path, outputs: Optional[Sequence[str]]):
@@ -41,7 +43,7 @@ def main(metrics_file: Path, save_dir: Path, outputs: Optional[Sequence[str]]):
     filtered = analysis.get_filtered_data(wide_metrics, fidelity)
 
     _log.info(f"Generating ranks and correlations.")
-    correlations = analysis.get_correlations(filtered)
+    correlations = analysis.get_correlations(filtered, inplace=True)
 
     save_pth = save_dir / "correlations.pkl.gz"
     _log.info(f"Saving correlations dataframe to {save_pth}.")
@@ -73,3 +75,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG,
                         format="[%(asctime)s] %(name)s %(levelname)s: %(message)s",
                         datefmt="%m/%d %H:%M:%S")
+    main(**vars(parse_cli()))
