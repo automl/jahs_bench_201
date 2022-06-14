@@ -1,18 +1,17 @@
-from functools import partial
-from pathlib import Path
 import dataclasses as DC
+from enum import Enum
+from functools import partial
+from typing import Union, Sequence
 
 import pandas as pd
-from scipy.stats import spearmanr, kendalltau
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_percentage_error, median_absolute_error
+from scipy.stats import spearmanr
+from sklearn.metrics import r2_score, mean_squared_error, \
+    mean_absolute_percentage_error, median_absolute_error
 
-# import seaborn as sns
-# import matplotlib.pyplot as plt
-# from matplotlib.colors import LogNorm
+import logging
+_log = logging.getLogger(__name__)
 
 # Some scaffolding for handling fidelity values semantically and fluidly
-from typing import Optional, Union, Sequence
-
 @DC.dataclass(init=True, eq=True, frozen=True, repr=True, order=False, unsafe_hash=True)
 class Fidelity:
     Resolution: Union[Sequence[int], slice] = DC.field(default_factory=list)
@@ -30,24 +29,98 @@ def extract_relevant_indices(data: pd.DataFrame, fidelity: Fidelity) -> Union[pd
     return relevant_index
 
 
-def tidy_long_format(data: pd.DataFrame) -> pd.DataFrame:
-    """ Fixes up the formatting of the data, converting the data stored within a surrogate's predictions to
-    a "tidy" long-format useable here. """
-    features = data.features.copy()
-    true = pd.concat([features, data.true.copy().assign(output_type="True")], axis=1)
+class LongFormatIndexNames(Enum):
+    SAMPLE_IDX = "Sample ID"
+    VALUE_TYPE = "Value Type"
 
-    if data.columns.unique(0).isin(["predicted"]).any():
-        pred = pd.concat([features, data.predicted.copy().assign(output_type="Predicted")], axis=1)
-        long_data = pd.concat([true, pred], axis=0)
-    else:
-        long_data = true
+class LongFormatOutputTypes(Enum):
+    TRUE = "True"
+    PREDICTED = "Predicted"
 
-    long_data = long_data.melt(id_vars=features.columns.tolist() + ["output_type"], value_vars=true.columns.tolist(),
-                               var_name="output_var")
+class LongFormatValueTypes(Enum):
+    FEATURE = "Feature"
+    GROUP = "Group"
+    TRUE = LongFormatOutputTypes.TRUE.value
+    PREDICTED = LongFormatOutputTypes.PREDICTED.value
+
+
+def wide_to_long_format(data: pd.DataFrame, output_type: LongFormatOutputTypes) \
+        -> pd.DataFrame:
+    """ Given a metrics dataframe in wide format, as used by the surrogate, returns an
+    equivalent DataFrame in long-format. The parameter `output_type` should be set to one
+    of LongFormatOutputTypes.TRUE or LongFormatOutputTypes.PREDICTED to indicate whether
+    the values contained within correspond to metrics recorded in the performance
+    dataset or were predicted by a surrogate model. The final long-format DataFrame
+    treats features and metrics as values, one in each row, and indxes them using a
+    combination of the integer index of each row in the wide-format DataFrame, called
+    "Sample ID", and the type of value, which can be one of LongFormatValueTypes.FEATURE,
+    LongFormatValueTypes.GROUP, LongFormatValueTypes.TRUE or
+    LongFormatValueTypes.PREDICTED. LongFormatValueTypes.GROUP corresponds to the values
+    of the columns "model_ID" and "fidelity_ID", defining groups of rows belonging to the
+    same configuration and fidelity group, respectively.
+    """
+
+    _log.debug(f"Attempting to convert input wide-format DataFrame of shape {data.shape} "
+               f"to long-format.")
+    assert isinstance(output_type, LongFormatOutputTypes), \
+        f"The parameter 'output_type' must be a member of the Enum " \
+        f"LongFormatOutputTypes, was '{output_type}' of type '{type(output_type)}' " \
+        f"instead."
+
+    # Redundant, but ensures semantic compatibility
+    output_type = LongFormatValueTypes(output_type.value)
+
+    _log.debug("Splitting wide-format DataFrame's top-level columns into individual "
+               "frames.")
+    index = data.index.to_frame(index=True, name=LongFormatIndexNames.SAMPLE_IDX.value)
+
+    groups: pd.DataFrame = data.loc[:, "sampling_index"]
+    groups: pd.DataFrame = groups.loc[:, ["fidelity_ID", "model_ID"]]
+    groups = groups.assign(
+        **{LongFormatIndexNames.VALUE_TYPE.value: LongFormatValueTypes.GROUP.value})
+    groups = pd.concat([index, groups], axis=1)
+
+    features: pd.DataFrame = data.loc[:, "features"]
+    features = features.assign(
+        **{LongFormatIndexNames.VALUE_TYPE.value: LongFormatValueTypes.FEATURE.value})
+    features = pd.concat([index, features], axis=1)
+
+    labels: pd.DataFrame = data.loc[:, "labels"]
+    labels = labels.assign(**{LongFormatIndexNames.VALUE_TYPE.value: output_type.value})
+    labels = pd.concat([index, labels], axis=1)
+
+    id_vars = [v.value for v in LongFormatIndexNames]
+
+    _log.debug(f"Performing sanity checks on component frames.")
+    frames = {"groups": groups, "features": features, "labels": labels}
+    for f1 in frames.items():
+        _log.debug(f"LHS frame: {f1[0]}\nColumns: {f1[1].columns}")
+        for f2 in frames.items():
+            if f1[0] == f2[0]:
+                continue
+            _log.debug(f"RHS frame: {f2[0]}")
+            overlap = f1[1].columns.intersection(f2[1].columns)
+            overlap = overlap.difference(id_vars)
+            if overlap.size != 0:
+                raise RuntimeError(
+                    f"Failed to create long-format DataFrame due to the presence of "
+                    f"overlapping column names {overlap.tolist()} between '{f1[0]}' and "
+                    f"'{f2[0]}'."
+                )
+    _log.debug("Sanity check successfully passed, melting DataFrame.")
+
+    groups_long = pd.melt(groups, id_vars=id_vars, var_name="variable", 
+                          value_name="value", ignore_index=True)
+    features_long = pd.melt(features, id_vars=id_vars, var_name="variable", 
+                            value_name="value", ignore_index=True)
+    labels_long = pd.melt(labels, id_vars=id_vars, var_name="variable", 
+                          value_name="value", ignore_index=True)
+    
+    long_data = pd.concat([groups_long, features_long, labels_long], axis=0)
     return long_data
 
 
-def generate_ranks_dataframe(outputs: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
+def generate_ranks_dataframe(outputs: pd.DataFrame, group_cols: Sequence[str]) -> pd.DataFrame:
     """ Given a DataFrame containing the values for any number of outputs in long-format, where all output
     values are under a single column 'value', return a similar DataFrame where the 'value' column's
     contents are replaced by their respective ranks within the group defined by the columns in 'group_cols'. """
@@ -55,7 +128,7 @@ def generate_ranks_dataframe(outputs: pd.DataFrame, group_cols: list[str]) -> pd
     x = outputs.copy()
     g = x.groupby(group_cols)
     ranks = g["value"].rank()
-    x.loc[:, "value"] = ranks.values
+    x.loc[:, "value"] = ranks["value"]
     return x
 
 
@@ -71,7 +144,7 @@ def generate_correlations_df(values, index: pd.MultiIndex) -> pd.DataFrame:
     return x
 
 
-def generate_correlations(ranks: pd.DataFrame, group_cols: list[str] = None) -> pd.DataFrame:
+def generate_correlations(ranks: pd.DataFrame, group_cols: Sequence[str] = None) -> pd.DataFrame:
     """ Given a long-format DataFrame containing the rankings across the columns specified in 'group_cols' and
     of any number of different outputs (specified under the column 'output_var') in a column named 'value',
     calculates their Spearman and Kendall-Tau rank correlation values and p-values and arranges them in a tidy
@@ -106,9 +179,9 @@ def generate_correlations(ranks: pd.DataFrame, group_cols: list[str] = None) -> 
     return final_df
 
 
-def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_outputs: list[str] = None,
+def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_outputs: Sequence[str] = None,
                       adjust_for_minimization: bool = True) -> \
-        (pd.DataFrame, list[str]):
+        (pd.DataFrame, Sequence[str]):
     """ Filter out the full dataset according to the given set of fidelities and the required outputs, returning a
     proper long-format DataFrame. Also returns the DataFrame structure in the form of a list containing the
     identifier variables, which includes the list of input features (configuration) and 'output_type', which
@@ -155,7 +228,7 @@ def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_
     return relevant_data, id_vars
 
 
-def get_correlations(data: pd.DataFrame, extra_group_by: list[str] = None) -> pd.DataFrame:
+def get_correlations(data: pd.DataFrame, extra_group_by: Sequence[str] = None) -> pd.DataFrame:
     group_cols = ["output_type", "output_var"] + ([] if extra_group_by is None else extra_group_by)
     all_ranks = generate_ranks_dataframe(data, group_cols=group_cols)
     correlations = generate_correlations(all_ranks, group_cols=group_cols)
@@ -171,7 +244,7 @@ score_funcs = {
 }
 
 
-def get_scores(data: pd.DataFrame, group_cols: list[str] = None):
+def get_scores(data: pd.DataFrame, group_cols: Sequence[str] = None):
     """ Given a long-format dataframe of benchmark data, with all value variables under the column 'output_var',
     the label for "True" vs "Predicted" values under the column 'output_type' and all output values under the
     column 'value', return a long-format DataFrame with the regression analysis scores of the given dataset
@@ -212,7 +285,7 @@ def get_test_frac_data(test_frac: float, filter_loss: bool = True):
     data = pd.concat([test_set, ypred], axis=1)
     return data
 
-def get_filtered_corr(data: pd.DataFrame, extra_group_by: list[str] = None):
+def get_filtered_corr(data: pd.DataFrame, extra_group_by: Sequence[str] = None):
     correlations = get_correlations(data=data, extra_group_by=extra_group_by)
     x = correlations
     x = x.loc[x.output_type=="Predicted"]
@@ -223,4 +296,5 @@ def get_filtered_corr(data: pd.DataFrame, extra_group_by: list[str] = None):
 # maxfidelity = Fidelity(N=[5], W=[16], Resolution=[1.0], Epoch=[200])
 # maxcapacity = Fidelity(N=[5], W=[16], Resolution=[1.0], Epoch=list(range(1, 201)))
 # maxbudget = Fidelity(N=[1, 3, 5], W=[4, 8, 16], Resolution=[0.25, 0.5, 1.0], Epoch=[200])
-# fids = ["Resolution", "W", "N", "Epoch"]
+fids = ["Resolution", "W", "N", "Epoch"]
+
