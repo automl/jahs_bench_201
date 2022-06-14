@@ -4,7 +4,7 @@ from functools import partial
 from typing import Union, Sequence
 
 import pandas as pd
-from scipy.stats import spearmanr
+from scipy.stats import kendalltau
 from sklearn.metrics import r2_score, mean_squared_error, \
     mean_absolute_percentage_error, median_absolute_error
 
@@ -120,63 +120,17 @@ def wide_to_long_format(data: pd.DataFrame, output_type: LongFormatOutputTypes) 
     return long_data
 
 
-def generate_ranks_dataframe(outputs: pd.DataFrame, group_cols: Sequence[str]) -> pd.DataFrame:
-    """ Given a DataFrame containing the values for any number of outputs in long-format, where all output
-    values are under a single column 'value', return a similar DataFrame where the 'value' column's
-    contents are replaced by their respective ranks within the group defined by the columns in 'group_cols'. """
+def _rank_labels(outputs: pd.DataFrame, axis: int = 0) -> pd.DataFrame:
+    """ Given a DataFrame containing the values for any number of outputs in long-format,
+    where all output values are under a single column 'value', return a similar DataFrame
+    where the 'value' column's contents are replaced by their respective ranks within the
+    original dataframe. """
 
     x = outputs.copy()
-    g = x.groupby(group_cols)
-    ranks = g["value"].rank()
-    x.loc[:, "value"] = ranks["value"]
+    label_cols = outputs[["labels"]].columns.tolist()
+    ranks = x[label_cols].rank(axis=axis)
+    x.loc[:, label_cols] = ranks
     return x
-
-
-def generate_correlations_df(values, index: pd.MultiIndex) -> pd.DataFrame:
-    """ Performs a bunch of pandas acrobatics in order to convert the given numpy 2D Array 'values' into a long
-    format DataFrame using the given heirarchical index. The index names are directly used as identity variables
-    and the prefix "val-" is appended to them for the value variables. """
-
-    columns = index.rename([f"val-{n}" for n in index.names])
-    x = pd.DataFrame(values, index=index, columns=columns)
-    x = x.stack(columns.names).to_frame("value")
-    x = x.reset_index()
-    return x
-
-
-def generate_correlations(ranks: pd.DataFrame, group_cols: Sequence[str] = None) -> pd.DataFrame:
-    """ Given a long-format DataFrame containing the rankings across the columns specified in 'group_cols' and
-    of any number of different outputs (specified under the column 'output_var') in a column named 'value',
-    calculates their Spearman and Kendall-Tau rank correlation values and p-values and arranges them in a tidy
-    long format DataFrame. The output DataFrame is structured such that the identification variables
-    'Metric Type' and 'Value Type' are added to  the input 'ranks' DataFrame's structure, where 'Metric Type'
-    can be either 'Spearman' or 'Kendall-Tau'  whereas 'Value Type' can be either 'Correlation' or 'P-Value'.
-    Correlations are calculated across the rankings in the same group. """
-
-    x = ranks.copy()
-    intra_group_indices = x.groupby(group_cols)["value"].cumcount()
-    x.loc[:, "igidx"] = intra_group_indices.values
-    x = x.set_index(group_cols + ["igidx"])[["value"]]
-    x = x.unstack(group_cols)
-
-    new_index = x.columns.get_loc_level("value")[1]  # Remove unused column
-
-    # Calculate Spearman's R-value for rank correlations
-    corr, pval = spearmanr(x.values, nan_policy="omit")
-    corrdf_sp = generate_correlations_df(corr, index=new_index).assign(
-        **{"Metric Name": "Spearman", "Value Type": "Correlation"})
-    pvaldf_sp = generate_correlations_df(pval, index=new_index).assign(
-        **{"Metric Name": "Spearman", "Value Type": "p-Value"})
-
-    # Calculate Kendall-Tau value for rank correlations
-    corr, pval = spearmanr(x.values, nan_policy="omit")
-    corrdf_kt = generate_correlations_df(corr, index=new_index).assign(
-        **{"Metric Name": "Kendall-Tau", "Value Type": "Correlation"})
-    pvaldf_kt = generate_correlations_df(pval, index=new_index).assign(
-        **{"Metric Name": "Kendall-Tau", "Value Type": "p-Value"})
-
-    final_df = pd.concat([corrdf_sp, pvaldf_sp, corrdf_kt, pvaldf_kt], axis=0)
-    return final_df
 
 
 def map_index(index: pd.MultiIndex, mapping: dict, level: int = 0) -> pd.MultiIndex:
@@ -238,10 +192,31 @@ def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_
     return relevant_data
 
 
-def get_correlations(data: pd.DataFrame, extra_group_by: Sequence[str] = None) -> pd.DataFrame:
-    group_cols = ["output_type", "output_var"] + ([] if extra_group_by is None else extra_group_by)
-    all_ranks = generate_ranks_dataframe(data, group_cols=group_cols)
-    correlations = generate_correlations(all_ranks, group_cols=group_cols)
+def get_correlations(data: pd.DataFrame) -> pd.DataFrame:
+    """ Given a wide-format DataFrame, rank the outputs specified under the top-level
+    column 'labels' across all the given indices and return a DataFrame containing the
+    corresponding Kendall's tau rank correlation values and p-values, with the relevant
+    "labels" serving as both index and column values. The top-level column values are
+    "correlation" and "p-value". This DataFrame will be of shape [l, 2*l], where
+    'l' is the number of columns under 'labels'. """
+
+    ranks = _rank_labels(data)
+    index = ranks.labels.columns.copy()
+    
+    corrdf = pd.DataFrame(None, index=index, columns=index)
+    pvaldf = pd.DataFrame(None, index=index, columns=index)
+
+    # Calculate Kendall's tau value for rank correlations
+    for label1 in index.copy():
+        for label2 in index.copy():
+            vals1 = ranks[("labels", label1)].values.squeeze()
+            vals2 = ranks[("labels", label2)].values.squeeze()
+            corr, pval = kendalltau(vals1, vals2, nan_policy="omit")
+            corrdf.loc[label1, label2] = corr
+            pvaldf.loc[label1, label2] = pval
+
+    correlations = pd.concat({"correlations": corrdf, "p-values": pvaldf}, axis=1)
+
     return correlations
 
 
@@ -307,4 +282,5 @@ def get_filtered_corr(data: pd.DataFrame, extra_group_by: Sequence[str] = None):
 # maxcapacity = Fidelity(N=[5], W=[16], Resolution=[1.0], Epoch=list(range(1, 201)))
 # maxbudget = Fidelity(N=[1, 3, 5], W=[4, 8, 16], Resolution=[0.25, 0.5, 1.0], Epoch=[200])
 fids = ["Resolution", "W", "N", "Epoch"]
+
 
