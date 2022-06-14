@@ -109,13 +109,13 @@ def wide_to_long_format(data: pd.DataFrame, output_type: LongFormatOutputTypes) 
                 )
     _log.debug("Sanity check successfully passed, melting DataFrame.")
 
-    groups_long = pd.melt(groups, id_vars=id_vars, var_name="variable", 
+    groups_long = pd.melt(groups, id_vars=id_vars, var_name="variable",
                           value_name="value", ignore_index=True)
-    features_long = pd.melt(features, id_vars=id_vars, var_name="variable", 
+    features_long = pd.melt(features, id_vars=id_vars, var_name="variable",
                             value_name="value", ignore_index=True)
-    labels_long = pd.melt(labels, id_vars=id_vars, var_name="variable", 
+    labels_long = pd.melt(labels, id_vars=id_vars, var_name="variable",
                           value_name="value", ignore_index=True)
-    
+
     long_data = pd.concat([groups_long, features_long, labels_long], axis=0)
     return long_data
 
@@ -179,6 +179,16 @@ def generate_correlations(ranks: pd.DataFrame, group_cols: Sequence[str] = None)
     return final_df
 
 
+def map_index(index: pd.MultiIndex, mapping: dict, level: int = 0) -> pd.MultiIndex:
+    """ Simple functionality that pandas itself really should have. Applies a mapping to only select elements of a
+    given MultiIndex and returns the new MultiIndex. """
+
+    index_level_values = index.to_frame(index=False)
+    map_fn = lambda y: mapping[y] if y in mapping else y
+    index_level_values[level] = list(map(map_fn, index_level_values[level]))
+    return pd.MultiIndex.from_frame(index_level_values)
+
+
 def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_outputs: Sequence[str] = None,
                       adjust_for_minimization: bool = True) -> \
         (pd.DataFrame, Sequence[str]):
@@ -192,8 +202,13 @@ def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_
     identified by the suffix '-acc' and the metric FLOPS. Accuracy metrics are relabeled to '-err' to indicate
     Error% instead of Accuracy%. """
 
+    # Handle the case-sensitivity issues with the "Epoch" parameter
+    mapping = {"epoch": "Epoch"}
+    data.columns = map_index(data.columns, mapping, level=1)
+
     # Make sure that it is always possible to numerically identify which samples belong together
-    data = data.rename_axis(["Sample ID"], axis=0).reset_index(col_fill="features", col_level=1)
+    data = data.rename_axis(["Sample ID"], axis=0).reset_index(col_fill="sampling_index",
+                                                               col_level=1)
     relevant_index = extract_relevant_indices(data.features, relevant_fidelity)
     relevant_data = data.loc[relevant_index].copy()
 
@@ -213,19 +228,14 @@ def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_
     relevant_data.loc[:, size_cols] = relevant_data.loc[:, size_cols].mul(1000).values
     rename_sizes = {c[1]: c[1].replace("_MB", "_KB") for c in size_cols}
 
-    # Convert the entire dataset into long format for ease of use
-    relevant_data = tidy_long_format(relevant_data).squeeze()
-
     # Filter out the outputs if needed
     if relevant_outputs is not None:
-        relevant_data = relevant_data.loc[relevant_data.output_var.isin(relevant_outputs)]
+        drop_cols = relevant_data.labels.columns.difference(relevant_outputs)
+        relevant_data = relevant_data.drop([("labels", c) for c in drop_cols], axis=1)
 
     rename_map = {**rename_accs, **rename_sizes}
-    relevant_data.loc[:, "output_var"] = relevant_data.output_var.map(
-        lambda x: x if x not in rename_map else rename_map[x]).values
-    id_vars = relevant_data.columns.difference(["output_var", "value"])
-
-    return relevant_data, id_vars
+    relevant_data.columns = map_index(relevant_data.columns, rename_map, level=1)
+    return relevant_data
 
 
 def get_correlations(data: pd.DataFrame, extra_group_by: Sequence[str] = None) -> pd.DataFrame:
