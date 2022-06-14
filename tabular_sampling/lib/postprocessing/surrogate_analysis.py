@@ -161,7 +161,7 @@ def get_filtered_data(data: pd.DataFrame, relevant_fidelity: Fidelity, relevant_
 
     # Make sure that it is always possible to numerically identify which samples belong
     # together
-    _log.debug(f"Renaming fidelity 'epoch' to 'Epoch' for consistency.")
+    _log.debug(f"Generating unique sample IDs for each row.")
     data = data.rename_axis(["Sample ID"], axis=0).reset_index(col_fill="sampling_index",
                                                                col_level=1)
     relevant_index = extract_relevant_indices(data.features, relevant_fidelity)
@@ -215,8 +215,13 @@ def get_correlations(data: pd.DataFrame, inplace: bool = False) -> pd.DataFrame:
     pvaldf = pd.DataFrame(None, index=index, columns=index)
 
     # Calculate Kendall's tau value for rank correlations
+    combinations = index.size ** 2
+    i = 0
     for label1 in index.copy():
         for label2 in index.copy():
+            i += 1
+            _log.debug(f"Generating correlations for ({label1}, {label2}) "
+                       f"({i}/{combinations})")
             vals1 = ranks[("labels", label1)].values.squeeze()
             vals2 = ranks[("labels", label2)].values.squeeze()
             corr, pval = kendalltau(vals1, vals2, nan_policy="omit")
