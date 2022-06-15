@@ -9,7 +9,7 @@ import pandas as pd
 import sklearn.base
 import yacs.config as config
 
-from jahs_bench_201.surrogate import constants
+from jahs_bench_201.surrogate import config
 from jahs_bench_201.surrogate import loss
 
 _log = logging.getLogger(__name__)
