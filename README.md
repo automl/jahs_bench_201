@@ -60,11 +60,14 @@ Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTR
 
 ## TODO
 
-* https://github.com/automl/jahs_bench_201_experiments
-* data access
-* leaderboards
-* We provide code to use JAHS-Bench-201 and follow our evaluation protocols
-* Documentation at https://automl.github.io/jahs_bench_201/
+* share data with others (Archit) and say we upload to figshare lifetime support later, plan/left-todo, refer to figshare for the future)
+* reorder code (Archit)
+* We provide code to use JAHS-Bench-201 and follow our evaluation protocols (latter Maciej)
 * `python -m jahs_bench_201.download_surrogates` and `download=True` as default
+* leaderboards (Maciej)
 * Docstrings
+* Documentation at https://automl.github.io/jahs_bench_201/
 * Placeholders Documentation
+* `pip install neural-pipeline-search` for HPO of surrogate (Archit)
+* Add dataset licenses to NOTICE (Archit)
+* https://github.com/automl/jahs_bench_201_experiments mention

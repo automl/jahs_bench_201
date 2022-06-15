@@ -27,15 +27,16 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]  # TODO license
 packages = [
-    { include = "jahs_bench_201", from = "src" },
-    { include = "jahs_bench_201_data", from = "src" },
-    { include = "jahs_bench_201_surrogate", from = "src" },
+    { include = "jahs_bench_201" },
     { include = "jahs_bench_201_examples"},
 ]
 
-
 [tool.poetry.dependencies]
 python = ">=3.7,<=3.10"
+torch = {version = "^1.10", optional = true}
+
+[tool.poetry.extras]
+data_creation = ["torch"]
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.10"
