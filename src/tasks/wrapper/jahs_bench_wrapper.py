@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from hpbandster.core.worker import Worker
 
-from jahs_bench.public_api import Benchmark
+from jahs_bench_201.api import Benchmark
 from jahs_bench_201.lib.core.constants import datasets
 
 from .utils import create_config_space
