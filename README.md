@@ -6,10 +6,6 @@ Features:
 
 - TODO
 
-Soon-to-come Features:
-
-- TODO
-
 ![Python versions](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10-informational)
 [![License](TODO)](LICENSE)
 
@@ -69,3 +65,4 @@ Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTR
 * data access
 * leaderboards
 * We provide code to use JAHS-Bench-201 and follow our evaluation protocols
+* Documentation at https://automl.github.io/jahs_bench_201/

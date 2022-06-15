@@ -13,7 +13,7 @@ readme = "README.md"
 license = "TODO"
 homepage = "https://github.com/automl/jahs_bench_201"
 repository = "https://github.com/automl/jahs_bench_201"
-documentation = "TODO"
+documentation = "https://automl.github.io/jahs_bench_201/"
 keywords = ["TODO"]
 classifiers = [
     "Intended Audience :: Science/Research",
