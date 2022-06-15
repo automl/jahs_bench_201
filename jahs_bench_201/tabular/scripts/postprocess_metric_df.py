@@ -3,8 +3,9 @@ import logging
 from pathlib import Path
 import sys
 
-from tabular_sampling.lib.core.constants import fidelity_params
-from tabular_sampling.lib.postprocessing import metric_df_ops as metric_ops, _log as pproc_log
+from jahs_bench_201.tabular.lib.core.constants import fidelity_params
+from jahs_bench_201.tabular.lib.postprocessing import _log as pproc_log
+from jahs_bench_201.tabular.lib.postprocessing import metric_df_ops as metric_ops
 
 _log = logging.getLogger(__name__)
 

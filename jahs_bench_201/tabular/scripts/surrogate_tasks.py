@@ -6,7 +6,7 @@ from typing import Any, Sequence, Optional
 
 import pandas as pd
 
-from tabular_sampling.surrogate import xgb
+from jahs_bench_201.tabular.surrogate import xgb
 
 logger = logging.getLogger(__name__)
 _seed = 3501623856

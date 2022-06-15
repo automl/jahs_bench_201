@@ -11,8 +11,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional, Sequence, Iterator, Tuple, Union, Dict
 
-from tabular_sampling.lib.core import constants, utils
-from tabular_sampling.lib.postprocessing.metric_df_ops import estimate_remaining_runtime
+from jahs_bench_201.tabular.lib.core import constants, utils
 
 _log = logging.getLogger(__name__)
 fidelity_params = constants.fidelity_params

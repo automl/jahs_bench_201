@@ -28,7 +28,7 @@ from typing import List, Tuple, Optional
 import pandas as pd
 import sklearn.model_selection
 
-from tabular_sampling.lib.postprocessing import metric_df_ops
+from jahs_bench_201.tabular.lib.postprocessing import metric_df_ops
 
 _log = logging.getLogger(__name__)
 

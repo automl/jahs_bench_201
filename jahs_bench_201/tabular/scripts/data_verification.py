@@ -8,10 +8,10 @@ from typing import Generator, Tuple
 
 import pandas as pd
 
-from tabular_sampling.lib.core import constants
-from tabular_sampling.lib.core import utils
-from tabular_sampling.lib.postprocessing import verification
-from tabular_sampling.clusterlib.prescheduler import fidelity_basedir_map
+from jahs_bench_201.tabular.lib.core import constants
+from jahs_bench_201.tabular.lib.core import utils
+from jahs_bench_201.tabular.lib.postprocessing import verification
+from jahs_bench_201.tabular.clusterlib.prescheduler import fidelity_basedir_map
 
 _log = logging.getLogger(__name__)
 fidelity_parameters = ["N", "W", "Resolution"]

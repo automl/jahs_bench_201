@@ -5,7 +5,6 @@ planned samples in the search space.
 """
 
 import argparse
-import itertools
 import logging
 import pandas as pd
 from pathlib import Path
@@ -13,14 +12,11 @@ from string import Template
 import shutil
 import sys
 import time
-from typing import Union
 
-import tabular_sampling.lib.postprocessing.metric_df_ops
-from tabular_sampling.clusterlib import prescheduler as sched_utils
-from tabular_sampling.lib.core.utils import AttrDict
-from tabular_sampling.lib.postprocessing.metric_df_ops import get_configs
-from tabular_sampling.distributed_nas_sampling import run_task, get_tranining_config_from_args, _seed
-from tabular_sampling.lib.core import constants
+from jahs_bench_201.tabular.clusterlib import prescheduler as sched_utils
+from jahs_bench_201.tabular.lib.core.utils import AttrDict
+from jahs_bench_201.tabular.distributed_nas_sampling import run_task, get_tranining_config_from_args, _seed
+from jahs_bench_201.tabular.lib.core import constants
 
 from naslib.utils.logging import setup_logger
 

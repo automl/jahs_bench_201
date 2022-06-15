@@ -9,7 +9,8 @@ import pandas as pd
 import sklearn.base
 import yacs.config as config
 
-from tabular_sampling.surrogate import loss, constants
+from jahs_bench_201.surrogate import constants
+from jahs_bench_201.surrogate import loss
 
 _log = logging.getLogger(__name__)
 

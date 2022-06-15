@@ -21,10 +21,10 @@ import sklearn.preprocessing
 import xgboost as xgb
 import yacs.config as config
 
-from tabular_sampling.lib.core import utils as benchmark_utils
-from tabular_sampling.search_space.configspace import joint_config_space
-from tabular_sampling.surrogate import constants as constants
-from tabular_sampling.surrogate import utils as surrogate_utils
+from jahs_bench_201.tabular.lib.core import utils as benchmark_utils
+from jahs_bench_201.tabular.search_space.configspace import joint_config_space
+from jahs_bench_201.tabular.surrogate import constants as constants
+from jahs_bench_201.tabular.surrogate import utils as surrogate_utils
 
 _log = logging.getLogger(__name__)
 ConfigType = Union[dict, ConfigSpace.Configuration]

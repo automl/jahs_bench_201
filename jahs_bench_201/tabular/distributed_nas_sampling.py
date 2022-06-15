@@ -26,7 +26,6 @@ import json
 import logging
 import os
 import traceback
-import time
 from pathlib import Path
 from typing import Iterable, Sequence, Optional, Union
 
@@ -36,11 +35,12 @@ import numpy as np
 import torch
 from naslib.utils.utils import AttrDict
 
-from tabular_sampling.lib.core.constants import Datasets, standard_task_metrics
-from tabular_sampling.lib.core.constants import training_config as _training_config
-from tabular_sampling.lib.core import datasets as dataset_lib, utils
-from tabular_sampling.lib.core.procs import train
-from tabular_sampling.search_space import NASB201HPOSearchSpace
+from jahs_bench_201.tabular.lib.core.constants import Datasets, standard_task_metrics
+from jahs_bench_201.tabular.lib.core.constants import training_config as _training_config
+from jahs_bench_201.tabular.lib.core import utils
+from jahs_bench_201.tabular.lib.core import datasets as dataset_lib
+from jahs_bench_201.tabular.lib.core.procs import train
+from jahs_bench_201.tabular.search_space import NASB201HPOSearchSpace
 
 # Randomly generated entropy source, to remain fixed across experiments.
 _seed = 79029434164686768057103648623012072794
@@ -163,7 +163,8 @@ def run_task(basedir: Path, taskid: int, train_config: AttrDict, dataset: Datase
     if logger is None:
         logger = naslib_logging.setup_logger(str(dir_tree.task_dir / "log.log"))
 
-    task_metrics = AttrDict(utils.attrdict_factory(metrics=standard_task_metrics, template=list))
+    task_metrics = AttrDict(
+        utils.attrdict_factory(metrics=standard_task_metrics, template=list))
 
     # The timer-based interface is necessary to synchronize the model metric logger and checkpointer later.
     tasktimer = utils.SynchroTimer()  # This timer must be set manually, but it still uses model_idx as time

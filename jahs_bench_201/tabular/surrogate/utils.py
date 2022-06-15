@@ -7,7 +7,8 @@ import sklearn.base
 import yacs.config as config
 from enum import Enum
 
-from tabular_sampling.surrogate import loss, constants
+from jahs_bench_201.tabular.surrogate import constants
+from jahs_bench_201.tabular.surrogate import loss
 
 _log = logging.getLogger(__name__)
 

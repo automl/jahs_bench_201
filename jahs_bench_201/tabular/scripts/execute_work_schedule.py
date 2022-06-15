@@ -20,11 +20,12 @@ import naslib.utils.logging as naslib_logging
 import naslib.utils.utils as naslib_utils
 from naslib.utils.utils import AttrDict
 
-from tabular_sampling.clusterlib import prescheduler as sched_utils
-from tabular_sampling.lib.core.constants import Datasets, standard_task_metrics, training_config
-from tabular_sampling.lib.core import datasets as dataset_lib, utils
-from tabular_sampling.lib.core.procs import train
-from tabular_sampling.search_space import NASB201HPOSearchSpace
+from jahs_bench_201.tabular.clusterlib import prescheduler as sched_utils
+from jahs_bench_201.tabular.lib.core.constants import Datasets, standard_task_metrics, training_config
+from jahs_bench_201.tabular.lib.core import utils
+from jahs_bench_201.tabular.lib.core import datasets as dataset_lib
+from jahs_bench_201.tabular.lib.core.procs import train
+from jahs_bench_201.tabular.search_space import NASB201HPOSearchSpace
 
 
 def argument_parser():

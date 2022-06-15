@@ -9,8 +9,8 @@ import torch
 from naslib.utils.utils import AttrDict, Cutout
 from torchvision import datasets as dset, transforms as transforms
 
-from tabular_sampling.lib.core import constants as constants
-from tabular_sampling.lib.core.aug_lib import TrivialAugment
+from jahs_bench_201.tabular.lib.core import constants as constants
+from jahs_bench_201.tabular.lib.core.aug_lib import TrivialAugment
 
 from icgen.vision_dataset import ICVisionDataset
 

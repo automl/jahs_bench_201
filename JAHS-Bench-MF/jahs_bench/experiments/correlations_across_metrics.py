@@ -14,7 +14,8 @@ from typing import Optional, Sequence
 import pandas as pd
 
 _log = logging.getLogger(__name__)
-from tabular_sampling.lib.postprocessing import surrogate_analysis as analysis
+from jahs_bench_201.tabular.lib.postprocessing import \
+    surrogate_analysis as analysis
 import argparse
 
 

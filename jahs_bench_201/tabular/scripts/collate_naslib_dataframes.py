@@ -34,7 +34,7 @@ import argparse
 import logging
 from pathlib import Path
 import sys
-from tabular_sampling.lib.postprocessing import collation
+from jahs_bench_201.tabular.lib.postprocessing import collation
 
 _log = logging.getLogger(__name__)
 

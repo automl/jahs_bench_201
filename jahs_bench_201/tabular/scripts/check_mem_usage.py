@@ -9,11 +9,11 @@ import argparse
 import logging
 from pathlib import Path
 import sys
-from tabular_sampling.lib.core import datasets as dataset_lib
-from tabular_sampling.lib.core.constants import Datasets
-from tabular_sampling.lib.core.utils import AttrDict
-from tabular_sampling import distributed_nas_sampling
-from tabular_sampling.search_space.constants import OP_NAMES
+from jahs_bench_201.tabular.lib.core import datasets as dataset_lib
+from jahs_bench_201.tabular.lib.core.constants import Datasets
+from jahs_bench_201.tabular.lib.core.utils import AttrDict
+from jahs_bench_201.tabular import distributed_nas_sampling
+from jahs_bench_201.tabular.search_space.constants import OP_NAMES
 
 _log = logging.getLogger(__name__)
 

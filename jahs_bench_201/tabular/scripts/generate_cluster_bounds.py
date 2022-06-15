@@ -1,7 +1,7 @@
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from tabular_sampling.clusterlib.prescheduler import JobConfig
+from jahs_bench_201.tabular.clusterlib.prescheduler import JobConfig
 
 required_evals_per_bucket = 10_000
 workers_per_bucket_cap = required_evals_per_bucket
@@ -13,7 +13,7 @@ max_evals_per_worker = 5
 
 # Assuming linear memory scaling w.r.t N and W, quadratic scaling with Resolution
 # For starters, it should suffice to ignore N and W and only scale according to Resolution
-# TODO: Come back and revise this if something breaks. 
+# TODO: Come back and revise this if something breaks.
 
 fids = pd.MultiIndex.from_product([[1, 3, 5], [4, 8, 16], [0.25, 0.5, 1.0]], names=["N", "W", "Resolution"])
 # fids = pd.MultiIndex.from_product([[1, 3, 5], [1, 2, 3], [8, 16, 32]], names=["N", "W", "Resolution"])
@@ -38,7 +38,7 @@ def final_calculations(runtimes_per_epoch):
     max_nodes_per_bucket: pd.Series = max_nodes_per_bucket.clip(upper=total_num_nodes)
     workers_per_bucket = cpus_per_worker_per_node_per_bucket.rdiv(cpus_per_node) * max_nodes_per_bucket
     workers_per_bucket: pd.Series = workers_per_bucket.round()
-    
+
     inv_time_ratios = runtimes_per_epoch.rdiv(runtimes_per_epoch.min())
     evals_per_worker = inv_time_ratios * max_evals_per_worker
     evals_per_worker = evals_per_worker.round().clip(lower=1).astype(int)
@@ -46,11 +46,11 @@ def final_calculations(runtimes_per_epoch):
     nodes_per_bucket = workers_per_bucket * cpus_per_worker_per_node_per_bucket / cpus_per_node
     nodes_per_bucket = nodes_per_bucket.round().astype(int)
 
-    
+
     runtime_per_evaluation_per_bucket = runtimes_per_epoch * epochs_per_eval
     cpuh_required_per_bucket = runtime_per_evaluation_per_bucket * required_evals_per_bucket
     runtime_per_worker_per_bucket = cpuh_required_per_bucket / workers_per_bucket
-    
+
     return cpus_per_worker_per_node_per_bucket, runtime_per_worker_per_bucket, evals_per_worker, nodes_per_bucket
 
 
