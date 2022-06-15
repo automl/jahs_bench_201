@@ -1,4 +1,4 @@
-# JAHS-Bench-MF
+# JAHS-Bench-201
 
 TODO: Sentence describing JAHS-Bench-MF. (+ Reference documentation page once it exists)
 
@@ -18,9 +18,7 @@ Soon-to-come Features:
 Using pip
 
 ```bash
-git clone https://github.com/automl/jahs_bench_mf.git
-cd jahs_bench_mf
-pip install .
+pip install jahs_bench_201
 ```
 
 
@@ -63,3 +61,11 @@ guarantees.
 ## Contributing
 
 Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTRIBUTING.md).
+
+
+## TODO
+
+* https://github.com/automl/jahs_bench_201_experiments
+* data access
+* leaderboards
+* We provide code to use JAHS-Bench-201 and follow our evaluation protocols

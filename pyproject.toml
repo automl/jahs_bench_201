@@ -1,23 +1,41 @@
 [tool.poetry]
-name = "JAHS Bench MF"
-version = "0.0.2"
-description = ""
-authors = ["Archit Bansal", "Danny Stoll"]
+name = "jahs_bench_201"
+version = "0.0.1"
+description = "TODO"
+authors = [
+    "Archit Bansal <bansala@cs.uni-freiburg.de>",
+    "Danny Stoll <stolld@cs.uni-freiburg.de>",
+    "Maciej Janowski <janowski@cs.uni-freiburg.de>",
+    "Arber Zela <zelaa@cs.uni-freiburg.de>",
+    "Frank Hutter <fh@cs.uni-freiburg.de>",
+]
 readme = "README.md"
-license = "MIT"
+license = "TODO"
+homepage = "https://github.com/automl/jahs_bench_201"
+repository = "https://github.com/automl/jahs_bench_201"
+documentation = "TODO"
+keywords = ["TODO"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: Unix",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Development Status :: 5 - Production/Stable",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]  # TODO license
 packages = [
-    { include = "JAHS-Bench-MF" },
+    { include = "jahs_bench_201", from = "src" },
+    { include = "jahs_bench_201_data", from = "src" },
+    { include = "jahs_bench_201_surrogate", from = "src" },
+    { include = "jahs_bench_201_examples"},
 ]
 
 
 [tool.poetry.dependencies]
 python = ">=3.7,<=3.10"
-scikit-learn = "~=1.0"
-scipy = "~=1.7"
-numpy = "~=1.21"
-pandas = "~=1.4"
-ConfigSpace = "~=0.4"
-xgboost = "~=1.5"
 
 [tool.poetry.dev-dependencies]
 pre-commit = "^2.10"
@@ -37,7 +55,7 @@ profile = 'black'
 line_length = 90
 
 [tool.mypy]
-files = ["JAHS-Bench-MF"]
+files = ["src"]
 namespace_packages = true
 follow_imports = "skip"
 ignore_missing_imports = true
