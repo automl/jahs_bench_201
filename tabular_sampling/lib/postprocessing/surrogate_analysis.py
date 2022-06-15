@@ -121,10 +121,10 @@ def wide_to_long_format(data: pd.DataFrame, output_type: LongFormatOutputTypes) 
 
 
 def _rank_labels(outputs: pd.DataFrame, axis: int = 0, inplace=False) -> pd.DataFrame:
-    """ Given a DataFrame containing the values for any number of outputs in long-format,
-    where all output values are under a single column 'value', return a similar DataFrame
-    where the 'value' column's contents are replaced by their respective ranks within the
-    original dataframe. """
+    """ Given a DataFrame containing the values for any number of outputs in wide-format,
+    where all output values are under the top-level column 'labels', return a similar
+    DataFrame where each 'label' column's contents are replaced by their respective ranks
+    within the original dataframe. """
 
     x = outputs.copy() if not inplace else outputs
     label_cols = x[["labels"]].columns.tolist()
