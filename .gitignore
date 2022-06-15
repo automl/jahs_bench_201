@@ -19,6 +19,7 @@ src/results/
 # IDE related
 .vscode/
 .idea/
+.run/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
