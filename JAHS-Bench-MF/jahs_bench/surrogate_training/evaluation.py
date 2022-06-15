@@ -2,6 +2,7 @@ import argparse
 import logging
 from pathlib import Path
 from typing import Optional, Sequence
+import yaml
 
 import pandas as pd
 import scipy.stats
@@ -63,7 +64,8 @@ def evaluate_test_set(test_set: pd.DataFrame, model_dir: Path,
     _log.info("Concatenating predictions.")
     ypred = pd.concat(ypred, axis=1)
     if save_dir is not None:
-        save_dir.mkdir(exist_ok=False, parents=True)
+        # TODO: If 'exist_ok=False' is to be used, it should be done at the very start
+        save_dir.mkdir(exist_ok=True, parents=True)
         ypred.to_pickle(save_dir / _default_test_pred_fn)
 
     return ypred
@@ -82,17 +84,25 @@ def score_predictions(test_set: pd.DataFrame, ypred: pd.DataFrame):
               f"{ypred.shape[1]} outputs.")
     scores = {}
     for output in ytest.columns:
+        r2_score = sklearn.metrics.r2_score(ytest[output], ypred[output])
+
+        # No need to adjust for minimization when comparing two series of the same metric.
+        ranks_test = ytest[output].rank()
+        ranks_pred = ypred[output].rank()
+        # kt_corr, kt_p = scipy.stats.kendalltau(ytest[output], ypred[output])
+        kt_corr, kt_p = scipy.stats.kendalltau(ranks_test, ranks_pred)
         scores[output] = {
-            "R2": sklearn.metrics.r2_score(ytest[output], ypred[output]),
-            "KT": scipy.stats.kendalltau(ytest[output], ypred[output])
+            "R2": float(r2_score),
+            "KT": [float(kt_corr), float(kt_p)]
         }
+
     _log.info(f"Generated scores:\n{scores}")
     return scores
 
 
 def main(testset_file: Path, model_dir: Optional[Path] = None,
          outputs: Optional[Sequence[str]] = None, scores_only: bool = False,
-         save_dir: Optional[Path] = None):
+         predictions_only: bool = False, save_dir: Optional[Path] = None):
     assert testset_file is not None
     test_set = load_test_set(testset_file, outputs)
 
@@ -100,10 +110,18 @@ def main(testset_file: Path, model_dir: Optional[Path] = None,
         assert save_dir is not None
         ypred = pd.read_pickle(save_dir / "test_pred.pkl.gz")
     else:
-        assert model_dir is not None
+        if predictions_only:
+            assert save_dir is not None, \
+                "When 'predictions_only' is True, 'save_dir' cannot be None."
         ypred = evaluate_test_set(test_set, model_dir, outputs, save_dir)
 
-    score_predictions(test_set, ypred)
+    if not predictions_only:
+        scores = score_predictions(test_set, ypred)
+        if save_dir is not None:
+            with open(save_dir / "scores.yaml", "w") as fp:
+                yaml.safe_dump(scores)
+
+    _log.info(f"Finished.")
 
 
 def parse_cli():
@@ -119,8 +137,9 @@ def parse_cli():
     parser.add_argument("--save-dir", type=Path, default=None,
                         help="An optional directory where the pandas DataFrame of "
                              "predictions made by this script will be stored in a file "
-                             "called 'test_pred.pkl.gz'. If not provided, the "
-                             "predictions are not saved to disk. Must be given if "
+                             "called 'test_pred.pkl.gz' and the scores will be stored in "
+                             "a file called 'scores.yaml'. If not provided, the scores "
+                             "and predictions are not saved to disk. Must be given if "
                              "--scores-only is given.")
     parser.add_argument("--scores-only", action="store_true", default=False,
                         help="When this flag is given, predictions are not generated "
@@ -128,7 +147,18 @@ def parse_cli():
                              "previous run are expected to be readable from "
                              "'save-dir/test_pred.pkl.gz'. Scores are generated using "
                              "these predictions. When this flag is given, there is no "
-                             "need to provide --model_dir, but --save-dir must be given.")
+                             "need to provide --model_dir, but --save-dir must be given. "
+                             "If this flag is not given, any previously generated "
+                             "predictions will get overwritten by newly generated "
+                             "predictions.")
+    parser.add_argument("--predictions-only", action="store_true", default=False,
+                        help="When this flag is given, only predictions are generated "
+                             "from a surrogate model, without calculating the "
+                             "assosciated scores. When this flag is given, both "
+                             "--model_dir and --save-dir must be given. "
+                             "If this flag is given, any previously generated "
+                             "predictions will get overwritten by newly generated "
+                             "predictions.")
     parser.add_argument("--outputs", type=str, default=None,
                         nargs=argparse.REMAINDER,
                         help="Strings, separated by spaces, that indicate which of the "
