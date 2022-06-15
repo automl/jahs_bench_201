@@ -10,7 +10,7 @@ authors = [
     "Frank Hutter <fh@cs.uni-freiburg.de>",
 ]
 readme = "README.md"
-license = "TODO"
+license = "MIT"
 homepage = "https://github.com/automl/jahs_bench_201"
 repository = "https://github.com/automl/jahs_bench_201"
 documentation = "https://automl.github.io/jahs_bench_201/"
@@ -19,6 +19,7 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Natural Language :: English",
     "Operating System :: Unix",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
