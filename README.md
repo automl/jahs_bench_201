@@ -16,6 +16,19 @@ Using pip
 pip install jahs_bench_201
 ```
 
+## Data
+
+The trained surrogate models can be downloaded either automatically using our API or from ...
+
+The performance dataset and the train/valid/test splits used to train our surrogate models can be downloaded either
+through our API or from ...
+
+Currently, we share all our data in the form of Pandas DataFrames, stored as compressed pickle files using pickle
+protocol 4. Even though Pandas DataFrames are very efficient for handling large amounts of data, this is still a
+transitory solution as we work towards setting up a more robust solution using [Figshare+](https://figshare.com/),
+which provides perpetual data storage, a DOI and a web API for querying the dataset as well as the metadata.
+Additionally, we are aware of the inherent isssues with sharing pickle files and therefore are investigating the most
+appropriate data format. Current candidates include CSV, HDF5 and Feather.
 
 ## Usage
 
@@ -49,9 +62,6 @@ res = b(config=conf, nepochs=200)
 print(res)
 
 ```
-
-**Caution:** The repeatability of the surrogate model's predictions is still under investigation and carries no
-guarantees.
 
 ## Contributing
 
