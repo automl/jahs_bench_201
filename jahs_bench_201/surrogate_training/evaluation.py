@@ -7,7 +7,7 @@ import yaml
 import pandas as pd
 import scipy.stats
 import sklearn.metrics
-from jahs_bench.surrogate import model
+from jahs_bench_201.surrogate import model
 
 _default_test_set_fn = "test_set.pkl.gz"
 _default_test_pred_fn = "test_pred.pkl.gz"

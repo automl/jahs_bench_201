@@ -8,7 +8,7 @@ import joblib
 import neps
 import pandas as pd
 import scipy.stats
-from jahs_bench.surrogate import model, config as cfg
+from jahs_bench_201.surrogate import model, config as cfg
 
 _log = logging.getLogger(__name__)
 

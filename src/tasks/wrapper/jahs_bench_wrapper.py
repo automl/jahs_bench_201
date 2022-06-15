@@ -1,13 +1,11 @@
 from pathlib import Path
 from typing import Union
 from copy import deepcopy
-import logging
 
 from hpbandster.core.worker import Worker
 
 from jahs_bench.public_api import Benchmark
-from jahs_bench.core.constants import datasets
-from jahs_bench.core.configspace import joint_config_space
+from jahs_bench_201.lib.core.constants import datasets
 
 from .utils import create_config_space
 

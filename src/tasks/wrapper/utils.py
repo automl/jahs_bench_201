@@ -1,5 +1,5 @@
 import ConfigSpace as CS
-from jahs_bench.core.constants import Activations
+from jahs_bench_201.lib.core.constants import Activations
 from typing import Union
 from copy import deepcopy
 import numpy as np

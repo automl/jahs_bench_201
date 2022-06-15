@@ -40,7 +40,7 @@ model_path = "jahs_bench_mf/JAHS-Bench-MF/surrogates/thesis_cifar10"
 b = Benchmark(model_path=model_path)
 
 # Generate a random configuration
-from jahs_bench.core.configspace import joint_config_space
+from jahs_bench_201.lib.core.configspace import joint_config_space
 
 conf = joint_config_space.sample_configuration().get_dictionary()
 

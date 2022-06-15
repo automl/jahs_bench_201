@@ -1,12 +1,11 @@
 import logging
-from functools import partial
 from pathlib import Path
 from typing import Optional, Union, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from jahs_bench.core.configspace import joint_config_space
-from jahs_bench.surrogate.model import XGBSurrogate
+from jahs_bench_201.lib.core.configspace import joint_config_space
+from jahs_bench_201.surrogate.model import XGBSurrogate
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.WARNING)

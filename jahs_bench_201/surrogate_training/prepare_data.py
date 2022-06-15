@@ -6,7 +6,7 @@ from typing import Optional, Sequence
 import numpy as np
 import pandas as pd
 # Make sure that the system path contains the correct repository
-from jahs_bench.surrogate import model, utils
+from jahs_bench_201.surrogate import model, utils
 
 _seed = 3501623856
 
