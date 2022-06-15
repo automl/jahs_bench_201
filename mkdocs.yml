@@ -7,3 +7,8 @@ theme:
   name: material
   icon:
     repo: fontawesome/brands/github
+
+
+# extra:
+#  version:
+#    provider: mike

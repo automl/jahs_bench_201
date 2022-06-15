@@ -1,9 +1,8 @@
 # JAHS-Bench-201
 
-TODO: Sentence describing JAHS-Bench-MF. (+ Reference documentation page once it exists)
+The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search, built to support and facilitate research on multi-objective, cost-aware and (multi) multi-fidelity optimization algorithms.
 
 Features:
-
 - TODO
 
 ![Python versions](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10-informational)
