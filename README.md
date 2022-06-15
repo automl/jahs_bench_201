@@ -65,3 +65,6 @@ Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTR
 * leaderboards
 * We provide code to use JAHS-Bench-201 and follow our evaluation protocols
 * Documentation at https://automl.github.io/jahs_bench_201/
+* `python -m jahs_bench_201.download_surrogates` and `download=True` as default
+* Docstrings
+* Placeholders Documentation
