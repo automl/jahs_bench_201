@@ -2,11 +2,9 @@
 
 The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search, built to support and facilitate research on multi-objective, cost-aware and (multi) multi-fidelity optimization algorithms.
 
-Features:
-- TODO
 
 ![Python versions](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10-informational)
-[![License](TODO)](LICENSE)
+[CC BY 4.0 License](https://creativecommons.org/licenses/by/4.0/legalcode)
 
 ## Installation
 
@@ -21,8 +19,8 @@ pip install jahs_bench_201
 This is a minimum working example to test if the installation was successful:
 
 ```
-cd jahs_bench_mf
-python JAHS-Bench-MF/jahs_bench/public_api.py
+cd jahs_bench_201
+python jahs_bench_201/public_api.py
 ```
 
 This should randomly sample a configuration and display the result of querying the surrogate for that configuration.
