@@ -89,12 +89,11 @@ class Benchmark:
         loaders[kind]()
 
     def _load_surrogate(self):
-        assert self.surrogate_dir.exists() and surrogate_dir.is_dir()
+        assert self.surrogate_dir.exists() and self.surrogate_dir.is_dir()
 
         model_path = self.surrogate_dir / self.task.value
 
-        if outputs is None:
-            outputs = [p.name for p in model_path.iterdir() if p.is_dir()]
+        outputs = [p.name for p in model_path.iterdir() if p.is_dir()]
 
         self._surrogates = {}
         for o in outputs:
@@ -142,6 +141,9 @@ class Benchmark:
         # table = table.droplevel(0, axis=1)
         self._table = table
         self._call_fn = self._benchmark_tabular
+    
+    def _load_live(self):
+        pass
 
     def __call__(self, config: dict, nepochs: Optional[int] = 200,
                  full_trajectory: bool = False, **kwargs):
