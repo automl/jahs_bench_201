@@ -45,7 +45,7 @@ class Benchmark:
     _table = None
 
     def __init__(self, task: Union[str, BenchmarkTasks],
-                 kind: Union[str, BenchmarkTypes],
+                 kind: Union[str, BenchmarkTypes] = BenchmarkTypes.Surrogate,
                  download: bool = True, save_dir: Optional[Union[str, Path]] = None):
         """ Load up the benchmark for querying. """
 
@@ -65,17 +65,19 @@ class Benchmark:
                 raise ValueError(f"Invalid/Unknown value of parameter 'kind': '{kind}'. "
                                  f"Must be one of {valid}.") from e
 
-        if download and kind == "surrogate":
-            save_dir = Path(save_dir)
-            surrogate_dir = save_dir / "assembled_surrogates"
-            if not surrogate_dir.exists():
-                jahs_bench_201.download.download_surrogates(save_dir)
+        self.kind = kind
+        self.task = task
+        self.save_dir = Path(save_dir)
+        self.surrogate_dir = self.save_dir / "assembled_surrogates"
+        self.table_dir = self.save_dir / "metric_data"
 
-        if download and kind == "table":
-            save_dir = Path(save_dir)
-            metric_data_dir = save_dir / "metric_data"
-            if not metric_data_dir.exists():
-                jahs_bench_201.download.download_metrics(save_dir)
+        if download and kind is BenchmarkTypes.Surrogate:
+            if not self.surrogate_dir.exists():
+                jahs_bench_201.download.download_surrogates(self.save_dir)
+
+        if download and kind is BenchmarkTypes.Table:
+            if not self.table_dir.exists():
+                jahs_bench_201.download.download_metrics(self.save_dir)
 
         loaders = {
             BenchmarkTypes.Surrogate: self._load_surrogate,
@@ -83,12 +85,13 @@ class Benchmark:
             BenchmarkTypes.Live: self._load_live,
         }
 
-        # Download the data and setup the benchmark
+        # Setup the benchmark
         loaders[kind]()
 
-    def _load_surrogate(self, model_path: Optional[Union[str, Path]] = None,
-                        outputs: Optional[Sequence[str]] = None):
-        assert model_path.exists() and model_path.is_dir()
+    def _load_surrogate(self):
+        assert self.surrogate_dir.exists() and surrogate_dir.is_dir()
+
+        model_path = self.surrogate_dir / self.task.value
 
         if outputs is None:
             outputs = [p.name for p in model_path.iterdir() if p.is_dir()]
@@ -98,16 +101,20 @@ class Benchmark:
             self._surrogates[o] = XGBSurrogate.load(model_path / str(o))
         self._call_fn = self._benchmark_surrogate
 
-    def _load_table(self, table_path: Optional[Union[str, Path]] = None,
-                    outputs: Optional[Sequence[str]] = None):
-        assert table_path.exists() and table_path.is_file()
+    def _load_table(self):
+        assert self.save_dir.exists() and save_dir.is_dir()
 
-        table = pd.read_pickle(table_path)
+        table_path = self.save_dir / self.task.value
+        table_names = ["train_set.pkl.gz", "valid_set.pkl.gz", "test_set.pkl.gz"]
+        tables = [pd.read_pickle(table_path / n) for n in table_names]
+        table = pd.concat(tables, axis=0)
+        del tables
+
         level_0_cols = ["features", "labels"]
         features: list = joint_config_space.get_hyperparameter_names() + ["epoch"]
 
         if table["features"].columns.intersection(features).size != len(features):
-            raise ValueError(f"The given performance dataset at {table_path} could not "
+            raise ValueError(f"The given performance datasets at {table_path} could not "
                              f"be resolved against the known search space consisting of "
                              f"the parameters {features}")
         features = table["features"].columns
@@ -142,15 +149,21 @@ class Benchmark:
 
     def _benchmark_surrogate(self, config: dict, nepochs: Optional[int] = 200,
                              full_trajectory: bool = False,) -> dict:
-        features = pd.Series(config).to_frame().transpose()
-        features.loc[:, "epoch"] = nepochs
+        assert nepochs > 0
+
+        if full_trajectory:
+            features = pd.DataFrame([config] * nepochs)
+            features = features.assign(epoch=list(range(1, nepochs+1)))
+        else:
+            features = pd.Series(config).to_frame().transpose()
+            features.loc[:, "epoch"] = nepochs
 
         outputs = {}
         for o, model in self._surrogates.items():
             outputs[o] = model.predict(features)
 
         outputs: pd.DataFrame = pd.concat(outputs, axis=1)
-        return outputs.to_dict()
+        return outputs.to_dict(orient="index")
 
     # TODO: Return only the first hit of a query when multiple instances of a config are
     #  present
