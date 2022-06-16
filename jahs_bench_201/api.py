@@ -1,14 +1,41 @@
 import logging
+from enum import Enum, unique, auto
 from pathlib import Path
 from typing import Optional, Union, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+
 from jahs_bench_201.lib.core.configspace import joint_config_space
 from jahs_bench_201.surrogate.model import XGBSurrogate
 
+## Requires installation of the optional "data_creation" components and dependencies
+try:
+    from jahs_bench_201.tabular.distributed_nas_sampling import run_task
+    from jahs_bench_201.tabular.lib.core.constants import Datasets
+    from jahs_bench_201.tabular.lib.core.utils import DirectoryTree, MetricLogger, \
+        AttrDict
+    import shutil
+except ImportError as e:
+    data_creation_available = False
+else:
+    data_creation_available = True
+
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.WARNING)
+
+@unique
+class BenchmarkTypes(Enum):
+    Surrogate = auto()
+    Tabular = auto()
+    Live = auto()
+
+
+@unique
+class BenchmarkTasks(Enum):
+    CIFAR10 = "cifar10"
+    ColorectalHistology = "colorectal_histology"
+    FashionMNIST = "fashion_mnist"
 
 
 class Benchmark:
@@ -16,6 +43,10 @@ class Benchmark:
     _surrogates = None
     _table = None
 
+    # TODO: Update this. New signature --
+    #  def __init__(self, task: Union[str, BenchmarkTasks], kind: BenchmarkTypes,
+    #  download: bool = True, save_dir: Optional[Path-like] = None,
+    #  outputs: Optional[Sequence[str]] = None):
     def __init__(self, model_path: Optional[Union[str, Path]] = None,
                  table_path: Optional[Union[str, Path]] = None,
                  outputs: Optional[Sequence[str]] = None):
@@ -114,6 +145,7 @@ class Benchmark:
         outputs: pd.DataFrame = pd.concat(outputs, axis=1)
         return outputs.to_dict()
 
+    # TODO: Establish a convention for querying repeated configs.
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
                            suppress_keyerror: bool = False) -> dict:
         raise NotImplementedError("The functionality for directly querying the tabular "
@@ -137,6 +169,66 @@ class Benchmark:
                                f"{nepochs} epochs.") from e
 
         return output
+
+    def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
+                        # datadir: Union[str, Path],
+                        # batch_size: Optional[int] = 256,
+                        # use_splits: Optional[bool] = True,
+                        train_config: Optional[dict] = None,
+                        worker_dir: Optional[Path] = None, clean_tmp_files : bool = True,
+                        **kwargs) -> dict:
+        """
+        Simple wrapper around the base benchmark data generation capabilities offered by
+        tabular_sampling.distributed_nas_sampling.run_task(). Providing 'train_config'
+        and 'kwargs' dicts can be used to access the full range of customizations offered
+        by 'run_task()' - consults its documentation if needed. `worker_dir` can be used
+        to specify a custom directory where temporary files generated during model
+        training are stored. If it is not provided, a directory will be created at
+        '/tmp/jahs_bench_201'. Disable the flag `clean_tmp_files` to retain these
+        temporary files after the function call.
+        """
+
+        if not data_creation_available:
+            raise RuntimeError(
+                f"Cannot train the given configuration since the required modules have "
+                f"not been installed. Optional component 'data_creation' of "
+                f"jahs_bench_201 must be installed in order to perform a live training "
+                f"of the given configuration. Alternatively, try to query on either the "
+                f"surrogate model or the performance dataset table.")
+
+        if isinstance(datadir, str):
+            datadir = Path(datadir)
+
+        if train_config is None:
+            train_config = dict(epochs=nepochs, batch_size=256, use_grad_clipping=False,
+                                split=True, warmup_epochs=0, disable_checkpointing=True,
+                                checkpoint_interval_seconds=3600,
+                                checkpoint_interval_epochs=50)
+
+        basedir = (Path("/tmp") if worker_dir is None else worker_dir) / "jahs_bench_201"
+        basedir.mkdir(exist_ok=True)
+        task = Datasets[self.task.value]
+
+        args = {**dict(basedir=basedir, taskid=0, train_config=AttrDict(train_config),
+                       dataset=task, datadir=datadir, local_seed=None, global_seed=None,
+                       debug=False, generate_sampling_profile=False, nsamples=1,
+                       portfolio_pth=None, cycle_portfolio=False, opts=config), **kwargs}
+        run_task(**args)
+
+        dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)
+        metric_pth = MetricLogger._get_sorted_metric_paths(pth=dtree.model_metrics_dir)
+        metric_pth = metric_pth[-1]
+        df = pd.read_pickle(metric_pth)
+
+        # It is possible that the model training diverged, so we cannot directly use the
+        # value of 'nepochs' provided by the user.
+        nepochs = df.index.max()
+        latest = df.loc[nepochs]
+        if clean_tmp_files:
+            shutil.rmtree(dtree.basedir, ignore_errors=True)
+
+        return latest.to_dict()
+
 
     def random_sample(self, random_state: Optional[\
                       Union[int, np.random.RandomState]] = None) -> Tuple[dict, dict]:
@@ -167,6 +259,7 @@ class Benchmark:
             # output = self(config=query, nepochs=nepochs)
             # return {**query, **{"epoch": nepochs}}, output
         else:
+            # TODO
             raise NotImplementedError("Random sampling has been implemented only for "
                                       "the performance dataset.")
 
