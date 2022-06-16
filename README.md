@@ -30,7 +30,7 @@ python -m jahs_bench_examples.minimal
 This should randomly sample a configuration, and display both the sampled configuration and the result of querying the
 surrogate for that configuration.
 
-## Using the benchmark
+## Using the Benchmark
 
 ```python
 # Download the trained surrogate model
@@ -47,7 +47,7 @@ print(f"Result: {results}")  # A dict
 
 ```
 
-### More API options
+### More API Options
 
 The API of our benchmark enables users to either query a surrogate model or the tables of performance data, or train a
 configuration from our search space from scratch using the same pipeline as was used by our benchmark.
@@ -55,7 +55,7 @@ However, users should note that the latter functionality requires the installati
 optional `data_creation` component and its relevant dependencies. The relevant data can be automatically downloaded by
 our API. See our [documentation](https://automl.github.io/jahs_bench_201/usage) for details.
 
-## Benchmark data
+## Benchmark Data
 
 We provide [documentation for the performance dataset](https://automl.github.io/jahs_bench_201/performance_dataset) used to train our surrogate models and [further information on our surrogate models](https://automl.github.io/jahs_bench_201/surrogate).
 
