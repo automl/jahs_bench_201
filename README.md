@@ -33,10 +33,9 @@ surrogate for that configuration.
 ## Using the Benchmark
 
 ```python
-# Download the trained surrogate model
 import jahs_bench
 
-benchmark = jahs_bench.Benchmark(task="cifar10", kind="surrogate", download=True)
+benchmark = jahs_bench.Benchmark(task="cifar10", download=True)
 
 # Query a random configuration
 config, results = benchmark.random_sample()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from enum import Enum, unique, auto
 from pathlib import Path
@@ -44,9 +46,9 @@ class Benchmark:
     _surrogates = None
     _table = None
 
-    def __init__(self, task: Union[str, BenchmarkTasks],
-                 kind: Union[str, BenchmarkTypes] = BenchmarkTypes.Surrogate,
-                 download: bool = True, save_dir: Optional[Union[str, Path]] = None):
+    def __init__(self, task: str | BenchmarkTasks,
+                 kind: str |  BenchmarkTypes = BenchmarkTypes.Surrogate,
+                 download: bool = True, save_dir: Union[str, Path] = "jahs_bench_data"):
         """ Load up the benchmark for querying. """
 
         if isinstance(task, str):
@@ -140,7 +142,7 @@ class Benchmark:
 
     def __call__(self, config: dict, nepochs: Optional[int] = 200,
                  full_trajectory: bool = False, **kwargs):
-        return self._call_fn(config=config, nepochs=nepochs, 
+        return self._call_fn(config=config, nepochs=nepochs,
                              full_trajectory=full_trajectory, **kwargs)
 
     def _benchmark_surrogate(self, config: dict, nepochs: Optional[int] = 200,
