@@ -3,9 +3,7 @@
 The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search, built to support and
 facilitate research on multi-objective, cost-aware and (multi) multi-fidelity optimization algorithms.
 
-Also check [here](https://automl.github.io/jahs_bench_201/) for more detailed documentation, including how to reproduce
-the results from our paper.
-
+Please see our [documentation here](https://automl.github.io/jahs_bench_201/).
 
 ![Python versions](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10-informational)
 [CC BY 4.0 License](https://creativecommons.org/licenses/by/4.0/legalcode)
@@ -100,3 +98,7 @@ print(trajectory)  # A list of dicts
 Instructions for downloading the performance dataset used to train our surrogate models can be found [TODO]()
 
 Instructions for downloading our trained surrogate models can be found [TODO]().
+
+## Experiments and Evaluation Protocol
+
+See [our experiments repository](https://github.com/automl/jahs_bench_201_experiments) and our [documentation](https://automl.github.io/jahs_bench_201/)

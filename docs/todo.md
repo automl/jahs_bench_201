@@ -6,16 +6,13 @@ Archit:
 
 
 Danny
-* `python -m jahs_bench_201.download_surrogates` and `download=True` as default (danny)
-* write leaderboards text
 * Placeholders Documentation
 * https://github.com/automl/jahs_bench_201_experiments mention
 * Go over README
 * Experiments repo fill
 
 Maciej
-* We provide code to use JAHS-Bench-201 and follow our evaluation protocols (latter Maciej)
-* leaderboard entry (Maciej)
+* We provide code to follow our evaluation protocols
 
 Open
 * Documentation at https://automl.github.io/jahs_bench_201/
