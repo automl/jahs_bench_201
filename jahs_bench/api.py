@@ -92,7 +92,6 @@ class Benchmark:
         assert self.surrogate_dir.exists() and self.surrogate_dir.is_dir()
 
         model_path = self.surrogate_dir / self.task.value
-
         outputs = [p.name for p in model_path.iterdir() if p.is_dir()]
 
         self._surrogates = {}
@@ -109,39 +108,33 @@ class Benchmark:
         table = pd.concat(tables, axis=0)
         del tables
 
-        level_0_cols = ["features", "labels"]
+        # level_0_cols = ["features", "labels"]
         features: list = joint_config_space.get_hyperparameter_names() + ["epoch"]
 
         if table["features"].columns.intersection(features).size != len(features):
             raise ValueError(f"The given performance datasets at {table_path} could not "
                              f"be resolved against the known search space consisting of "
                              f"the parameters {features}")
-        features = table["features"].columns
-        labels: pd.Index = table["labels"].columns
 
-        if outputs is not None:
-            # Attempt to convert the sequence of outputs into a list
-            outputs = list(outputs) if not isinstance(outputs, list) \
-                else [outputs] if isinstance(outputs, str) else outputs
-
-            if labels.intersection(outputs).size != len(outputs):
-                raise ValueError(f"The set of outputs specified for the performance "
-                                 f"dataset {outputs} must be a subset of all available "
-                                 f"outputs: {labels.tolist()}.")
-
-            # Drop all unnecessary outputs
-            table.drop([("labels", l) for l in labels.difference(outputs)], axis=1,
-                       inplace=True)
-
-        # TODO: Deal with the issue of the index being possibly non-unique, since there
-        #  are no guarantees that a configuration wasn't sampled twice.
-        # Make the DataFrame indexable by configurations
-        # table.set_index(table[["features"]].columns.tolist(), inplace=True)
-        # table.index.names = features.tolist()
-        # table = table.droplevel(0, axis=1)
+        # features = table["features"].columns
+        # labels: pd.Index = table["labels"].columns
+        #
+        # if outputs is not None:
+        #     # Attempt to convert the sequence of outputs into a list
+        #     outputs = list(outputs) if not isinstance(outputs, list) \
+        #         else [outputs] if isinstance(outputs, str) else outputs
+        #
+        #     if labels.intersection(outputs).size != len(outputs):
+        #         raise ValueError(f"The set of outputs specified for the performance "
+        #                          f"dataset {outputs} must be a subset of all available "
+        #                          f"outputs: {labels.tolist()}.")
+        #
+        #     # Drop all unnecessary outputs
+        #     table.drop([("labels", l) for l in labels.difference(outputs)], axis=1,
+        #                inplace=True)
         self._table = table
         self._call_fn = self._benchmark_tabular
-    
+
     def _load_live(self):
         pass
 
@@ -155,9 +148,11 @@ class Benchmark:
 
         if full_trajectory:
             features = pd.DataFrame([config] * nepochs)
-            features = features.assign(epoch=list(range(1, nepochs+1)))
+            epochs = list(range(1, nepochs+1))
+            features = features.assign(epoch=epochs)
         else:
             features = pd.Series(config).to_frame().transpose()
+            epochs = [nepochs]
             features.loc[:, "epoch"] = nepochs
 
         outputs = {}
@@ -165,6 +160,7 @@ class Benchmark:
             outputs[o] = model.predict(features)
 
         outputs: pd.DataFrame = pd.concat(outputs, axis=1)
+        outputs.reindex(index=features.loc[:, "epoch"])
         return outputs.to_dict(orient="index")
 
     # TODO: Return only the first hit of a query when multiple instances of a config are
@@ -172,12 +168,20 @@ class Benchmark:
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
                            full_trajectory: bool = False,
                            suppress_keyerror: bool = False) -> dict:
-        raise NotImplementedError("The functionality for directly querying the tabular "
-                                  "performance dataset is still under construction.")
         assert self._table is not None, "No performance dataset has been loaded into " \
                                         "memory - a tabular query cannot be made."
         query = config.copy()
         query["epoch"] = nepochs
+
+        check = self.table.features.columns.difference(query.keys())
+        if check.size != 0:
+            raise ValueError(f"The given query has missing parameters: {check.tolist()}")
+
+        query_tuple = (query[k] for k in self.table.features.columns)
+        x = self._table
+        for v in query.items():
+            x = x.xs()
+
         query = tuple((query[k] for k in self._table.index.names))
         try:
             output = self._table.loc[query].to_dict(orient="index")
