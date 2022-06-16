@@ -18,18 +18,15 @@ Using pip
 pip install jahs_bench
 ```
 
-Optionally, you can download the data required to use the surrogate benchmark with
-
+Optionally, you can download the data required to use the surrogate benchmark ahead of time with
 ```bash
 python -m jahs_bench.download --target surrogates
 ```
 
 To test if the installation was successful, you can, e.g, run a minimal example with
-
 ```bash
 python -m jahs_bench_examples.minimal
 ```
-
 This should randomly sample a configuration, and display both the sampled configuration and the result of querying the
 surrogate for that configuration.
 
@@ -45,7 +42,7 @@ our API.
 
 ```python
 # Download the trained surrogate model
-from jahs_bench.api import Benchmark
+from jahs_bench import Benchmark
 
 b = Benchmark(task="cifar10", kind="surrogate", download=True)
 
@@ -62,7 +59,7 @@ print(f"Result: {results}")  # A dict
 
 ```python
 # Download the performance dataset
-from jahs_bench.api import Benchmark
+from jahs_bench import Benchmark
 
 b = Benchmark(task="cifar10", kind="table", download=True)
 
@@ -79,7 +76,7 @@ print(f"Result: {results}")  # A dict
 
 ```python
 # Initialize the pipeline
-from jahs_bench.api import Benchmark
+from jahs_bench import Benchmark
 
 b = Benchmark(task="cifar10", kind="live")
 
