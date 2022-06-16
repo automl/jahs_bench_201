@@ -8,6 +8,10 @@ theme:
   icon:
     repo: fontawesome/brands/github
 
+nav:
+  - Introduction: "README.md"
+  - Analysis of Performance Dataset: "performance_dataset.md"
+  - Creation of Surrogate Benchmarks: "surrogate.md"
 
 # extra:
 #  version:
