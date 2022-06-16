@@ -26,9 +26,9 @@ _log.setLevel(logging.WARNING)
 
 @unique
 class BenchmarkTypes(Enum):
-    Surrogate = auto()
-    Tabular = auto()
-    Live = auto()
+    Surrogate = "surrogate"
+    Table = "table"
+    Live = "live"
 
 
 @unique
@@ -43,43 +43,35 @@ class Benchmark:
     _surrogates = None
     _table = None
 
-    # TODO: Update this. New signature --
-    #  def __init__(self, task: Union[str, BenchmarkTasks], kind: BenchmarkTypes,
-    #  download: bool = True, save_dir: Optional[Path-like] = None,
-    #  outputs: Optional[Sequence[str]] = None):
-    def __init__(self, model_path: Optional[Union[str, Path]] = None,
-                 table_path: Optional[Union[str, Path]] = None,
-                 outputs: Optional[Sequence[str]] = None):
-        """
-        Load up the benchmark for querying. Currently, only the surrogate benchmark is
-        supported.
-        :param model_path: str or Path-like
-            The path to a directory where a pre-trained surrogate model or set of models
-            is/are stored.
-        :param model_path: str or Path-like
-            The path to a file where the performance dataset of the benchmark is stored.
-        :param outputs: List of str or None
-            A separate model is used to predict each performance metric. Thus, when
-            multiple metrics need to be queried, all corresponding models should be
-            loaded up. When this is None, all available models are loaded (default).
-            Otherwise, a list of strings can be provided to load the models for a subset
-            of all metrics.
-        """
+    def __init__(self, task: Union[str, BenchmarkTasks], kind: BenchmarkTypes,
+                 download: bool = True, save_dir: Optional[Path-like] = None):
+        """ Load up the benchmark for querying. """
 
-        if isinstance(model_path, str):
-            model_path = Path(model_path)
+        if isinstance(task, str):
+            try:
+                task = BenchmarkTasks(task.lower())
+            except ValueError as e:
+                valid = [x.value for x in BenchmarkTasks]
+                raise ValueError(f"Invalid/Unknown value of parameter 'task': '{task}'. "
+                                 f"Must be one of {valid}.") from e
 
-        if isinstance(table_path, str):
-            model_path = Path(model_path)
+        if isinstance(kind, str):
+            try:
+                kind = BenchmarkTypes(kind)
+            except ValueError as e:
+                valid = [x.value for x in BenchmarkTypes]
+                raise ValueError(f"Invalid/Unknown value of parameter 'kind': '{kind}'. "
+                                 f"Must be one of {valid}.") from e
 
-        if model_path is not None:
-            self._load_surrogate(model_path, outputs)
-        elif table_path is not None:
-            self._load_table(table_path, outputs)
-        else:
-            raise RuntimeError("A path to either a directory where a surrogate model "
-                               "or a file containing the performance dataset must be "
-                               "given.")
+
+        loaders = {
+            BenchmarkTypes.Surrogate: self._load_surrogate,
+            BenchmarkTypes.Table: self._load_table,
+            BenchmarkTypes.Live: self._load_live,
+        }
+
+        # Download the data and setup the benchmark
+        loaders[kind]()
 
     def _load_surrogate(self, model_path: Optional[Union[str, Path]] = None,
                         outputs: Optional[Sequence[str]] = None):
@@ -145,7 +137,8 @@ class Benchmark:
         outputs: pd.DataFrame = pd.concat(outputs, axis=1)
         return outputs.to_dict()
 
-    # TODO: Establish a convention for querying repeated configs.
+    # TODO: Return only the first hit of a query when multiple instances of a config are
+    #  present
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
                            suppress_keyerror: bool = False) -> dict:
         raise NotImplementedError("The functionality for directly querying the tabular "
@@ -229,7 +222,6 @@ class Benchmark:
 
         return latest.to_dict()
 
-
     def random_sample(self, random_state: Optional[\
                       Union[int, np.random.RandomState]] = None) -> Tuple[dict, dict]:
         """ Randomly query the benchmark for a configuration. If a tabular benchmark has
@@ -265,11 +257,6 @@ class Benchmark:
 
 
 if __name__ == "__main__":
-    conf = joint_config_space.sample_configuration().get_dictionary()
-    model_path = Path(__file__).parent.parent / "trained_surrogate_models" / \
-                 "thesis_cifar10"
-    #     model_path = model_path / Path("../surrogates/full_data").resolve()
-    print(f"Attempting to read surrogate model from: {model_path}")
-    b = Benchmark(model_path=model_path)
+    b = Benchmark(task="cifar10", )
     res = b(config=conf, nepochs=200)
     print(res)

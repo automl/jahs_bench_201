@@ -16,6 +16,17 @@ Using pip
 pip install jahs_bench_201
 ```
 
+### Verify Installation
+
+This is a minimum working example to test if the installation was successful:
+
+```
+cd jahs_bench_mf
+python JAHS-Bench-MF/jahs_bench/public_api.py
+```
+
+This should randomly sample a configuration and display the result of querying the surrogate for that configuration.
+
 ## Data
 
 The trained surrogate models can be downloaded either automatically using our API or from ...
@@ -23,25 +34,19 @@ The trained surrogate models can be downloaded either automatically using our AP
 The performance dataset and the train/valid/test splits used to train our surrogate models can be downloaded either
 through our API or from ...
 
-Currently, we share all our data in the form of Pandas DataFrames, stored as compressed pickle files using pickle
-protocol 4. Even though Pandas DataFrames are very efficient for handling large amounts of data, this is still a
-transitory solution as we work towards setting up a more robust solution using [Figshare+](https://figshare.com/),
-which provides perpetual data storage, a DOI and a web API for querying the dataset as well as the metadata.
-Additionally, we are aware of the inherent isssues with sharing pickle files and therefore are investigating the most
-appropriate data format. Current candidates include CSV, HDF5 and Feather.
+Currently, we share all our data in the form of Pandas DataFrames which are very efficient for handling large tables of
+data, stored as compressed pickle files using pickle protocol 4. The current hosting solution is a transitory one as we
+work towards setting up a more robust solution using [Figshare+](https://figshare.com/), which provides perpetual data
+storage guarantees, a DOI and a web API for querying the dataset as well as the metadata. Additionally, we are aware of
+the inherent isssues with sharing pickle files and therefore are investigating the most appropriate data format.
+Current candidates include CSV, HDF5 and Feather.
 
 ## Usage
 
-### Verify Installation
-
-Here is a minimum working example to test whether or not the installation succeeded:
-
-```
-cd jahs_bench_mf
-python JAHS-Bench-MF/jahs_bench/public_api.py
-```
-
-This should randomly sample a configuration and display the result of querying for that configuration on the surrogate.
+The API of our benchmark enables users to either query a surrogate model or the tables of performance data, or train a
+configuration from our search space from scratch using the same pipeline as was used by our benchmark.
+However, users should note that the latter functionality requires the installation of `jahs_bench_201` with the
+optional `data_creation` component and its relevant dependencies.
 
 ### Querying the surrogate
 
@@ -63,15 +68,22 @@ print(res)
 
 ```
 
-## Contributing
+### Random queries
 
-Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTRIBUTING.md).
+Users may conveniently switch between querying the surrogate or the data table using the flag ...
 
+For the performance dataset table, it may be more meaningful to sample a random configuration from the table than to
+query a user-defined configuration. This can be done by ...
+
+### Advanced usage
+
+JAHS-Bench-201 supports bulk queries on the surrogate and table.
 
 ## TODO
 
 Archit:
 * `pip install neural-pipeline-search` for HPO of surrogate (Archit)
+* Reference section of Readme/Documentation explaining how to install optional components in the section "Usage"
 
 
 Danny
@@ -90,7 +102,7 @@ Open
 * Documentation at https://automl.github.io/jahs_bench_201/
 * Make public
 * Put on pypi
-* Fix: The 'automl/jahs_bench_201' repository doesn't contain the 'TODO' path in 'main'. 
+* Fix: The 'automl/jahs_bench_201' repository doesn't contain the 'TODO' path in 'main'.
 
 
 From appendix copied:
