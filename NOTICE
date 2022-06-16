@@ -1,1 +1,13 @@
-TODO: Do we need to give any notices for any licenses we use?
+The following is a list of the external assets that were used in our work and their corresponding license:
+
+NAS-Bench-201: MIT License, for details visit https://mit-license.org/
+
+CIFAR-10: No explicit license for the dataset found
+
+Colorectal-Histology: CC BY License, for details visit https://creativecommons.org/licenses/by/4.0/legalcode
+
+Fashion-MNIST: MIT License, for details visit https://mit-license.org/
+
+NASLib: Apache 2.0 License, for details visit http://www.apache.org/licenses/
+
+ICGen: MIT License, for details visit https://mit-license.org/

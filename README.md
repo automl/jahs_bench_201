@@ -71,10 +71,6 @@ Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTR
 ## TODO
 
 Archit:
-* share data with others (Archit) and say we upload to figshare lifetime support later, plan/left-todo, refer to figshare for the future)
-* reorder code (Archit)
-* Move JAHS-Bench-MF to exp repo (Archit)
-* Add dataset licenses to NOTICE (Archit)
 * `pip install neural-pipeline-search` for HPO of surrogate (Archit)
 
 
