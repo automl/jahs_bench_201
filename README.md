@@ -59,26 +59,60 @@ b = Benchmark(task="cifar10", kind="surrogate", download=True)
 config, results = b.random_sample()
 
 # Display the outputs
-print(f"Config: {config}")
-print(f"Result: {result}")
+print(f"Config: {config}")  # A dict
+print(f"Result: {results}")  # A dict
 
 ```
 
-### Random queries
+### Querying the performance tables
 
-Users may conveniently switch between querying the surrogate or the data table using the flag ...
+```python
+# Download the performance dataset
+from jahs_bench_201.api import Benchmark
+b = Benchmark(task="cifar10", kind="table", download=True)
 
-For the performance dataset table, it may be more meaningful to sample a random configuration from the table than to
-query a user-defined configuration. This can be done by ...
+# Query a random configuration
+config, results = b.random_sample()
 
-### Advanced usage
+# Display the outputs
+print(f"Config: {config}")  # A dict
+print(f"Result: {results}")  # A dict
 
-JAHS-Bench-201 supports bulk queries on the surrogate and table.
+```
 
+### Live training a random configuration from scratch
+
+```python
+# Initialize the pipeline
+from jahs_bench_201.api import Benchmark
+b = Benchmark(task="cifar10", kind="live")
+
+# Query a random configuration
+config, results = b.random_sample()
+
+# Display the outputs
+print(f"Config: {config}")  # A dict
+print(f"Result: {results}")  # Only the final epochs' results
+
+```
+
+### Querying the full trajectories
+
+Optionally, the full trajectory of query can be queried by flipping a single flag
+
+```python
+config, trajectory = b.random_sample(full_trajectory=True)
+
+print(trajectory)  # A list of dicts
+```
+
+## Further documentation
+
+More detailed documentation can be found **TODO**
 ## TODO
 
 Archit:
-* `pip install neural-pipeline-search` for HPO of surrogate (Archit)
+* `pip install neural-pipeline-search` for HPO of surrogate (Archit) -- include in documentation
 * Reference section of Readme/Documentation explaining how to install optional components in the section "Usage"
 
 

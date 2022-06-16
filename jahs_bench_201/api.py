@@ -124,10 +124,12 @@ class Benchmark:
         self._table = table
         self._call_fn = self._benchmark_tabular
 
-    def __call__(self, config: dict, nepochs: Optional[int] = 200, **kwargs):
+    def __call__(self, config: dict, nepochs: Optional[int] = 200,
+                 full_trajectory: bool = False, **kwargs):
         return self._call_fn(config=config, nepochs=nepochs)
 
-    def _benchmark_surrogate(self, config: dict, nepochs: Optional[int] = 200) -> dict:
+    def _benchmark_surrogate(self, config: dict, nepochs: Optional[int] = 200,
+                             full_trajectory: bool = False,) -> dict:
         features = pd.Series(config).to_frame().transpose()
         features.loc[:, "epoch"] = nepochs
 
@@ -141,6 +143,7 @@ class Benchmark:
     # TODO: Return only the first hit of a query when multiple instances of a config are
     #  present
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
+                           full_trajectory: bool = False,
                            suppress_keyerror: bool = False) -> dict:
         raise NotImplementedError("The functionality for directly querying the tabular "
                                   "performance dataset is still under construction.")
@@ -170,6 +173,7 @@ class Benchmark:
                         # use_splits: Optional[bool] = True,
                         train_config: Optional[dict] = None,
                         worker_dir: Optional[Path] = None, clean_tmp_files : bool = True,
+                        full_trajectory: bool = False,
                         **kwargs) -> dict:
         """
         Simple wrapper around the base benchmark data generation capabilities offered by
@@ -223,8 +227,9 @@ class Benchmark:
 
         return latest.to_dict()
 
-    def random_sample(self, random_state: Optional[\
-                      Union[int, np.random.RandomState]] = None) -> Tuple[dict, dict]:
+    def random_sample(self,
+                      random_state: Optional[Union[int, np.random.RandomState]] = None,
+                      **kwargs) -> Tuple[dict, dict]:
         """ Randomly query the benchmark for a configuration. If a tabular benchmark has
         been loaded, a sample from the set of known configurations is queried. Otherwise,
         a random configuration is sampled from the search space and queried on the
@@ -253,7 +258,7 @@ class Benchmark:
             joint_config_space.random = random_state
             config = joint_config_space.sample_configuration().get_dictionary()
             nepochs = random_state.randint(1, 200)
-            result = self(config=config, nepochs=nepochs)
+            result = self(config=config, nepochs=nepochs, **kwargs)
             config["epoch"] = nepochs
 
         return config, result
