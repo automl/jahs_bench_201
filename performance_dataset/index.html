@@ -400,8 +400,8 @@ Feather.</p>
 download our DataFrames using file transfer software, such as <code>wget</code>, from our archive
 <a href="https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/data/aadsqldb/jahs_bench_201/v1.0.0/metric_data">here</a></p>
 <p>For example, to download the full raw metrics data for CIFAR-10, run</p>
-<pre><code class="language-bash">wget ...
-</code></pre>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>wget ...
+</code></pre></div>
 <h2 id="archive-structure">Archive Structure</h2>
 <p>For each of the three tasks, "cifar10", "colorectal_histology" and "fashion_mnist", the name of the task should be
 appended to the above archive link, as "...metric_data/cifar10", in order to access the sub-directory of that dataset.
@@ -414,11 +414,11 @@ during HPO.
 * "test_set.pkl.gz": This is the actual testing data used for generating the final performance scores of our surrogates
 reported in the paper.</p>
 <p>For each of these files, users can directly load them into memory as pandas DataFrames, as:</p>
-<pre><code class="language-python">import pandas as pd
-pth = &quot;&quot;  # Full path to a downloaded file, ending in &quot;.pkl.gz&quot;
-df = pd.read_pickle(pth)
-df.head(5)
-</code></pre>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">pth</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>  <span class="c1"># Full path to a downloaded file, ending in &quot;.pkl.gz&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">pth</span><span class="p">)</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+</code></pre></div>
 <p>The above code snippet, when filled in with a local path to the downloaded tarball, will display the first five rows in
 that table.</p>
 
