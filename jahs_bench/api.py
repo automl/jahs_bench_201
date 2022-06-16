@@ -161,7 +161,8 @@ class Benchmark:
             outputs.append(model.predict(features))
 
         outputs: pd.DataFrame = pd.concat(outputs, axis=1)
-        outputs = outputs.reindex(index=epochs)
+        # outputs = outputs.reindex(index=epochs)
+        outputs.index = epochs
         return outputs.to_dict(orient="index")
 
     # TODO: Return only the first hit of a query when multiple instances of a config are
