@@ -10,8 +10,11 @@ theme:
 
 nav:
   - Introduction: "README.md"
+  - Downloading the Performance Dataset: "download_dataset.md"
+  - Downloading the Surrogate Models: "download_surrogates.md"
   - Analysis of Performance Dataset: "performance_dataset.md"
   - Creation of Surrogate Benchmarks: "surrogate.md"
+  - TODOs: "todo.md"
 
 # extra:
 #  version:
