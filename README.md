@@ -18,13 +18,19 @@ Using pip
 pip install jahs_bench
 ```
 
+Optionally, you can download the data required to use the surrogate benchmark with
+
+```bash
+python -m jahs_bench.download --target surrogates
+```
+
 To test if the installation was successful, you can, e.g, run a minimal example with
 
 ```bash
-python -m jahs_bench_examples.mwe
+python -m jahs_bench_examples.minimal
 ```
 
-This should download the required data, randomly sample a configuration, and display both the sampled configuration and the result of querying the
+This should randomly sample a configuration, and display both the sampled configuration and the result of querying the
 surrogate for that configuration.
 
 ## Using the benchmark
