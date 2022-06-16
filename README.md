@@ -32,14 +32,6 @@ surrogate for that configuration.
 
 ## Using the benchmark
 
-The API of our benchmark enables users to either query a surrogate model or the tables of performance data, or train a
-configuration from our search space from scratch using the same pipeline as was used by our benchmark.
-However, users should note that the latter functionality requires the installation of `jahs_bench_201` with the
-optional `data_creation` component and its relevant dependencies. The relevant data can be automatically downloaded by
-our API.
-
-### Querying the surrogate
-
 ```python
 # Download the trained surrogate model
 import jahs_bench
@@ -55,53 +47,17 @@ print(f"Result: {results}")  # A dict
 
 ```
 
-### Querying the performance tables
+### More API options
 
-```python
-# Download the performance dataset
-import jahs_bench
-
-benchmark = jahs_bench.Benchmark(task="cifar10", kind="table", download=True)
-
-# Query a random configuration
-config, results = benchmark.random_sample()
-
-# Display the outputs
-print(f"Config: {config}")  # A dict
-print(f"Result: {results}")  # A dict
-
-```
-
-### Live training a random configuration from scratch
-
-```python
-# Initialize the pipeline
-import jahs_bench
-
-benchmark = jahs_bench.Benchmark(task="cifar10", kind="live")
-
-# Query a random configuration
-config, results = benchmark.random_sample()
-
-# Display the outputs
-print(f"Config: {config}")  # A dict
-print(f"Result: {results}")  # Only the final epochs' results
-
-```
-
-### Querying the full trajectories
-
-Optionally, the full trajectory of query can be queried by flipping a single flag
-
-```python
-config, trajectory = benchmark.random_sample(full_trajectory=True)
-
-print(trajectory)  # A list of dicts
-```
+The API of our benchmark enables users to either query a surrogate model or the tables of performance data, or train a
+configuration from our search space from scratch using the same pipeline as was used by our benchmark.
+However, users should note that the latter functionality requires the installation of `jahs_bench_201` with the
+optional `data_creation` component and its relevant dependencies. The relevant data can be automatically downloaded by
+our API. See our [documentation](https://automl.github.io/jahs_bench_201/usage) for details.
 
 ## Benchmark data
 
-We provide [documentation for the performance dataset](https://automl.github.io/jahs_bench_201/download_dataset) used to train our surrogate models and [further information on our surrogate models](https://automl.github.io/jahs_bench_201/download_surrogate).
+We provide [documentation for the performance dataset](https://automl.github.io/jahs_bench_201/performance_dataset) used to train our surrogate models and [further information on our surrogate models](https://automl.github.io/jahs_bench_201/surrogate).
 
 
 ## Experiments and Evaluation Protocol

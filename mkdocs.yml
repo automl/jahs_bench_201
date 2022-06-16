@@ -1,7 +1,7 @@
 site_name: JAHS-Bench-201 Documentation
 docs_dir: docs
-repo_url: https://github.com/automl/jahs_bench
-repo_name: automl/jahs_bench
+repo_url: https://github.com/automl/jahs_bench_201
+repo_name: automl/jahs_bench_201
 edit_uri: ""
 theme:
   name: material
@@ -9,14 +9,12 @@ theme:
     repo: fontawesome/brands/github
 
 nav:
-  - Introduction: "README.md"
+  - Introduction and Installation: "README.md"
   - Using the Benchmark: "usage.md"
-  - Downloading the Performance Dataset: "download_dataset.md"
-  - Downloading the Surrogate Models: "download_surrogate.md"
   - Evaluation Protocol: "evaluation_protocol.md"
   - Leaderboards: "leaderboards.md"
-  - Analysis of Performance Dataset: "performance_dataset.md"
-  - Creation of Surrogate Benchmarks: "surrogate.md"
+  - Details on Performance Dataset: "performance_dataset.md"
+  - Details on Surrogate Models: "surrogate.md"
 
 # extra:
 #  version:

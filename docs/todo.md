@@ -10,9 +10,6 @@ Danny
 * Go over README
 * Experiments repo fill
 
-Maciej
-* We provide code to follow our evaluation protocols
-
 Open
 * Put on pypi
 * Fix: The 'automl/jahs_bench_201' repository doesn't contain the 'TODO' path in 'main'.
