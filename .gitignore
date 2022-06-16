@@ -6,6 +6,9 @@
 *.log
 *.json
 
+# Data
+jahs_bench_201_data
+
 # Model files
 *.pth
 
