@@ -11,21 +11,21 @@ TODO explain and how to add (pull request)
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 90.68 $\pm$ 0.49 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 90.68 $\pm$ 0.16 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 94.76 $\pm$ 0.23 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 94.76 $\pm$ 0.08 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 95.09 $\pm$ 0.15 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 95.09 $\pm$ 0.05 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 ### Cost-aware 
@@ -34,21 +34,21 @@ TODO explain and how to add (pull request)
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 90.68 $\pm$ 0.49 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 90.68 $\pm$ 0.16 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 94.76 $\pm$ 0.23 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 94.76 $\pm$ 0.08 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 95.09 $\pm$ 0.15 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 95.09 $\pm$ 0.05 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 ### Multi-fidelity 
@@ -57,21 +57,21 @@ TODO explain and how to add (pull request)
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 90.78 $\pm$ 0.43 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 90.78 $\pm$ 0.14 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 95.27 $\pm$ 0.11 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 95.27 $\pm$ 0.04 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 95.13 $\pm$ 0.1 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 95.13 $\pm$ 0.03 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 ### Multi multi-fidelity 
@@ -80,21 +80,21 @@ TODO explain and how to add (pull request)
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 90.9 $\pm$ 0.43 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 90.9 $\pm$ 0.14 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 94.91 $\pm$ 0.21 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 94.91 $\pm$ 0.07 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Accuracy $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 95.18 $\pm$ 0.06 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 95.18 $\pm$ 0.02 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 ## Multi Objective 
@@ -105,21 +105,21 @@ TODO explain and how to add (pull request)
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 1171.15 $\pm$ 6.81 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 1171.15 $\pm$ 2.27 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 278.6 $\pm$ 6.7 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 278.6 $\pm$ 2.23 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 231.88 $\pm$ 11.59 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 231.88 $\pm$ 3.86 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 ### Cost-aware 
@@ -128,21 +128,21 @@ TODO explain and how to add (pull request)
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 1171.15 $\pm$ 6.81 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 1171.15 $\pm$ 2.27 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 278.6 $\pm$ 6.7 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 278.6 $\pm$ 2.23 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 231.88 $\pm$ 11.59 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 231.88 $\pm$ 3.86 | random search | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 ### Multi-fidelity 
@@ -151,21 +151,21 @@ TODO explain and how to add (pull request)
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 1080.26 $\pm$ 4.08 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 1080.26 $\pm$ 1.36 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 347.52 $\pm$ 5.89 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 347.52 $\pm$ 1.96 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 277.52 $\pm$ 3.22 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 277.52 $\pm$ 1.07 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 ### Multi multi-fidelity 
@@ -174,19 +174,18 @@ TODO explain and how to add (pull request)
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 899.92 $\pm$ 4.61 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 899.92 $\pm$ 1.54 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Colorectal-Histology 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 330.76 $\pm$ 0.65 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
+| 1 | 330.76 $\pm$ 0.22 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
  
  
 #### Fashion-MNIST 
  
 | Rank | Hypervolume $\pm$ SE | Name | URL | 
 | ---- | ----- | ---- | ---- | 
-| 1 | 306.36 $\pm$ 0.56 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
- 
+| 1 | 306.36 $\pm$ 0.19 | Hyperband | [JAHS-Bench-201](https://github.com/automl/jahs_bench_201_experiments) | 
