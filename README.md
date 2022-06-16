@@ -20,7 +20,7 @@ This is a minimum working example to test if the installation was successful:
 
 ```
 cd jahs_bench_201
-python jahs_bench_201/public_api.py
+python jahs_bench_201/api.py
 ```
 
 This should randomly sample a configuration and display the result of querying the surrogate for that configuration.
