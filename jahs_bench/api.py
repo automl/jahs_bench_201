@@ -298,6 +298,19 @@ class Benchmark:
 
         return config, result
 
+    def sample_config(self,
+                      random_state: Optional[Union[int, np.random.RandomState]] = None,
+                      ) -> dict:
+
+        if not isinstance(random_state, np.random.RandomState):
+            random_state = np.random.RandomState(random_state)
+
+        joint_config_space.random = random_state
+        config = joint_config_space.sample_configuration().get_dictionary()
+        nepochs = random_state.randint(1, 200)
+        config['epochs'] = nepochs
+        return config
+
 
 if __name__ == "__main__":
     b = Benchmark(task="cifar10", kind="surrogate")

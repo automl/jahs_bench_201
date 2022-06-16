@@ -1,6 +1,6 @@
 # JAHS-Bench-201
 
-The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search, built to support and
+The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search (JAHS), built to support and
 facilitate research on multi-objective, cost-aware and (multi) multi-fidelity optimization algorithms.
 
 
@@ -32,23 +32,53 @@ surrogate for that configuration.
 
 ## Using the Benchmark
 
+### Creating Configurations
+
+Configurations in our Joint Architecture and Hyperparameter (JAHS) space are represented as dictionaries, e.g.,:
+
+```python
+config = {
+    'Optimizer': 'SGD',
+    'LearningRate': 0.1,
+    'WeightDecay': 5e-05,
+    'Activation': 'Mish',
+    'TrivialAugment': False,
+    'Op1': 4,
+    'Op2': 1,
+    'Op3': 2,
+    'Op4': 0,
+    'Op5': 2,
+    'Op6': 1,
+    'N': 5,
+    'W': 16,
+    'epoch': 200,
+    'Resolution': 1.0,
+}
+```
+
+For a full description on the search space and configurations see our [documentation](https://automl.github.io/jahs_bench_201/search_space).
+
+
+### Evaluating Configurations
+
 ```python
 import jahs_bench
 
 benchmark = jahs_bench.Benchmark(task="cifar10", download=True)
 
 # Query a random configuration
-config, results = benchmark.random_sample()
+config = benchmark.sample_config()
+results = benchmark(config)
 
 # Display the outputs
 print(f"Config: {config}")  # A dict
 print(f"Result: {results}")  # A dict
-
 ```
 
-### More API Options
 
-The API of our benchmark enables users to either query a surrogate model or the tables of performance data, or train a
+### More Evaluation Options
+
+The API of our benchmark enables users to either query a surrogate model (the default) or the tables of performance data, or train a
 configuration from our search space from scratch using the same pipeline as was used by our benchmark.
 However, users should note that the latter functionality requires the installation of `jahs_bench_201` with the
 optional `data_creation` component and its relevant dependencies. The relevant data can be automatically downloaded by

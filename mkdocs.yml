@@ -18,7 +18,8 @@ markdown_extensions:
 
 nav:
   - Introduction and Installation: "README.md"
-  - Using the Benchmark: "usage.md"
+  - Search Space: "search_space.md"
+  - Querying the Benchmark: "usage.md"
   - Evaluation Protocol: "evaluation_protocol.md"
   - Leaderboards: "leaderboards.md"
   - Details on Performance Dataset: "performance_dataset.md"
