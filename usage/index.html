@@ -13,7 +13,7 @@
     
     
       
-        <title>Downloading the Surrogate Models - JAHS-Bench-201 Documentation</title>
+        <title>Using the Benchmark - JAHS-Bench-201 Documentation</title>
       
     
     
@@ -59,11 +59,6 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
-        
-        <a href="#downloading-the-surrogate-models" class="md-skip">
-          Skip to content
-        </a>
-      
     </div>
     <div data-md-component="announce">
       
@@ -93,7 +88,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Downloading the Surrogate Models
+              Using the Benchmark
             
           </span>
         </div>
@@ -216,11 +211,19 @@
 
   
   
+    
   
-    <li class="md-nav__item">
-      <a href="../usage/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+      
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         Using the Benchmark
       </a>
+      
     </li>
   
 
@@ -246,52 +249,11 @@
 
   
   
-    
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          Downloading the Surrogate Models
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../download_surrogate/" class="md-nav__link">
         Downloading the Surrogate Models
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#archive-structure" class="md-nav__link">
-    Archive Structure
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -358,23 +320,6 @@
   
   
   
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#archive-structure" class="md-nav__link">
-    Archive Structure
-  </a>
-  
-</li>
-      
-    </ul>
   
 </nav>
                   </div>
@@ -388,32 +333,9 @@
                 
 
 
-<h1 id="downloading-the-surrogate-models">Downloading the Surrogate Models</h1>
-<p>The current hosting solution is a transitory one as we work towards setting up a more robust solution using
-<a href="https://figshare.com/">Figshare+</a>, which provides perpetual data storage guarantees, a DOI and a web API for
-querying the dataset as well as the metadata.</p>
-<p>We share our trained models as g-zipped tarballs that are readable using our code base.</p>
-<p>The most convenient method for downloading our datasets is through our API. Nevertheless, interested users may directly
-download our DataFrames using file transfer software, such as <code>wget</code>, from our archive
-<a href="https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/data/aadsqldb/jahs_bench_201/v1.0.0/assembled_surrogates">here</a></p>
-<p>For example, to download the full set of surrogates for CIFAR-10, run</p>
-<pre><code class="language-bash">wget ...
-</code></pre>
-<h2 id="archive-structure">Archive Structure</h2>
-<p>For each of the three tasks, "cifar10", "colorectal_histology" and "fashion_mnist", the name of the task should be
-appended to the above archive link, as "...metric_data/cifar10", in order to access the sub-directory of that dataset.
-Following this, users can either recursively download the entire directory tree rooted at that sub-directory and pass
-it to our top-level API in order to load all the models for a particular task or downloaded individual sub-directories
-and use the more granular API to load surrogates for individual metrics. Each sub-sub-directory is named after the
-particular metric the model contained within was trained to predict and contains a number of tarballs that contain the
-relevant data needed to load a trained model into memory.</p>
-<p>The downloaded models can be individually loaded into memory as:</p>
-<pre><code class="language-python">from jahs_bench_201.surrogate.model import XGBSurrogate
-pth = &quot;&quot;  # Full path to a model directory (e.g. &quot;../cifar10/latency&quot;)
-model = XGBSurrogate.load()
-</code></pre>
-<p>The above code snippet, when filled in with a local path to the downloaded tarball, will display the first five rows in
-that table.</p>
+  <h1>Using the Benchmark</h1>
+
+
 
               
             </article>
@@ -429,7 +351,7 @@ that table.</p>
     <nav class="md-footer__inner md-grid" aria-label="Footer" >
       
         
-        <a href="../download_dataset/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Downloading the Performance Dataset" rel="prev">
+        <a href=".." class="md-footer__link md-footer__link--prev" aria-label="Previous: Introduction" rel="prev">
           <div class="md-footer__button md-icon">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
           </div>
@@ -438,20 +360,20 @@ that table.</p>
               <span class="md-footer__direction">
                 Previous
               </span>
-              Downloading the Performance Dataset
+              Introduction
             </div>
           </div>
         </a>
       
       
         
-        <a href="../evaluation_protocol/" class="md-footer__link md-footer__link--next" aria-label="Next: Evaluation Protocol" rel="next">
+        <a href="../download_dataset/" class="md-footer__link md-footer__link--next" aria-label="Next: Downloading the Performance Dataset" rel="next">
           <div class="md-footer__title">
             <div class="md-ellipsis">
               <span class="md-footer__direction">
                 Next
               </span>
-              Evaluation Protocol
+              Downloading the Performance Dataset
             </div>
           </div>
           <div class="md-footer__button md-icon">

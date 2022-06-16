@@ -212,10 +212,70 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          Introduction
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="." class="md-nav__link md-nav__link--active">
         Introduction
       </a>
       
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verify-installation" class="md-nav__link">
+    Verify Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    Usage
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="usage/" class="md-nav__link">
+        Using the Benchmark
+      </a>
     </li>
   
 
@@ -315,6 +375,35 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verify-installation" class="md-nav__link">
+    Verify Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    Usage
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -328,7 +417,19 @@
 
 
 <h1 id="introduction">Introduction</h1>
-<p>TODO</p>
+<p>JAHS-Bench-201 is the first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search, built to support and
+facilitate research on multi-objective, cost-aware and (multi) multi-fidelity optimization algorithms.</p>
+<h2 id="installation">Installation</h2>
+<p>Using pip</p>
+<pre><code class="language-bash">pip install jahs_bench_201
+</code></pre>
+<h2 id="verify-installation">Verify Installation</h2>
+<p>This is a minimum working example to test if the installation was successful:</p>
+<pre><code class="language-bash">python -m jahs_bench_201_examples.mwe
+</code></pre>
+<p>This should randomly sample a configuration and display both the sampled configuration and the result of querying the
+surrogate for that configuration.</p>
+<h2 id="usage">Usage</h2>
 
               
             </article>
@@ -345,13 +446,13 @@
       
       
         
-        <a href="download_dataset/" class="md-footer__link md-footer__link--next" aria-label="Next: Downloading the Performance Dataset" rel="next">
+        <a href="usage/" class="md-footer__link md-footer__link--next" aria-label="Next: Using the Benchmark" rel="next">
           <div class="md-footer__title">
             <div class="md-ellipsis">
               <span class="md-footer__direction">
                 Next
               </span>
-              Downloading the Performance Dataset
+              Using the Benchmark
             </div>
           </div>
           <div class="md-footer__button md-icon">
