@@ -15,7 +15,7 @@ Please see our [documentation here](https://automl.github.io/jahs_bench_201/).
 Using pip
 
 ```bash
-pip install jahs_bench_201
+pip install jahs_bench
 ```
 
 ### Verify Installation
@@ -23,7 +23,7 @@ pip install jahs_bench_201
 This is a minimum working example to test if the installation was successful:
 
 ```bash
-python -m jahs_bench_201_examples.mwe
+python -m jahs_bench_examples.mwe
 ```
 
 This should randomly sample a configuration and display both the sampled configuration and the result of querying the
@@ -41,7 +41,8 @@ our API.
 
 ```python
 # Download the trained surrogate model
-from jahs_bench_201.api import Benchmark
+from jahs_bench.api import Benchmark
+
 b = Benchmark(task="cifar10", kind="surrogate", download=True)
 
 # Query a random configuration
@@ -57,7 +58,8 @@ print(f"Result: {results}")  # A dict
 
 ```python
 # Download the performance dataset
-from jahs_bench_201.api import Benchmark
+from jahs_bench.api import Benchmark
+
 b = Benchmark(task="cifar10", kind="table", download=True)
 
 # Query a random configuration
@@ -73,7 +75,8 @@ print(f"Result: {results}")  # A dict
 
 ```python
 # Initialize the pipeline
-from jahs_bench_201.api import Benchmark
+from jahs_bench.api import Benchmark
+
 b = Benchmark(task="cifar10", kind="live")
 
 # Query a random configuration

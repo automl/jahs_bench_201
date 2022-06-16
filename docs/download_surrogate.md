@@ -29,7 +29,8 @@ relevant data needed to load a trained model into memory.
 The downloaded models can be individually loaded into memory as:
 
 ```python
-from jahs_bench_201.surrogate.model import XGBSurrogate
+from jahs_bench.surrogate.model import XGBSurrogate
+
 pth = ""  # Full path to a model directory (e.g. "../cifar10/latency")
 model = XGBSurrogate.load()
 ```

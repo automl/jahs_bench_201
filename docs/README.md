@@ -9,7 +9,7 @@ facilitate research on multi-objective, cost-aware and (multi) multi-fidelity op
 Using pip
 
 ```bash
-pip install jahs_bench_201
+pip install jahs_bench
 ```
 
 ## Verify Installation
@@ -17,7 +17,7 @@ pip install jahs_bench_201
 This is a minimum working example to test if the installation was successful:
 
 ```bash
-python -m jahs_bench_201_examples.mwe
+python -m jahs_bench_examples.mwe
 ```
 
 This should randomly sample a configuration and display both the sampled configuration and the result of querying the

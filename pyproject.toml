@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "jahs_bench_201"
+name = "jahs_bench"
 version = "1.0.0"
 description = "The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search."
 authors = [
@@ -11,9 +11,9 @@ authors = [
 ]
 readme = "README.md"
 license = "MIT"
-homepage = "https://github.com/automl/jahs_bench_201"
-repository = "https://github.com/automl/jahs_bench_201"
-documentation = "https://automl.github.io/jahs_bench_201/"
+homepage = "https://github.com/automl/jahs_bench"
+repository = "https://github.com/automl/jahs_bench"
+documentation = "https://automl.github.io/jahs_bench/"
 keywords = [
     "Joint Architecture and Hyperparameter Search",
     "Neural Architecture Search",
@@ -34,8 +34,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 packages = [
-    { include = "jahs_bench_201" },
-    { include = "jahs_bench_201_examples"},
+    { include = "jahs_bench" },
+    { include = "jahs_bench_examples"},
 ]
 
 [tool.poetry.dependencies]
@@ -71,7 +71,7 @@ profile = 'black'
 line_length = 90
 
 [tool.mypy]
-files = ["jahs_bench_201"]
+files = ["jahs_bench"]
 namespace_packages = true
 follow_imports = "skip"
 ignore_missing_imports = true
