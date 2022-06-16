@@ -81,3 +81,22 @@ Please see our guidelines and guides for contributors at [CONTRIBUTING.md](CONTR
 * `pip install neural-pipeline-search` for HPO of surrogate (Archit)
 * Add dataset licenses to NOTICE (Archit)
 * https://github.com/automl/jahs_bench_201_experiments mention
+
+
+From appendix copied:
+
+
+    * Dataset Documentation \todo{Mostly requirements from NeurIPS}
+        * URL to the dataset and its metadata (must be structured; the guidelines mention using a web standard like schema.org or DCAT for this)
+        * Instructions on accessing the dataset
+        * Datasheets - for us, this would be broad properties such as the format, disk space requirements, table dimensions, other metadata. \todo{Is there a standard framework that we can use?}
+        * License and author statement, ethical/responsible use guidelines. Author statement that they bear all responsibility in case of violation of rights, etc., and confirmation of the data license.
+        * Recommended from the guidelines: accountability framework
+        * Hosting, licensing and maintenance plan. Clarify long-term preservation.
+        * Highly recommended: a persistent dereferenceable identifier, e.g. DOI or prefix from identifiers.org. (We already are on GitHub)
+        * Compute usage
+        * Ethics statement
+    * API/Git Repo [Referenced by section 1]
+        * Detailed instructions for using the dataset.
+        * Minimum Working Example(s)
+        * Reproducibility documentation - instructions, data, code.
