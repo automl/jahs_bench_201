@@ -59,6 +59,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#optimization-tasks" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -235,9 +240,59 @@
       
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          Evaluation Protocol
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         Evaluation Protocol
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#optimization-tasks" class="md-nav__link">
+    Optimization Tasks
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeds-and-errors-bounds" class="md-nav__link">
+    Seeds and Errors Bounds
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-across-runtimes" class="md-nav__link">
+    Reporting Across Runtimes
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-multi-fidelity" class="md-nav__link">
+    (Multi) Multi-fidelity
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -306,6 +361,42 @@
   
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#optimization-tasks" class="md-nav__link">
+    Optimization Tasks
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeds-and-errors-bounds" class="md-nav__link">
+    Seeds and Errors Bounds
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-across-runtimes" class="md-nav__link">
+    Reporting Across Runtimes
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-multi-fidelity" class="md-nav__link">
+    (Multi) Multi-fidelity
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -320,18 +411,21 @@
 
   <h1>Evaluation Protocol</h1>
 
-<p>We accompany JAHS-Bench-201 with evaluation protocols and code to aid 
-following these protocols, to facilitate fair, reproducible, and methodologically sound comparisons.
-Studies with JAHS-Bench-201 should report on all three datasets and present results as trajectories of
-best validation error (single-objective) or hypervolume (multi-objective). To allow using the same
-evaluation protocol and comparisons across the various algorithmic settings above, these trajectories
+<p>For scientific studies we recommend an evaluation protocol when using JAHS-Bench-201 here to facilitate fair, reproducible, and methodologically sound comparisons.</p>
+<h2 id="optimization-tasks">Optimization Tasks</h2>
+<p>Studies with JAHS-Bench-201 should report on all three datasets and present results as trajectories of
+best validation error (single-objective) or hypervolume (multi-objective).</p>
+<h2 id="seeds-and-errors-bounds">Seeds and Errors Bounds</h2>
+<p>Results should report the mean and standard error around the mean and feature a minimum of 10 seeds.</p>
+<h2 id="reporting-across-runtimes">Reporting Across Runtimes</h2>
+<p>To allow using the same evaluation protocol and comparisons across various algorithmic settings the objective trajectories
 should be reported across total runtime taking into account the training and evaluation costs predicted
 by the surrogate benchmark. We suggest to report until a runtime corresponding to approximately
 100 evaluations and, for interpretability, show the total runtime divided by the
-mean runtime of one evaluation. Further, in (multi) multi-fidelity runs utilizing epochs, we support
-both using continuations from few to many epochs (to simulate the checkpointing and continuation of
-the model) as well as retraining from scratch for optimizers that do not support continuations. Results
-should report the mean and standard error around the mean and feature a minimum of 10 seeds.</p>
+mean runtime of one evaluation.</p>
+<h2 id="multi-multi-fidelity">(Multi) Multi-fidelity</h2>
+<p>For (multi) multi-fidelity runs utilizing epochs, we support both using continuations from few to many epochs (to simulate the checkpointing and continuation of
+the model) as well as retraining from scratch for optimizers that do not support continuations.</p>
 
               
             </article>
