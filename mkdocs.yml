@@ -14,6 +14,7 @@ nav:
   - Downloading the Performance Dataset: "download_dataset.md"
   - Downloading the Surrogate Models: "download_surrogate.md"
   - Evaluation Protocol: "evaluation_protocol.md"
+  - Leaderboards: "leaderboards.md"
   - Analysis of Performance Dataset: "performance_dataset.md"
   - Creation of Surrogate Benchmarks: "surrogate.md"
 

@@ -1,6 +1,6 @@
 # JAHS-Bench-201 Leaderboards
 
-The leaderboards as explained in our paper. To add an entry please create a pull request.
+The leaderboards as explained in our paper. To add an entry please create a pull request changing `docs/leaderboards.md`.
 Make sure to follow our evaluation protocol and to add a URL to material that explains how to reproduce you results.
 
 ## Single Objective

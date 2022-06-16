@@ -104,3 +104,7 @@ Information and instructions for downloading our trained surrogate models can al
 ## Experiments and Evaluation Protocol
 
 See [our experiments repository](https://github.com/automl/jahs_bench_201_experiments) and our [documentation](https://automl.github.io/jahs_bench_201/evaluation_protocol).
+
+## Leaderboards
+
+We maintain [leaderboards](https://automl.github.io/jahs_bench_201/leaderboards) for several optimization tasks and algorithmic frameworks.
