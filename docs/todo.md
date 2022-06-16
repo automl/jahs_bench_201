@@ -9,5 +9,5 @@ Archit:
 
 Danny
 * Go over experiments repo
-* Go over README + documentation
+* Go over documentation
 * Put on pypi
