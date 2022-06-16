@@ -43,8 +43,9 @@ class Benchmark:
     _surrogates = None
     _table = None
 
-    def __init__(self, task: Union[str, BenchmarkTasks], kind: BenchmarkTypes,
-                 download: bool = True, save_dir: Optional[Path-like] = None):
+    def __init__(self, task: Union[str, BenchmarkTasks],
+                 kind: Union[str, BenchmarkTypes],
+                 download: bool = True, save_dir: Optional[str, Path] = None):
         """ Load up the benchmark for querying. """
 
         if isinstance(task, str):
