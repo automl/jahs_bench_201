@@ -130,7 +130,6 @@ Maciej
 
 Open
 * Documentation at https://automl.github.io/jahs_bench_201/
-* Make public
 * Put on pypi
 * Fix: The 'automl/jahs_bench_201' repository doesn't contain the 'TODO' path in 'main'.
 
