@@ -8,6 +8,7 @@ import pandas as pd
 
 from jahs_bench_201.lib.core.configspace import joint_config_space
 from jahs_bench_201.surrogate.model import XGBSurrogate
+import jahs_bench_201.download
 
 ## Requires installation of the optional "data_creation" components and dependencies
 try:
@@ -64,6 +65,17 @@ class Benchmark:
                 raise ValueError(f"Invalid/Unknown value of parameter 'kind': '{kind}'. "
                                  f"Must be one of {valid}.") from e
 
+        if download and kind == "surrogate":
+            save_dir = Path(save_dir)
+            surrogate_dir = save_dir / "assembled_surrogates"
+            if not surrogate_dir.exists():
+                jahs_bench_201.download.download_surrogates(save_dir)
+
+        if download and kind == "table":
+            save_dir = Path(save_dir)
+            metric_data_dir = save_dir / "metric_data"
+            if not metric_data_dir.exists():
+                jahs_bench_201.download.download_metrics(save_dir)
 
         loaders = {
             BenchmarkTypes.Surrogate: self._load_surrogate,
