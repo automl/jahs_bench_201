@@ -42,9 +42,9 @@ our API.
 
 ```python
 # Download the trained surrogate model
-from jahs_bench import Benchmark
+import jahs_bench
 
-benchmark = Benchmark(task="cifar10", kind="surrogate", download=True)
+benchmark = jahs_bench.Benchmark(task="cifar10", kind="surrogate", download=True)
 
 # Query a random configuration
 config, results = benchmark.random_sample()
@@ -59,9 +59,9 @@ print(f"Result: {results}")  # A dict
 
 ```python
 # Download the performance dataset
-from jahs_bench import Benchmark
+import jahs_bench
 
-benchmark = Benchmark(task="cifar10", kind="table", download=True)
+benchmark = jahs_bench.Benchmark(task="cifar10", kind="table", download=True)
 
 # Query a random configuration
 config, results = benchmark.random_sample()
@@ -76,9 +76,9 @@ print(f"Result: {results}")  # A dict
 
 ```python
 # Initialize the pipeline
-from jahs_bench import Benchmark
+import jahs_bench
 
-benchmark = Benchmark(task="cifar10", kind="live")
+benchmark = jahs_bench.Benchmark(task="cifar10", kind="live")
 
 # Query a random configuration
 config, results = benchmark.random_sample()
