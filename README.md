@@ -44,10 +44,10 @@ our API.
 # Download the trained surrogate model
 from jahs_bench import Benchmark
 
-b = Benchmark(task="cifar10", kind="surrogate", download=True)
+benchmark = Benchmark(task="cifar10", kind="surrogate", download=True)
 
 # Query a random configuration
-config, results = b.random_sample()
+config, results = benchmark.random_sample()
 
 # Display the outputs
 print(f"Config: {config}")  # A dict
@@ -61,10 +61,10 @@ print(f"Result: {results}")  # A dict
 # Download the performance dataset
 from jahs_bench import Benchmark
 
-b = Benchmark(task="cifar10", kind="table", download=True)
+benchmark = Benchmark(task="cifar10", kind="table", download=True)
 
 # Query a random configuration
-config, results = b.random_sample()
+config, results = benchmark.random_sample()
 
 # Display the outputs
 print(f"Config: {config}")  # A dict
@@ -78,10 +78,10 @@ print(f"Result: {results}")  # A dict
 # Initialize the pipeline
 from jahs_bench import Benchmark
 
-b = Benchmark(task="cifar10", kind="live")
+benchmark = Benchmark(task="cifar10", kind="live")
 
 # Query a random configuration
-config, results = b.random_sample()
+config, results = benchmark.random_sample()
 
 # Display the outputs
 print(f"Config: {config}")  # A dict
@@ -94,7 +94,7 @@ print(f"Result: {results}")  # Only the final epochs' results
 Optionally, the full trajectory of query can be queried by flipping a single flag
 
 ```python
-config, trajectory = b.random_sample(full_trajectory=True)
+config, trajectory = benchmark.random_sample(full_trajectory=True)
 
 print(trajectory)  # A list of dicts
 ```
