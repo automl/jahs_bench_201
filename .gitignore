@@ -8,6 +8,7 @@
 
 # Data
 jahs_bench_201_data
+jahs_bench_data
 
 # Model files
 *.pth
