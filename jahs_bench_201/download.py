@@ -22,6 +22,25 @@ def download_and_extract_url(url, save_dir, filename):
     print("Done extracting")
 
 
+def download_surrogates(save_dir="jahs_bench_201_data"):
+    download_and_extract_url(surrogate_url, save_dir, "assembled_surrogates.tar")
+
+
+def download_metrics(save_dir="jahs_bench_201_data"):
+    download_and_extract_url(metric_url, save_dir, "metric_data.tar")
+
+
 if __name__ == "__main__":
-    download_and_extract_url(surrogate_url, "jahs_bench_201_data", "assembled_surrogates.tar")
-    download_and_extract_url(metric_url, "jahs_bench_201_data", "metric_data.tar")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target", default="surrogates", choices=["surrogates", "metrics", "all"])
+    parser.add_argument("--save_dir", default="jahs_bench_201_data")
+    args = parser.parse_args()
+
+    if args.target == "surrogates":
+        download_surrogates(args.save_dir)
+    elif args.target == "metrics":
+        download_metrics(args.save_dir)
+    else:
+        download_surrogates(args.save_dir)
+        download_metrics(args.save_dir)
