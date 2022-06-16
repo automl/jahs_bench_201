@@ -84,6 +84,7 @@ Danny
 * Placeholders Documentation
 * https://github.com/automl/jahs_bench_201_experiments mention
 * Go over README
+* Experiments repo fill
 
 Maciej
 * We provide code to use JAHS-Bench-201 and follow our evaluation protocols (latter Maciej)
@@ -91,6 +92,8 @@ Maciej
 
 Open
 * Documentation at https://automl.github.io/jahs_bench_201/
+* Make public
+* Put on pypi
 
 
 From appendix copied:
