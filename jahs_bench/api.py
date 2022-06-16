@@ -140,7 +140,8 @@ class Benchmark:
 
     def __call__(self, config: dict, nepochs: Optional[int] = 200,
                  full_trajectory: bool = False, **kwargs):
-        return self._call_fn(config=config, nepochs=nepochs)
+        return self._call_fn(config=config, nepochs=nepochs, 
+                             full_trajectory=full_trajectory, **kwargs)
 
     def _benchmark_surrogate(self, config: dict, nepochs: Optional[int] = 200,
                              full_trajectory: bool = False,) -> dict:
@@ -155,12 +156,12 @@ class Benchmark:
             epochs = [nepochs]
             features.loc[:, "epoch"] = nepochs
 
-        outputs = {}
-        for o, model in self._surrogates.items():
-            outputs[o] = model.predict(features)
+        outputs = []
+        for model in self._surrogates.values():
+            outputs.append(model.predict(features))
 
         outputs: pd.DataFrame = pd.concat(outputs, axis=1)
-        outputs.reindex(index=features.loc[:, "epoch"])
+        outputs = outputs.reindex(index=epochs)
         return outputs.to_dict(orient="index")
 
     # TODO: Return only the first hit of a query when multiple instances of a config are
