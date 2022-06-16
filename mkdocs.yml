@@ -10,6 +10,7 @@ theme:
 
 nav:
   - Introduction: "README.md"
+  - Using the Benchmark: "usage.md"
   - Downloading the Performance Dataset: "download_dataset.md"
   - Downloading the Surrogate Models: "download_surrogate.md"
   - Evaluation Protocol: "evaluation_protocol.md"
