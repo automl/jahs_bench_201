@@ -228,8 +228,9 @@ class Benchmark:
         """ Randomly query the benchmark for a configuration. If a tabular benchmark has
         been loaded, a sample from the set of known configurations is queried. Otherwise,
         a random configuration is sampled from the search space and queried on the
-        surrogate benchmark. An optional seed for initializing an RNG or a
-        pre-initialized RNG may be passed in `random_state` for reproducible queries. """
+        surrogate benchmark or trained live, as the case may be. An optional seed for
+        initializing an RNG or a pre-initialized RNG may be passed in `random_state` for
+        reproducible queries. """
 
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
@@ -237,11 +238,8 @@ class Benchmark:
         if self._table is not None:
             index = random_state.choice(self._table.index)
             row = self._table.loc[index]
-            query = row["features"].to_dict()
-            output = row["labels"].to_dict()
-
-            return query, output
-
+            config = row["features"].to_dict()
+            result = row["labels"].to_dict()
             # TODO: Reinstate the functionality to query the table itself for consistency
             #  once the issue of non-unique indices has been fixed
             # query = random_state.choice(self._table.index)
@@ -252,12 +250,17 @@ class Benchmark:
             # output = self(config=query, nepochs=nepochs)
             # return {**query, **{"epoch": nepochs}}, output
         else:
-            # TODO
-            raise NotImplementedError("Random sampling has been implemented only for "
-                                      "the performance dataset.")
+            joint_config_space.random = random_state
+            config = joint_config_space.sample_configuration().get_dictionary()
+            nepochs = random_state.randint(1, 200)
+            result = self(config=config, nepochs=nepochs)
+            config["epoch"] = nepochs
+
+        return config, result
 
 
 if __name__ == "__main__":
-    b = Benchmark(task="cifar10", )
-    res = b(config=conf, nepochs=200)
-    print(res)
+    b = Benchmark(task="cifar10", kind="surrogate")
+    config, result = b.random_sample()
+    print(f"Config: {config}")
+    print(f"Result: {result}")

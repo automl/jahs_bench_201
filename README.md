@@ -51,20 +51,16 @@ optional `data_creation` component and its relevant dependencies.
 ### Querying the surrogate
 
 ```python
-# Load the trained surrogate model
+# Download the trained surrogate model
 from jahs_bench_201.api import Benchmark
+b = Benchmark(task="cifar10", kind="surrogate", download=True)
 
-model_path = "jahs_bench_mf/JAHS-Bench-MF/surrogates/thesis_cifar10"
-b = Benchmark(model_path=model_path)
+# Query a random configuration
+config, results = b.random_sample()
 
-# Generate a random configuration
-from jahs_bench_201.lib.core.configspace import joint_config_space
-
-conf = joint_config_space.sample_configuration().get_dictionary()
-
-# Query the configuration
-res = b(config=conf, nepochs=200)
-print(res)
+# Display the outputs
+print(f"Config: {config}")
+print(f"Result: {result}")
 
 ```
 
