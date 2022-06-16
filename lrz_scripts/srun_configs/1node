@@ -1,1 +1,0 @@
-0-10 python3 -W ignore /dss/dsshome1/08/di82qum/home_mnt/Auto-PyTorch/examples/ensemble/test_ensemble.py --run_id 0 --task_id %o --num_workers 10 --dataset_id 0 --seed 0 --ensemble_setting ensemble --portfolio_type greedy --num_threads 1 --memory_limit_mb 4000 --test
