@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "jahs_bench_201"
-version = "0.0.1"
-description = "TODO"
+version = "1.0.0"
+description = "The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search."
 authors = [
     "Archit Bansal <bansala@cs.uni-freiburg.de>",
     "Danny Stoll <stolld@cs.uni-freiburg.de>",
@@ -14,7 +14,13 @@ license = "MIT"
 homepage = "https://github.com/automl/jahs_bench_201"
 repository = "https://github.com/automl/jahs_bench_201"
 documentation = "https://automl.github.io/jahs_bench_201/"
-keywords = ["TODO"]
+keywords = [
+    "Joint Architecture and Hyperparameter Search",
+    "Neural Architecture Search",
+    "Hyperparameter Optimization",
+    "Benchmark",
+    "Deep Learning"
+]
 classifiers = [
     "Intended Audience :: Science/Research",
     "Natural Language :: English",
@@ -65,7 +71,7 @@ profile = 'black'
 line_length = 90
 
 [tool.mypy]
-files = ["src"]
+files = ["jahs_bench_201"]
 namespace_packages = true
 follow_imports = "skip"
 ignore_missing_imports = true
@@ -74,9 +80,7 @@ incremental = false
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = [
-  "ourbench.TODO?"
-]
+module = []
 ignore_errors = true
 
 [tool.pylint.messages_control]
