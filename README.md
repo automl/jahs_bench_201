@@ -18,15 +18,13 @@ Using pip
 pip install jahs_bench
 ```
 
-### Verify Installation
-
-This is a minimum working example to test if the installation was successful:
+To test if the installation was successful, you can, e.g, run a minimal example with
 
 ```bash
 python -m jahs_bench_examples.mwe
 ```
 
-This should randomly sample a configuration and display both the sampled configuration and the result of querying the
+This should download the required data, randomly sample a configuration, and display both the sampled configuration and the result of querying the
 surrogate for that configuration.
 
 ## Using the benchmark
@@ -100,9 +98,8 @@ print(trajectory)  # A list of dicts
 
 ## Benchmark data
 
-Information and instructions for downloading the performance dataset used to train our surrogate models can be found [in our documentation](https://automl.github.io/jahs_bench_201/download_dataset).
+We provide [documentation for the performance dataset](https://automl.github.io/jahs_bench_201/download_dataset) used to train our surrogate models and [further information on our surrogate models](https://automl.github.io/jahs_bench_201/download_surrogate).
 
-Information and instructions for downloading our trained surrogate models can also be found [in our documentation](https://automl.github.io/jahs_bench_201/download_surrogate).
 
 ## Experiments and Evaluation Protocol
 
