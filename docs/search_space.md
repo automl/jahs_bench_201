@@ -13,9 +13,9 @@ For an overview of our design space see this table:
 
 We use the cell-based architecture search space from the popular and widely used tabular benchmark [NAS-Bench-201](https://arxiv.org/abs/2001.00326),
 which uses a directed acyclic graph with 4 vertices and 6 edges connecting them, for each of which there is a choice between an operation from the set of { skip-connect, zero, 1x1-conv, 3x3-conv, 3x3-avg-pool }.
-This accounts for a total of 5^6= 15.625 possible architectures.
+This accounts for a total of 5^6= 15.625 possible architectures. For an illustration adapted from the authors of NAS-Bench-201 see below.
 
-![Architecture](images/architecture.png){ width=400 }
+![Architecture](images/architecture.png){ width=550 }
 
 ## Hyperparameter Space
 
