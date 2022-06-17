@@ -9,7 +9,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.3.0, mkdocs-material-8.3.5">
+      <meta name="generator" content="mkdocs-1.3.0, mkdocs-material-8.3.6">
     
     
       
@@ -60,7 +60,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#details-on-surrogate-models" class="md-skip">
+        <a href="#training-a-surrogate-model" class="md-skip">
           Skip to content
         </a>
       
@@ -327,6 +327,41 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#downloading-the-data" class="md-nav__link">
+    Downloading the Data
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#training-the-models" class="md-nav__link">
+    Training the Models
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assembling-the-final-ensemble" class="md-nav__link">
+    Assembling the Final Ensemble
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluating-the-trained-surrogates" class="md-nav__link">
+    Evaluating the Trained Surrogates
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cluster-based-computation" class="md-nav__link">
+    Cluster-based Computation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#downloading-the-surrogate-models" class="md-nav__link">
     Downloading the Surrogate Models
   </a>
@@ -390,6 +425,41 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#downloading-the-data" class="md-nav__link">
+    Downloading the Data
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#training-the-models" class="md-nav__link">
+    Training the Models
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assembling-the-final-ensemble" class="md-nav__link">
+    Assembling the Final Ensemble
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluating-the-trained-surrogates" class="md-nav__link">
+    Evaluating the Trained Surrogates
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cluster-based-computation" class="md-nav__link">
+    Cluster-based Computation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#downloading-the-surrogate-models" class="md-nav__link">
     Downloading the Surrogate Models
   </a>
@@ -417,34 +487,90 @@
                 
 
 
-<h1 id="details-on-surrogate-models">Details on Surrogate Models</h1>
+<h1 id="training-a-surrogate-model">Training a Surrogate Model</h1>
+<p><strong>Note:</strong> In order to use our surrogate training scripts, users must install the package Neural Pipeline Search (NePS)
+as an extra dependency. This can be done easily by running the following shell command in an environment already
+containing all the dependencies for JAHS-Bench-201:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip install neural-pipeline-search
+</code></pre></div>
+<p>In case of any issues, users should consult the Git repo and documentation for NePS, which can be found
+<a href="https://github.com/automl/neps">here</a>.</p>
+<h2 id="downloading-the-data">Downloading the Data</h2>
+<p>The data splits for training a model can be downloaded by running the following bash script:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python -m jahs_bench.download --target<span class="o">=</span>metric_data --save_dir<span class="o">=</span><span class="nv">$save_dir</span>
+</code></pre></div></p>
+<p>where <code>save_dir</code> is a directory where the data will be stored.</p>
+<h2 id="training-the-models">Training the Models</h2>
+<p>We train one surrogate model per metric. The downloaded data files are already arranged in a directory structure with
+the format <code>&lt;save_dir&gt;/metric_data/&lt;task&gt;/&lt;metric&gt;/{train,valid,test}_set.pkl.gz</code>. Thus, for training a surrogate for
+predicting, for instance, the validation accuracy scores on CIFAR-10 over 20 HPO evaluations, one would then run the
+following shell script:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python -m jahs_bench.surrogate_training.pipeline
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  --working_directory<span class="o">=</span><span class="nv">$root_dir</span>/<span class="nv">$metric</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  --datadir<span class="o">=</span><span class="nv">$save_dir</span>/metric_data/<span class="nv">$task</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  --output<span class="o">=</span><span class="nv">$metric</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  --max_evaluations_total<span class="o">=</span><span class="m">20</span>
+</code></pre></div>
+<p>Here, <code>root_dir</code> is a directory where all the interim data files and logs generated during the HPO loop,
+including the trained interim surrogate models, will be stored for one given task. The above command can be executed by multiple parallel
+workers as long as all the input arguments remain fixed in order to achieve parallelization (i.e. when launched with 4
+workers, all workers will stop once 20 total evaluations are reached).</p>
+<h2 id="assembling-the-final-ensemble">Assembling the Final Ensemble</h2>
+<p>Once the above HPO loop finishes, it is necessary to extract the best model for each metric and put them together into
+an ensemble that can be used by the Benchmark API. In order to do this, run the following shell script:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python -m jahs_bench.surrogate_training.assemble_models
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  --final_dir<span class="o">=</span><span class="nv">$final_dir</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  --root_dir<span class="o">=</span><span class="nv">$root_dir</span>
+</code></pre></div>
+<p>where <code>final_dir</code> is the directory where the ensemble for one given task should be saved and <code>root_dir</code> is the same as
+in the previous step.</p>
+<h2 id="evaluating-the-trained-surrogates">Evaluating the Trained Surrogates</h2>
+<p>Finally, the trained surrogates can be evaluated on the test set to obtain the final correlation and regression scores.
+This can be achieved by running the following shell script:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">outputs</span><span class="o">=(</span>latency runtime valid-acc<span class="o">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>python -m jahs_bench.surrogate_training.evaluation
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  --testset-file<span class="o">=</span><span class="nv">$path_to_test_set</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  --model-dir<span class="o">=</span><span class="nv">$final_dir</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  --save-dir<span class="o">=</span><span class="nv">$save_dir</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  --outputs <span class="si">${</span><span class="nv">outputs</span><span class="p">[@]</span><span class="si">}</span>
+</code></pre></div>
+<p>Where <code>path_to_test_set</code> is the full path to the relevant <code>test_set.pkl.gz</code> file of the task the surrogate was trained
+for, <code>final_dir</code> is the directory where a surrogate ensemble was saved in the previous step, <code>save_dir</code> is a directory
+where the results of running this script - including surrogate predictions on the test set and the generated scores -
+should be saved. Finally, depending on which metrics the surrogate was trained to predict, the array <code>outputs</code> should
+be set accordingly. Here, we show an example using the metrics "latency", "runtime" and "valid-acc"
+(validation accuracy).</p>
+<h2 id="cluster-based-computation">Cluster-based Computation</h2>
+<p>We note that our own experiments were run on a distributed computing cluster, which entails cluster-specific details
+and configurations, but used the same scripts as described here at their heart. Depending on their own local setup,
+users may thus have to tweak their usage of the scripts appropriately. These scripts may also contain additional
+options to help users with this setup, accessible by running <code>python -m $script_name.py --help</code>.</p>
 <h2 id="downloading-the-surrogate-models">Downloading the Surrogate Models</h2>
 <p>The current hosting solution is a transitory one as we work towards setting up a more robust solution using
 <a href="https://figshare.com/">Figshare+</a>, which provides perpetual data storage guarantees, a DOI and a web API for
 querying the dataset as well as the metadata.</p>
-<p>We share our trained models as g-zipped tarballs that are readable using our code base.</p>
-<p>The most convenient method for downloading our datasets is through our API. Nevertheless, interested users may directly
-download our DataFrames using file transfer software, such as <code>wget</code>, from our archive
-<a href="https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/data/aadsqldb/jahs_bench_201/v1.0.0/assembled_surrogates">here</a></p>
-<p>For example, to download the full set of surrogates for CIFAR-10, run</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>wget ...
+<p>We share our trained models as compressed tarballs that are readable using our code base.</p>
+<p>The most convenient method for downloading our models is through our <a href="https://automl.github.io/jahs_bench_201/">API</a>.
+Nevertheless, interested users may directly download our DataFrames using a file transfer software of their choice,
+such as <code>wget</code>, from our archive.</p>
+<p>To download the full set of all surrogates models, run</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>wget --no-parent -r https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/v1.0.0/assembled_surrogates.tar -O assembled_surrogates.tar
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>tar -xf assembled_surrogates.tar
 </code></pre></div>
 <h2 id="archive-structure">Archive Structure</h2>
-<p>For each of the three tasks, "cifar10", "colorectal_histology" and "fashion_mnist", the name of the task should be
-appended to the above archive link, as "...metric_data/cifar10", in order to access the sub-directory of that dataset.
-Following this, users can either recursively download the entire directory tree rooted at that sub-directory and pass
-it to our top-level API in order to load all the models for a particular task or downloaded individual sub-directories
-and use the more granular API to load surrogates for individual metrics. Each sub-sub-directory is named after the
-particular metric the model contained within was trained to predict and contains a number of tarballs that contain the
-relevant data needed to load a trained model into memory.</p>
+<p>For each of the three tasks, "cifar10", "colorectal_histology" and "fashion_mnist", the name of the task is the
+immediate sub-directory within "metric_data" and contains all the models pertaining to that task.
+Immediately under each task's directory, are further sub-directories named after the individual metrics the models they
+contains were trained to predict. These sub-directories can be directly passed to <code>jahs_bench.surrogate.model.XGBSurrogate.load()</code>
+in order to load the respective models into memory.</p>
 <p>The downloaded models can be individually loaded into memory as:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span> <span class="nn">jahs_bench.surrogate.model</span> <span class="kn">import</span> <span class="n">XGBSurrogate</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">pth</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>  <span class="c1"># Full path to a model directory (e.g. &quot;../cifar10/latency&quot;)</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">XGBSurrogate</span><span class="o">.</span><span class="n">load</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span> <span class="nn">jahs_bench.surrogate.model</span> <span class="kn">import</span> <span class="n">XGBSurrogate</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">pth</span> <span class="o">=</span> <span class="s2">&quot;assembled_surrogates/cifar10/latency&quot;</span>  <span class="c1"># Path to a model directory</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">model</span> <span class="o">=</span> <span class="n">XGBSurrogate</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">pth</span><span class="p">)</span>
 </code></pre></div>
-<p>The above code snippet, when filled in with a local path to the downloaded tarball, will display the first five rows in
-that table.</p>
+<p>The advantage to directly loading a model in this manner is that the <code>model.predict()</code> method is able to process
+entire DataFrames of queries and return a corresponding DataFrame of predicted metrics.</p>
 
               
             </article>
@@ -515,7 +641,7 @@ that table.</p>
     <script id="__config" type="application/json">{"base": "..", "features": [], "search": "../assets/javascripts/workers/search.85cb4492.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version.title": "Select version"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.431f3d41.min.js"></script>
+      <script src="../assets/javascripts/bundle.a877e258.min.js"></script>
       
     
   </body>
