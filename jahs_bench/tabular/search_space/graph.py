@@ -7,12 +7,12 @@ import random
 import torch
 import torch.nn as nn
 
-from naslib.search_spaces.core import primitives as core_ops
-from naslib.search_spaces.core.graph import Graph, EdgeData
-from naslib.search_spaces.core.primitives import AbstractPrimitive
-from naslib.search_spaces.core.query_metrics import Metric
+from jahs_bench.tabular.lib.naslib.search_spaces.core import primitives as core_ops
+from jahs_bench.tabular.lib.naslib.search_spaces.core.graph import Graph, EdgeData
+from jahs_bench.tabular.lib.naslib.search_spaces.core.primitives import AbstractPrimitive
+from jahs_bench.tabular.lib.naslib.search_spaces.core.query_metrics import Metric
 
-from naslib.utils.utils import get_project_root
+from jahs_bench.tabular.lib.naslib.utils.utils import get_project_root
 
 from .conversions import convert_op_indices_to_naslib, convert_naslib_to_op_indices, convert_naslib_to_str
 from .primitives import ResNetBasicblock, ConvBN, StemGrayscale

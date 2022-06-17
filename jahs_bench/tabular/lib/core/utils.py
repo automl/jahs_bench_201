@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Dict, Union, Any, Optional, Iterable, Callable, List, Tuple, Hashable
 
 import ConfigSpace
-import naslib.utils.utils as naslib_utils
+import jahs_bench.tabular.lib.naslib.utils.utils as naslib_utils
 import numpy as np
 import pandas as pd
 import torch
-from naslib.search_spaces.core.graph import Graph
-from naslib.utils.utils import AttrDict, AverageMeter
+
+from jahs_bench.tabular.lib.naslib.search_spaces.core.graph import Graph
+from jahs_bench.tabular.lib.naslib.utils.utils import AttrDict, AverageMeter
 
 import jahs_bench.tabular.lib.core.constants as constants
 from jahs_bench.tabular.search_space import NASB201HPOSearchSpace

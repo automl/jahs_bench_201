@@ -1,6 +1,8 @@
+# Note: This script requires an installation of the complete NASLib repository in order
+# to work.
 from naslib.search_spaces.nasbench201.graph import NasBench201SearchSpace
 from naslib.search_spaces.nasbench201 import conversions
-from naslib.utils.utils import get_project_root
+from jahs_bench.tabular.lib.naslib.utils.utils import get_project_root
 from pathlib import Path
 import pickle
 import pandas as pd

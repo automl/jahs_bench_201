@@ -18,7 +18,7 @@ from jahs_bench.tabular.lib.core.utils import AttrDict
 from jahs_bench.tabular.distributed_nas_sampling import run_task, get_tranining_config_from_args, _seed
 from jahs_bench.tabular.lib.core import constants
 
-from naslib.utils.logging import setup_logger
+from jahs_bench.tabular.lib.naslib.utils.logging import setup_logger
 
 
 _log = setup_logger(name='tabular_sampling')

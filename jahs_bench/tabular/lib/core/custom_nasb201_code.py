@@ -1,3 +1,7 @@
+""" Taken as-is under extant license conditions from the original NAS-Bench-201 repo's
+code at
+https://github.com/D-X-Y/AutoDL-Projects/tree/bc4c4692589e8ee7d6bab02603e69f8e5bd05edc """
+
 import math, torch
 import torch.nn as nn
 from torch.optim import Optimizer

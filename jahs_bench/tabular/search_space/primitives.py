@@ -2,7 +2,8 @@ import torch.nn as nn
 import ConfigSpace as CS
 from typing import Union, Optional
 
-from naslib.search_spaces.core.primitives import AbstractPrimitive, Identity
+from jahs_bench.tabular.lib.naslib.search_spaces.core.primitives import \
+    AbstractPrimitive, Identity
 from .constants import Activations
 
 
@@ -85,7 +86,7 @@ class ResNetBasicblock(AbstractPrimitive):
         basicblock = self.conv_b(basicblock, None)
         residual = self.downsample(x) if self.downsample is not None else x
         return residual + basicblock
-    
+
 
     def get_embedded_ops(self):
         return None

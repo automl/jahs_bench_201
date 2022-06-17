@@ -16,9 +16,9 @@ import torch
 import traceback
 from typing import Tuple, Sequence
 
-import naslib.utils.logging as naslib_logging
-import naslib.utils.utils as naslib_utils
-from naslib.utils.utils import AttrDict
+import jahs_bench.tabular.lib.naslib.utils.logging as naslib_logging
+import jahs_bench.tabular.lib.naslib.utils.utils as naslib_utils
+from jahs_bench.tabular.lib.naslib.utils.utils import AttrDict
 
 from jahs_bench.tabular.clusterlib import prescheduler as sched_utils
 from jahs_bench.tabular.lib.core.constants import Datasets, standard_task_metrics, training_config

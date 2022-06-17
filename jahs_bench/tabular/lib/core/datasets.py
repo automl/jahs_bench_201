@@ -6,7 +6,7 @@ from typing import Callable, Sequence, Optional
 
 import numpy as np
 import torch
-from naslib.utils.utils import AttrDict, Cutout
+from jahs_bench.tabular.lib.naslib.utils.utils import AttrDict, Cutout
 from torchvision import datasets as dset, transforms as transforms
 
 from jahs_bench.tabular.lib.core import constants as constants

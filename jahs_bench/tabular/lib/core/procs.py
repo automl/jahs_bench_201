@@ -7,13 +7,14 @@ import psutil
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
-import naslib.utils.logging as naslib_logging
-import naslib.utils.utils as naslib_utils
+import jahs_bench.tabular.lib.naslib.utils.logging as naslib_logging
+import jahs_bench.tabular.lib.naslib.utils.utils as naslib_utils
+
 from jahs_bench.tabular.search_space import NASB201HPOSearchSpace
 from jahs_bench.tabular.lib.core import constants, utils
 from jahs_bench.tabular.lib.core.custom_nasb201_code import CosineAnnealingLR
 from jahs_bench.tabular.lib.core.count_flops import get_model_flops
-from naslib.utils.utils import AverageMeter, AttrDict
+from jahs_bench.tabular.lib.naslib.utils.utils import AverageMeter, AttrDict
 
 
 def construct_model_optimizer(model: NASB201HPOSearchSpace, train_config: AttrDict):

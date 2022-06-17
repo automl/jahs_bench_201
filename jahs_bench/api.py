@@ -12,7 +12,7 @@ import jahs_bench.download
 
 ## Requires installation of the optional "data_creation" components and dependencies
 try:
-    from jahs_bench.tabular.distributed_nas_sampling import run_task
+    from jahs_bench.tabular.sampling import run_task
     from jahs_bench.tabular.lib.core.constants import Datasets as _Tasks
     from jahs_bench.tabular.lib.core.utils import DirectoryTree, MetricLogger, \
         AttrDict

@@ -29,12 +29,12 @@ import traceback
 from pathlib import Path
 from typing import Iterable, Sequence, Optional, Union
 
-import naslib.utils.logging as naslib_logging
-import naslib.utils.utils as naslib_utils
 import numpy as np
 import torch
-from naslib.utils.utils import AttrDict
 
+import jahs_bench.tabular.lib.naslib.utils.logging as naslib_logging
+import jahs_bench.tabular.lib.naslib.utils.utils as naslib_utils
+from jahs_bench.tabular.lib.naslib.utils.utils import AttrDict
 from jahs_bench.tabular.lib.core.constants import Datasets, standard_task_metrics
 from jahs_bench.tabular.lib.core.constants import training_config as _training_config
 from jahs_bench.tabular.lib.core import utils
