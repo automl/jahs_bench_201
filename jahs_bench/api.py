@@ -132,7 +132,7 @@ class Benchmark:
         self._call_fn = self._benchmark_tabular
 
     def _load_live(self):
-        pass
+        self._call_fn = self._benchmark_live
 
     def __call__(self, config: dict, nepochs: Optional[int] = 200,
                  full_trajectory: bool = False, **kwargs):
