@@ -178,9 +178,12 @@ class Benchmark:
             "cannot be made."
 
         query = config.copy()
+        if "epoch" in query:
+            query.pop("epoch")
+
         query_df = pd.DataFrame(query, index=list(range(1, nepochs+1)) \
                                 if full_trajectory else [nepochs])
-        query_df.rename_axis("epoch", axis=0)
+        query_df.rename_axis("epoch", axis=0, inplace=True)
         query_df = query_df.reset_index()
 
         check = self._features.difference(query_df.columns)
@@ -286,12 +289,12 @@ class Benchmark:
             random_state = np.random.RandomState(random_state)
 
         if self.kind is BenchmarkTypes.Table:
-            assert self._table is not None, \
+            assert self._table_features is not None, \
                 "Cannot extract random sample - the tabular benchmark could not be " \
                 "properly initialized."
-            index = random_state.choice(self._table.index)
-            row = self._table.loc[index]
-            config = row["features"].to_dict()
+            index = random_state.choice(self._table_features.index)
+            row = self._table_features.loc[index].drop("Sample ID")
+            config = row.to_dict()
         else:
             joint_config_space.random = random_state
             config = joint_config_space.sample_configuration().get_dictionary()
