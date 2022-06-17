@@ -102,7 +102,7 @@ class Benchmark:
         self._call_fn = self._benchmark_surrogate
 
     def _load_table(self):
-        assert self.save_dir.exists() and save_dir.is_dir()
+        assert self.save_dir.exists() and self.save_dir.is_dir()
 
         table_path = self.save_dir / self.task.value
         table_names = ["train_set.pkl.gz", "valid_set.pkl.gz", "test_set.pkl.gz"]
@@ -118,9 +118,13 @@ class Benchmark:
                              f"be resolved against the known search space consisting of "
                              f"the parameters {features}")
 
-        # features = table["features"].columns
-        # labels: pd.Index = table["labels"].columns
-        #
+        self._features = table["features"].columns
+        self._labels: pd.Index = table["labels"].columns
+        self._table_features = table.loc[:, "features"]
+        self._table_labels = table.loc[:, "labels"]
+        self._table_features.rename_axis("Sample ID", axis=0, inplace=True)
+        self._table_features = self._table_features.reset_index()
+
         # if outputs is not None:
         #     # Attempt to convert the sequence of outputs into a list
         #     outputs = list(outputs) if not isinstance(outputs, list) \
@@ -167,40 +171,54 @@ class Benchmark:
         outputs.index = epochs
         return outputs.to_dict(orient="index")
 
-    # TODO: Return only the first hit of a query when multiple instances of a config are
-    #  present
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
                            full_trajectory: bool = False,
                            suppress_keyerror: bool = False) -> dict:
-        assert self._table is not None, "No performance dataset has been loaded into " \
-                                        "memory - a tabular query cannot be made."
-        query = config.copy()
-        query["epoch"] = nepochs
+        assert nepochs > 1
+        assert self._table_features is not None and self._table_labels is not None,\
+            "No performance dataset has been loaded into memory - a tabular query " \
+            "cannot be made."
 
-        check = self.table.features.columns.difference(query.keys())
+        query = config.copy()
+        query_df = pd.DataFrame(query, index=list(range(1, nepochs+1)) \
+                                if full_trajectory else [nepochs])
+        query_df.rename_axis("epoch", axis=0)
+        query_df = query_df.reset_index()
+
+        check = self._features.difference(query_df.columns)
         if check.size != 0:
             raise ValueError(f"The given query has missing parameters: {check.tolist()}")
 
-        query_tuple = (query[k] for k in self.table.features.columns)
-        x = self._table
-        for v in query.items():
-            x = x.xs()
+        idx = pd.merge(self._table_features, query_df, how="inner")["Sample ID"]
+# 
+        if idx.size == 0:
+            raise KeyError(f"Could not find any entries for the config {config} at "
+                           f"{nepochs} epochs.") from e
+        elif full_trajectory:
+            # Return the full trajectory, but only for the first instance of this config
+            # that was found.
+            result = self._table_labels.loc[idx, :].iloc[:nepochs]
+        else:
+            # Return only the first result that was found
+            result = self._table_labels.loc[idx, :].iloc[0]
 
-        query = tuple((query[k] for k in self._table.index.names))
-        try:
-            output = self._table.loc[query].to_dict(orient="index")
-            output = list(output.values())[0]
-        except KeyError as e:
-            _log.debug(f"Registered a key-error while querying the performance dataset "
-                       f"for the configuration: {config} at {nepochs} epochs. The "
-                       f"constructed query was: {query}.")
-            if suppress_keyerror:
-                output = {}
-            else:
-                raise KeyError(f"Could not find any entries for the config {config} at "
-                               f"{nepochs} epochs.") from e
+        return result
 
-        return output
+        # query = tuple((query[k] for k in self._table.index.names))
+        # try:
+        #     output = self._table.loc[query].to_dict(orient="index")
+        #     output = list(output.values())[0]
+        # except KeyError as e:
+        #     _log.debug(f"Registered a key-error while querying the performance dataset "
+        #                f"for the configuration: {config} at {nepochs} epochs. The "
+        #                f"constructed query was: {query}.")
+        #     if suppress_keyerror:
+        #         output = {}
+        #     else:
+        #         raise KeyError(f"Could not find any entries for the config {config} at "
+        #                        f"{nepochs} epochs.") from e
+        # 
+        # return output
 
     def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
                         # datadir: Union[str, Path],
