@@ -275,7 +275,7 @@ class Benchmark:
             joint_config_space.random = random_state
             config = joint_config_space.sample_configuration().get_dictionary()
             nepochs = random_state.randint(1, 200)
-            config['epochs'] = nepochs
+            config['epoch'] = nepochs
 
         return config
 
