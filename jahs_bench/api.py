@@ -122,21 +122,6 @@ class Benchmark:
         self._table_labels = table.loc[:, "labels"]
         self._table_features.rename_axis("Sample ID", axis=0, inplace=True)
         self._table_features = self._table_features.reset_index()
-
-        # if outputs is not None:
-        #     # Attempt to convert the sequence of outputs into a list
-        #     outputs = list(outputs) if not isinstance(outputs, list) \
-        #         else [outputs] if isinstance(outputs, str) else outputs
-        #
-        #     if labels.intersection(outputs).size != len(outputs):
-        #         raise ValueError(f"The set of outputs specified for the performance "
-        #                          f"dataset {outputs} must be a subset of all available "
-        #                          f"outputs: {labels.tolist()}.")
-        #
-        #     # Drop all unnecessary outputs
-        #     table.drop([("labels", l) for l in labels.difference(outputs)], axis=1,
-        #                inplace=True)
-        # self._table = table
         self._call_fn = self._benchmark_tabular
 
     def _load_live(self):
@@ -170,8 +155,7 @@ class Benchmark:
         return outputs.to_dict(orient="index")
 
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
-                           full_trajectory: bool = False,
-                           suppress_keyerror: bool = False) -> dict:
+                           full_trajectory: bool = False) -> dict:
         assert nepochs > 1
         assert self._table_features is not None and self._table_labels is not None,\
             "No performance dataset has been loaded into memory - a tabular query " \
@@ -189,19 +173,6 @@ class Benchmark:
         check = self._features.difference(query_df.columns)
         if check.size != 0:
             raise ValueError(f"The given query has missing parameters: {check.tolist()}")
-
-        idx = pd.merge(self._table_features, query_df, how="inner")["Sample ID"]
-
-        if idx.size == 0:
-            raise KeyError(f"Could not find any entries for the config {config} at "
-                           f"{nepochs} epochs.") from e
-        elif full_trajectory:
-            # Return the full trajectory, but only for the first instance of this config
-            # that was found.
-            result = self._table_labels.loc[idx, :].iloc[:nepochs]
-        else:
-            # Return only the first result that was found
-            result = self._table_labels.loc[idx, :].iloc[0]
 
         idx = pd.merge(self._table_features, query_df, how="inner")["Sample ID"]
 
