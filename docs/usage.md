@@ -56,7 +56,7 @@ __Note:__ Before using the option `kind="live"`, it is necessary to ensure that 
 the extra dependencies required for live training. This can be done using the following command:
 
 ```bash
-pip install jahs_bench[data_creation]
+pip install "jahs_bench[data_creation] @ git+https://github.com/automl/jahs_bench_201.git"
 ```
 
 ## More Examples

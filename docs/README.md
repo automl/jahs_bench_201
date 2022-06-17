@@ -7,7 +7,7 @@ facilitate research on multi-objective, cost-aware and (multi) multi-fidelity op
 To install using pip run
 
 ```bash
-pip install jahs_bench
+pip install git+https://github.com/automl/jahs_bench_201.git
 ```
 
 Optionally, you can download the data required to use the surrogate benchmark ahead of time with
