@@ -3,7 +3,7 @@ code base. """
 
 import enum
 
-datasets = ["cifar10", "colorectal_histology"]
+datasets = ["cifar10", "colorectal_histology", "fashionMNIST"]
 fidelity_types = {"N": int, "W": int, "Resolution": float}
 fidelity_params = tuple(fidelity_types.keys())
 
