@@ -9,7 +9,13 @@ data, stored as compressed pickle files using pickle protocol 4. We are aware of
 pickle files and therefore are investigating the most appropriate data format. Current candidates include CSV, HDF5 and
 Feather.
 
-The most convenient method for downloading our datasets is through our [API](https://automl.github.io/jahs_bench_201/).
+The most convenient method for downloading our datasets is through our API, by running the following bash script:
+```bash
+python -m jahs_bench.download --target=metric_data --save_dir=$save_dir
+```
+
+where `save_dir` is a directory where the data will be stored.
+
 Nevertheless, interested users may directly download our DataFrames using a file transfer software of their choice,
 such as `wget`, from our archive.
 
