@@ -52,6 +52,13 @@ Setting the flag `download` to True allows the API to automatically fetch all th
 This includes the surrogate models, the performance dataset DataFrame objects, and the task datasets and their splits,
 depending on whether `kind` was set to `surrogate`, `table` or `live`.
 
+__Note:__ Before using the option `kind="live"`, it is necessary to ensure that JAHS-Bench-201 has been installed with
+the extra dependencies required for live training. This can be done using the following command:
+
+```bash
+pip install jahs_bench[data_creation]
+```
+
 ## More Examples
 
 ### Querying the Performance Tables
