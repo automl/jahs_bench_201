@@ -192,9 +192,9 @@ class Benchmark:
             result = self._table_labels.loc[idx, :].iloc[:nepochs]
         else:
             # Return only the first result that was found
-            result = self._table_labels.loc[idx, :].iloc[0]
+            result = self._table_labels.loc[idx, :].iloc[:1]
 
-        return result
+        return result.to_dict(orient="index")
 
     def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
                         full_trajectory: bool = False, *,
