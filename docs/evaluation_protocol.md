@@ -18,7 +18,9 @@ To allow using the same evaluation protocol and comparisons across various algor
 should be reported across total runtime taking into account the training and evaluation costs predicted
 by the surrogate benchmark. We suggest to report until a runtime corresponding to approximately
 100 evaluations and, for interpretability, show the total runtime divided by the
-mean runtime of one evaluation.
+mean runtime of one evaluation (see below for an example).
+
+<img alt="jahs_bench_evaluation" height="320" src="https://raw.githubusercontent.com/automl/jahs_bench_201/main/docs/images/jahs_bench_evaluation.png" width="900"/>
 
 ## (Multi) Multi-fidelity
 
