@@ -454,8 +454,8 @@ We include these fidelity parameters in our design space to support benchmarking
 <h2 id="architecture-space">Architecture Space</h2>
 <p>We use the cell-based architecture search space from the popular and widely used tabular benchmark <a href="https://arxiv.org/abs/2001.00326">NAS-Bench-201</a>,
 which uses a directed acyclic graph with 4 vertices and 6 edges connecting them, for each of which there is a choice between an operation from the set of { skip-connect, zero, 1x1-conv, 3x3-conv, 3x3-avg-pool }.
-This accounts for a total of 5^6= 15.625 possible architectures.</p>
-<p><img alt="Architecture" src="../images/architecture.png" width="400" /></p>
+This accounts for a total of 5^6= 15.625 possible architectures. For an illustration adapted from the authors of NAS-Bench-201 see below.</p>
+<p><img alt="Architecture" src="../images/architecture.png" width="550" /></p>
 <h2 id="hyperparameter-space">Hyperparameter Space</h2>
 <p>Our hyperparameter space consists of a mix of categorical and continuous hyperparameters.
 As categorical hyperparameters, we added a choice between 3 activation functions (Mish, Hardswish or ReLU) in the convolution layers, as well as the choice to enable or disable the use of Trivial Augment for data augmentation in the training pipeline.
