@@ -15,7 +15,7 @@ Please see our [documentation here](https://automl.github.io/jahs_bench_201/).
 Using pip
 
 ```bash
-pip install jahs_bench
+pip install git+https://github.com/automl/jahs_bench_201.git
 ```
 
 Optionally, you can download the data required to use the surrogate benchmark ahead of time with
@@ -51,7 +51,6 @@ config = {
     'Op6': 1,
     'N': 5,
     'W': 16,
-    'epoch': 200,
     'Resolution': 1.0,
 }
 ```
@@ -68,7 +67,7 @@ benchmark = jahs_bench.Benchmark(task="cifar10", download=True)
 
 # Query a random configuration
 config = benchmark.sample_config()
-results = benchmark(config)
+results = benchmark(config, nepochs=200)
 
 # Display the outputs
 print(f"Config: {config}")  # A dict
