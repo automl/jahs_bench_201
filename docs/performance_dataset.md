@@ -1,7 +1,5 @@
 # Details on Performance Dataset
 
-## Downloading the Performance Dataset
-
 The current hosting solution is a transitory one as we work towards setting up a more robust solution using
 [Figshare+](https://figshare.com/), which provides perpetual data storage guarantees, a DOI and a web API for
 querying the dataset as well as the metadata.
@@ -11,22 +9,22 @@ data, stored as compressed pickle files using pickle protocol 4. We are aware of
 pickle files and therefore are investigating the most appropriate data format. Current candidates include CSV, HDF5 and
 Feather.
 
-The most convenient method for downloading our datasets is through our API. Nevertheless, interested users may directly
-download our DataFrames using file transfer software, such as `wget`, from our archive
-[here](https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/data/aadsqldb/jahs_bench_201/v1.0.0/metric_data)
+The most convenient method for downloading our datasets is through our [API](https://automl.github.io/jahs_bench_201/).
+Nevertheless, interested users may directly download our DataFrames using a file transfer software of their choice,
+such as `wget`, from our archive.
 
-For example, to download the full raw metrics data for CIFAR-10, run
+To download the full set of all metric datasets, run
 
 ```bash
-wget ...
+wget --no-parent -r https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/v1.0.0/metric_data.tar -O metric_data.tar
+tar -xf metric_data.tar
 ```
 
 ## Archive Structure
 
-For each of the three tasks, "cifar10", "colorectal_histology" and "fashion_mnist", the name of the task should be
-appended to the above archive link, as "...metric_data/cifar10", in order to access the sub-directory of that dataset.
-Following this, users may then append the exact filename they wish to acces to the link. The following 4 files are
-available:
+For each of the three tasks, "cifar10", "colorectal_histology" and "fashion_mnist", the name of the task is the
+immediate sub-directory within "metric_data" and contains all the data pertaining to that task.
+Each task's directory contains the following 4 files:
 * "raw.pkl.gz": This contains the full set of raw performance metrics sans any post-processing or filteration.
 * "train_set.pkl.gz": This is the actual training data used for training our surrogate models.
 * "valid_set.pkl.gz": This is the actual validation data used for validating the fitness of any given configuration
@@ -38,7 +36,7 @@ For each of these files, users can directly load them into memory as pandas Data
 
 ```python
 import pandas as pd
-pth = ""  # Full path to a downloaded file, ending in ".pkl.gz"
+pth = "metric_data/cifar10/test_set.pkl.gz"  # Path to a downloaded file, ending in ".pkl.gz"
 df = pd.read_pickle(pth)
 df.head(5)
 ```
