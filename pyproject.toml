@@ -54,9 +54,9 @@ grakel = {version = "~0.1", optional = true}
 torchvision = {version = "~0.11", optional = true}
 fvcore = {version = "~0.1", optional = true}
 pyyaml = {version = "^5", optional = true}
-termcolor = {version = "^1", optional = true}
+icgen = { git = "https://github.com/automl/ICGen.git", branch = "torchvision_compatibility", rev="c04bf220f24fd475906225ca2c9176949cd6f129", optional=true}
 tensorboard = {version = "^2.6", optional = true}
-icgen = { git = "https://github.com/automl/ICGen.git", branch = "torchvision_compatibility", rev="c04bf220f24fd475906225ca2c9176949cd6f129" }
+termcolor = {version = "^1.1.0", optional = true}
 
 [tool.poetry.extras]
 data_creation = ["torch"]
