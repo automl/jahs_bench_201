@@ -1,6 +1,6 @@
 # Querying JAHS-Bench-201
 
-## Evaluating Configurations with The Surrogate
+## Evaluating Configurations with the Surrogate
 
 ```python
 import jahs_bench
@@ -13,17 +13,18 @@ results = benchmark(config, nepochs=200)
 
 # Display the outputs
 print(f"Config: {config}")  # A dict
-print(f"Result: {results}")  # A dict
+print(f"Result: {results}")  # A dict of dicts, indexed first by epoch and then by metric name
 ```
 
 ## Querying the Full Trajectories
 
-Optionally, the full trajectory of query can be queried by flipping a single flag
+Optionally, the full trajectory of a query can be queried by flipping a single flag
 
 ```python
-config, trajectory = benchmark.random_sample(full_trajectory=True)
+config = benchmark.sample_config()
+trajectory = benchmark(config, nepochs=200, full_trajectory=True)
 
-print(trajectory)  # A list of dicts
+print(trajectory)  # A dict of dicts
 ```
 
 
@@ -37,23 +38,21 @@ However, users should note that the latter functionality requires the installati
 optional `data_creation` component and its relevant dependencies. The relevant data can be automatically downloaded by
 our API.
 
-
-### Querying the Surrogate
+Users may switch between querying the surrogate model, the performance dataset, or a live training of a configuration
+by passing one of the strings `surrogate` (default), `table` or `live` to the parameter `kind` when initializing the
+`Benchmark` object, as:
 
 ```python
-# Download the trained surrogate model
-import jahs_bench
-
-benchmark = jahs_bench.Benchmark(task="cifar10", kind="surrogate", download=True)
-
-# Query a random configuration
-config, results = benchmark.random_sample()
-
-# Display the outputs
-print(f"Config: {config}")  # A dict
-print(f"Result: {results}")  # A dict
-
+benchmark_surrogate = jahs_bench.Benchmark(task="cifar10", kind="surrogate", download=True)
+benchmark_tabular = jahs_bench.Benchmark(task="cifar10", kind="table", download=True)
+benchmark_live = jahs_bench.Benchmark(task="cifar10", kind="live", download=True)
 ```
+
+Setting the flag `download` to True allows the API to automatically fetch all the relevant data files over the internet.
+This includes the surrogate models, the performance dataset DataFrame objects, and the task datasets and their splits,
+depending on whether `kind` was set to `surrogate`, `table` or `live`.
+
+## More Examples
 
 ### Querying the Performance Tables
 
@@ -64,27 +63,45 @@ import jahs_bench
 benchmark = jahs_bench.Benchmark(task="cifar10", kind="table", download=True)
 
 # Query a random configuration
-config, results = benchmark.random_sample()
+config = benchmark.sample_config()
+results = benchmark(config, nepochs=200)
 
 # Display the outputs
-print(f"Config: {config}")  # A dict
-print(f"Result: {results}")  # A dict
+print(f"Config: {config}")
+print(f"Result: {results}")
 
 ```
 
-### Live Training a Random Configuration from Scratch
+### Querying the Performance Tables with Full Trajectory
+
+```python
+# Download the performance dataset
+import jahs_bench
+
+benchmark = jahs_bench.Benchmark(task="cifar10", kind="table", download=True)
+
+# Query a random configuration
+config = benchmark.sample_config()
+trajectory = benchmark(config, nepochs=200, full_trajectory=True)
+
+# Display the outputs
+print(f"Config: {config}")
+print(f"Result: {trajectory}")
+```
+
+### Live Training a Random Configuration from Scratch with Full Trajectory
 
 ```python
 # Initialize the pipeline
 import jahs_bench
 
-benchmark = jahs_bench.Benchmark(task="cifar10", kind="live")
+benchmark = jahs_bench.Benchmark(task="cifar10", kind="live", download=True)
 
 # Query a random configuration
-config, results = benchmark.random_sample()
+config = benchmark.sample_config()
+trajectory = benchmark(config, nepochs=200, full_trajectory=True)
 
 # Display the outputs
-print(f"Config: {config}")  # A dict
-print(f"Result: {results}")  # Only the final epochs' results
-
+print(f"Config: {config}")
+print(f"Result: {trajectory}")
 ```
