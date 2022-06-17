@@ -1,6 +1,6 @@
 # JAHS-Bench-201
 
-The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search (JAHS), built to support and
+The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search (JAHS), built to also support and
 facilitate research on multi-objective, cost-aware and (multi) multi-fidelity optimization algorithms.
 
 
