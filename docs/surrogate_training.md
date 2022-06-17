@@ -15,15 +15,15 @@ In case of any issues, users should consult the Git repo and documentation for N
 
 The data splits for training a model can be downloaded by running the following bash script:
 ```bash
-python -m jahs_bench.download --target metric_data --save_dir $save_dir
+python -m jahs_bench.download --target=metric_data --save_dir=$save_dir
 ```
 
 where `save_dir` is a directory where the data will be stored.
 
 ## Training the Models
 
-We train one surrogate model per metric. The downloaded data files should be arranged in a directory structure with the
-format `<save_dir>/metric_data/<task>/<metric>/{train,valid,test}_set.pkl.gz`. Thus, for training a surrogate for
+We train one surrogate model per metric. The downloaded data files are already arranged in a directory structure with
+the format `<save_dir>/metric_data/<task>/<metric>/{train,valid,test}_set.pkl.gz`. Thus, for training a surrogate for
 predicting, for instance, the validation accuracy scores on CIFAR-10 over 20 HPO evaluations, one would then run the
 following shell script:
 
