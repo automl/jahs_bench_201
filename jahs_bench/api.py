@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from enum import Enum, unique, auto
 from pathlib import Path
@@ -46,9 +44,9 @@ class Benchmark:
     _surrogates = None
     _table = None
 
-    def __init__(self, task: str | BenchmarkTasks,
-                 kind: str |  BenchmarkTypes = BenchmarkTypes.Surrogate,
-                 download: bool = True, save_dir: Union[str, Path] = "jahs_bench_data"):
+    def __init__(self, task: Union[str, BenchmarkTasks],
+                 kind: Union[str, BenchmarkTypes] = BenchmarkTypes.Surrogate,
+                 download: bool = True, save_dir: Optional[Union[str, Path]] = None):
         """ Load up the benchmark for querying. """
 
         if isinstance(task, str):
@@ -138,7 +136,7 @@ class Benchmark:
         #     # Drop all unnecessary outputs
         #     table.drop([("labels", l) for l in labels.difference(outputs)], axis=1,
         #                inplace=True)
-        self._table = table
+        # self._table = table
         self._call_fn = self._benchmark_tabular
 
     def _load_live(self):
@@ -190,7 +188,20 @@ class Benchmark:
             raise ValueError(f"The given query has missing parameters: {check.tolist()}")
 
         idx = pd.merge(self._table_features, query_df, how="inner")["Sample ID"]
-# 
+
+        if idx.size == 0:
+            raise KeyError(f"Could not find any entries for the config {config} at "
+                           f"{nepochs} epochs.") from e
+        elif full_trajectory:
+            # Return the full trajectory, but only for the first instance of this config
+            # that was found.
+            result = self._table_labels[idx, :].iloc[:nepochs]
+        else:
+            # Return only the first result that was found
+            result = self._table_labels[idx, :].iloc[0]
+
+        idx = pd.merge(self._table_features, query_df, how="inner")["Sample ID"]
+
         if idx.size == 0:
             raise KeyError(f"Could not find any entries for the config {config} at "
                            f"{nepochs} epochs.") from e
@@ -217,7 +228,7 @@ class Benchmark:
         #     else:
         #         raise KeyError(f"Could not find any entries for the config {config} at "
         #                        f"{nepochs} epochs.") from e
-        # 
+        #
         # return output
 
     def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
