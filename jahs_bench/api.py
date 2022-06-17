@@ -306,6 +306,8 @@ class Benchmark:
 
 if __name__ == "__main__":
     b = Benchmark(task="cifar10", kind="surrogate")
-    config, result = b.random_sample()
+    config = b.sample_config()
     print(f"Config: {config}")
+
+    result = b(config, nepochs=config["epoch"])
     print(f"Result: {result}")
