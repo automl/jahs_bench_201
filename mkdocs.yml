@@ -21,6 +21,7 @@ nav:
   - Introduction and Installation: "README.md"
   - Design Space: "search_space.md"
   - Querying the Benchmark: "usage.md"
+  - Training Surrogate Models: "surrogate_training.md"
   - Evaluation Protocol: "evaluation_protocol.md"
   - Leaderboards: "leaderboards.md"
   - Details on Performance Dataset: "performance_dataset.md"
