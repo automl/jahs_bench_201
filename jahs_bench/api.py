@@ -195,10 +195,10 @@ class Benchmark:
         elif full_trajectory:
             # Return the full trajectory, but only for the first instance of this config
             # that was found.
-            result = self._table_labels[idx, :].iloc[:nepochs]
+            result = self._table_labels.loc[idx, :].iloc[:nepochs]
         else:
             # Return only the first result that was found
-            result = self._table_labels[idx, :].iloc[0]
+            result = self._table_labels.loc[idx, :].iloc[0]
 
         idx = pd.merge(self._table_features, query_df, how="inner")["Sample ID"]
 
