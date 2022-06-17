@@ -140,7 +140,7 @@ class Benchmark:
                              full_trajectory=full_trajectory, **kwargs)
 
     def _benchmark_surrogate(self, config: dict, nepochs: Optional[int] = 200,
-                             full_trajectory: bool = False,) -> dict:
+                             full_trajectory: bool = False, **kwargs) -> dict:
         assert nepochs > 0
 
         if full_trajectory:
@@ -162,7 +162,7 @@ class Benchmark:
         return outputs.to_dict(orient="index")
 
     def _benchmark_tabular(self, config: dict, nepochs: Optional[int] = 200,
-                           full_trajectory: bool = False) -> dict:
+                           full_trajectory: bool = False, **kwargs) -> dict:
         assert nepochs > 1
         assert self._table_features is not None and self._table_labels is not None,\
             "No performance dataset has been loaded into memory - a tabular query " \
@@ -197,9 +197,9 @@ class Benchmark:
         return result
 
     def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
+                        full_trajectory: bool = False, *,
                         train_config: Optional[dict] = None,
                         worker_dir: Optional[Path] = None, clean_tmp_files : bool = True,
-                        full_trajectory: bool = False,
                         **kwargs) -> dict:
         """
         Simple wrapper around the base benchmark data generation capabilities offered by
