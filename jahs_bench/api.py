@@ -13,7 +13,7 @@ import jahs_bench.download
 ## Requires installation of the optional "data_creation" components and dependencies
 try:
     from jahs_bench.tabular.distributed_nas_sampling import run_task
-    from jahs_bench.tabular.lib.core.constants import Datasets
+    from jahs_bench.tabular.lib.core.constants import Datasets as _Tasks
     from jahs_bench.tabular.lib.core.utils import DirectoryTree, MetricLogger, \
         AttrDict
     import shutil
@@ -70,6 +70,7 @@ class Benchmark:
         self.save_dir = Path(save_dir)
         self.surrogate_dir = self.save_dir / "assembled_surrogates"
         self.table_dir = self.save_dir / "metric_data"
+        self.task_dir = self.save_dir / "tasks"
 
         if download and kind is BenchmarkTypes.Surrogate:
             if not self.surrogate_dir.exists():
@@ -78,6 +79,12 @@ class Benchmark:
         if download and kind is BenchmarkTypes.Table:
             if not self.table_dir.exists():
                 jahs_bench.download.download_metrics(self.save_dir)
+
+        if download and kind is BenchmarkTypes.Live:
+            # TODO: Implement
+            # if not self.table_dir.exists():
+            #     jahs_bench.download.download_tasks(self.save_dir)
+            pass
 
         loaders = {
             BenchmarkTypes.Surrogate: self._load_surrogate,
@@ -190,9 +197,6 @@ class Benchmark:
         return result
 
     def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
-                        # datadir: Union[str, Path],
-                        # batch_size: Optional[int] = 256,
-                        # use_splits: Optional[bool] = True,
                         train_config: Optional[dict] = None,
                         worker_dir: Optional[Path] = None, clean_tmp_files : bool = True,
                         full_trajectory: bool = False,
@@ -216,9 +220,6 @@ class Benchmark:
                 f"of the given configuration. Alternatively, try to query on either the "
                 f"surrogate model or the performance dataset table.")
 
-        if isinstance(datadir, str):
-            datadir = Path(datadir)
-
         if train_config is None:
             train_config = dict(epochs=nepochs, batch_size=256, use_grad_clipping=False,
                                 split=True, warmup_epochs=0, disable_checkpointing=True,
@@ -227,10 +228,10 @@ class Benchmark:
 
         basedir = (Path("/tmp") if worker_dir is None else worker_dir) / "jahs_bench"
         basedir.mkdir(exist_ok=True)
-        task = Datasets[self.task.value]
+        task = _Tasks[self.task.value]
 
         args = {**dict(basedir=basedir, taskid=0, train_config=AttrDict(train_config),
-                       dataset=task, datadir=datadir, local_seed=None, global_seed=None,
+                       dataset=task, datadir=self.task_dir, local_seed=None, global_seed=None,
                        debug=False, generate_sampling_profile=False, nsamples=1,
                        portfolio_pth=None, cycle_portfolio=False, opts=config), **kwargs}
         run_task(**args)
@@ -238,16 +239,20 @@ class Benchmark:
         dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)
         metric_pth = MetricLogger._get_sorted_metric_paths(pth=dtree.model_metrics_dir)
         metric_pth = metric_pth[-1]
-        df = pd.read_pickle(metric_pth)
+        df: pd.DataFrame = pd.read_pickle(metric_pth)
 
-        # It is possible that the model training diverged, so we cannot directly use the
-        # value of 'nepochs' provided by the user.
-        nepochs = df.index.max()
-        latest = df.loc[nepochs]
+        if full_trajectory:
+            result = df.to_dict(orient="index")
+        else:
+            # It is possible that the model training diverged, so we cannot directly use
+            # the value of 'nepochs' provided by the user.
+            nepochs = df.index.max()
+            result = df.loc[nepochs].to_dict(orient="index")
+
         if clean_tmp_files:
             shutil.rmtree(dtree.basedir, ignore_errors=True)
 
-        return latest.to_dict()
+        return result
 
     def sample_config(self,
                       random_state: Optional[Union[int, np.random.RandomState]] = None,
