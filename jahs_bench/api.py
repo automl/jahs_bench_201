@@ -215,22 +215,6 @@ class Benchmark:
 
         return result
 
-        # query = tuple((query[k] for k in self._table.index.names))
-        # try:
-        #     output = self._table.loc[query].to_dict(orient="index")
-        #     output = list(output.values())[0]
-        # except KeyError as e:
-        #     _log.debug(f"Registered a key-error while querying the performance dataset "
-        #                f"for the configuration: {config} at {nepochs} epochs. The "
-        #                f"constructed query was: {query}.")
-        #     if suppress_keyerror:
-        #         output = {}
-        #     else:
-        #         raise KeyError(f"Could not find any entries for the config {config} at "
-        #                        f"{nepochs} epochs.") from e
-        #
-        # return output
-
     def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
                         # datadir: Union[str, Path],
                         # batch_size: Optional[int] = 256,
@@ -291,53 +275,29 @@ class Benchmark:
 
         return latest.to_dict()
 
-    def random_sample(self,
+    def sample_config(self,
                       random_state: Optional[Union[int, np.random.RandomState]] = None,
-                      **kwargs) -> Tuple[dict, dict]:
-        """ Randomly query the benchmark for a configuration. If a tabular benchmark has
-        been loaded, a sample from the set of known configurations is queried. Otherwise,
-        a random configuration is sampled from the search space and queried on the
-        surrogate benchmark or trained live, as the case may be. An optional seed for
-        initializing an RNG or a pre-initialized RNG may be passed in `random_state` for
-        reproducible queries. """
+                      ) -> dict:
+        """ For a tabular benchmark, return a random configuration from the set of
+        configurations recorded in the currently loaded dataset. Otherwise, randomly
+        sample a configuration from the full search space and return it. """
 
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
 
-        if self._table is not None:
+        if self.kind is BenchmarkTypes.Table:
+            assert self._table is not None, \
+                "Cannot extract random sample - the tabular benchmark could not be " \
+                "properly initialized."
             index = random_state.choice(self._table.index)
             row = self._table.loc[index]
             config = row["features"].to_dict()
-            result = row["labels"].to_dict()
-            # TODO: Reinstate the functionality to query the table itself for consistency
-            #  once the issue of non-unique indices has been fixed
-            # query = random_state.choice(self._table.index)
-            # query = {self._table.index.names[i]: query[i] for i in range(len(query))}
-
-            # Quite convoluted and redundant, but this helps maintain consistency.
-            # nepochs = query.pop("epoch")
-            # output = self(config=query, nepochs=nepochs)
-            # return {**query, **{"epoch": nepochs}}, output
         else:
             joint_config_space.random = random_state
             config = joint_config_space.sample_configuration().get_dictionary()
             nepochs = random_state.randint(1, 200)
-            result = self(config=config, nepochs=nepochs, **kwargs)
-            config["epoch"] = nepochs
+            config['epochs'] = nepochs
 
-        return config, result
-
-    def sample_config(self,
-                      random_state: Optional[Union[int, np.random.RandomState]] = None,
-                      ) -> dict:
-
-        if not isinstance(random_state, np.random.RandomState):
-            random_state = np.random.RandomState(random_state)
-
-        joint_config_space.random = random_state
-        config = joint_config_space.sample_configuration().get_dictionary()
-        nepochs = random_state.randint(1, 200)
-        config['epochs'] = nepochs
         return config
 
 
