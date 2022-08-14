@@ -28,7 +28,7 @@ To test if the installation was successful, you can, e.g, run a minimal example 
 python -m jahs_bench_examples.minimal
 ```
 This should randomly sample a configuration, and display both the sampled configuration and the result of querying the
-surrogate for that configuration. Note: Some MacOS users experience issues with the XGBoost library we use, currently, we are investigate further.
+surrogate for that configuration. Note: Some MacOS users experience issues with the XGBoost library we use, currently, we are investigatiHPOHPOng further.
 
 ## Using the Benchmark
 
