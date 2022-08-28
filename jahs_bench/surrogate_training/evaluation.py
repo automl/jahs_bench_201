@@ -119,7 +119,7 @@ def main(testset_file: Path, model_dir: Optional[Path] = None,
         scores = score_predictions(test_set, ypred)
         if save_dir is not None:
             with open(save_dir / "scores.yaml", "w") as fp:
-                yaml.safe_dump(scores)
+                yaml.safe_dump(scores, fp)
 
     _log.info(f"Finished.")
 

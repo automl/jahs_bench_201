@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import yaml
 from typing import Sequence, Iterator, Dict, Tuple, Optional
+from numpy import inf
 
 _log = logging.getLogger(__name__)
 
@@ -20,7 +21,8 @@ def get_loss(config_dir: Path) -> float:
     with open(result_file) as fp:
         result = yaml.safe_load(fp)
 
-    return result["loss"]
+    # If the configuration evaluation resulted in some error, set the loss to infinity
+    return inf if isinstance(result, str) else result["loss"]
 
 def iterate_configs(metric_dir: Path, max_configs: Optional[int] = None) -> Iterator[Path]:
     """ Given the working directory corresponding to a single metric, iterate over all
