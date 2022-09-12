@@ -1,7 +1,7 @@
 import logging
 from enum import Enum, unique, auto
 from pathlib import Path
-from typing import Optional, Union, Sequence, Tuple
+from typing import Optional, Union, Sequence, Tuple, Iterable
 
 import numpy as np
 import pandas as pd
@@ -46,7 +46,8 @@ class Benchmark:
 
     def __init__(self, task: Union[str, BenchmarkTasks],
                  kind: Union[str, BenchmarkTypes] = BenchmarkTypes.Surrogate,
-                 download: bool = True, save_dir: Union[str, Path] = "jahs_bench_data"):
+                 download: bool = True, save_dir: Union[str, Path] = "jahs_bench_data",
+                 metrics: Iterable[str] = ("valid-acc", "runtime")):
         """ Load up the benchmark for querying. """
 
         if isinstance(task, str):
@@ -67,6 +68,7 @@ class Benchmark:
 
         self.kind = kind
         self.task = task
+        self.metrics = metrics  # TODO document, all = ["FLOPS", "latency", "runtime", "size_MB", "test-acc", "train-acc", "valid-acc"]
         self.save_dir = Path(save_dir)
         self.surrogate_dir = self.save_dir / "assembled_surrogates"
         self.table_dir = self.save_dir / "metric_data"
@@ -99,7 +101,8 @@ class Benchmark:
         assert self.surrogate_dir.exists() and self.surrogate_dir.is_dir()
 
         model_path = self.surrogate_dir / self.task.value
-        outputs = [p.name for p in model_path.iterdir() if p.is_dir()]
+        outputs = [p.name for p in model_path.iterdir()
+                   if p.is_dir() and p.name in self.metrics]
 
         self._surrogates = {}
         for o in outputs:
