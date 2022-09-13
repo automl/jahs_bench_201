@@ -1,7 +1,7 @@
 import logging
 from enum import Enum, unique, auto
 from pathlib import Path
-from typing import Optional, Union, Sequence, Tuple
+from typing import Optional, Union, Sequence, Tuple, Iterable
 
 import numpy as np
 import pandas as pd
@@ -43,11 +43,48 @@ class Benchmark:
     _call_fn = None
     _surrogates = None
     _table = None
+    __known_metrics = ("FLOPS", "latency", "runtime", "size_MB", "test-acc", "train-acc",
+                       "valid-acc")
 
     def __init__(self, task: Union[str, BenchmarkTasks],
                  kind: Union[str, BenchmarkTypes] = BenchmarkTypes.Surrogate,
-                 download: bool = True, save_dir: Union[str, Path] = "jahs_bench_data"):
-        """ Load up the benchmark for querying. """
+                 download: bool = True, save_dir: Union[str, Path] = "jahs_bench_data",
+                 metrics: Optional[Iterable[str]] = None, lazy: bool = False):
+        """
+        Public facing API for accessing JAHS-Bench, capable of querying a single
+        configuration at a time on any known task in three different modes: surrogate,
+        tabular and live.
+
+        task: name of task
+            A member of the BenchmarkTasks enum or a string corresponding to the value of
+            such a member indicating the specific task that the benchmark should be
+            queried on.
+        kind: type of query
+            A member of the BenchmarkTypes enum or a string corresponding to the value of
+            such a member indicating the type of query that should be run. "surrogate"
+            implies that a corresponding surrogate model will be used to predict the
+            performance metrics. "tabular" implies that the tabular dataset of
+            performance data will be queried. "live" implies that the configuration will
+            be used to generate and run a fresh neural network pipeline on the given task
+            and the generated metrics will be recorded and returned.
+        download: bool
+            A flag indicating whether or not the requisite data (tabular, surrogate
+            model, task data) should be downloaded. If False, the relevant data is
+            expected to exist under "save_dir".
+        save_dir: Path-like
+            The (absolute or relative) path to a directory where the data required for
+            the benchmark to run will be read from (and saved to if download=True).
+        metrics: optional sequence of strings
+            An optional sequence of strings indicating which performance metrics need to
+            be predicted by the benchmark. This is especially useful for the surrogate
+            benchmark, as specifying only a subset of the available metrics drastically
+            reduces the memory requirements of the surrogate model.
+        lazy: bool  # TODO: Finalize
+            (Experimental) A flag to enable lazy loading of the surrogate models (future:
+            extend to tabular and live), thereby loading each metric's surrogate model
+            once per query and one at a time, in order to reduce the instantaneous memory
+            requirements of the surrogate benchmark.
+        """
 
         if isinstance(task, str):
             try:
@@ -67,10 +104,12 @@ class Benchmark:
 
         self.kind = kind
         self.task = task
+        self.metrics = tuple(metrics) if metrics is not None else self.__known_metrics
         self.save_dir = Path(save_dir)
         self.surrogate_dir = self.save_dir / "assembled_surrogates"
         self.table_dir = self.save_dir / "metric_data"
         self.task_dir = self.save_dir / "tasks"
+        self._lazy = lazy
 
         if download and kind is BenchmarkTypes.Surrogate:
             if not self.surrogate_dir.exists():
@@ -99,11 +138,16 @@ class Benchmark:
         assert self.surrogate_dir.exists() and self.surrogate_dir.is_dir()
 
         model_path = self.surrogate_dir / self.task.value
-        outputs = [p.name for p in model_path.iterdir() if p.is_dir()]
+        outputs = [p.name for p in model_path.iterdir()
+                   if p.is_dir() and p.name in self.metrics]
 
         self._surrogates = {}
+
         for o in outputs:
-            self._surrogates[o] = XGBSurrogate.load(model_path / str(o))
+            pth = model_path / str(o)
+            self._surrogates[o] = XGBSurrogate.load(pth) if not self._lazy else \
+                _LazySurrogate(model_pth=pth)
+
         self._call_fn = self._benchmark_surrogate
 
     def _load_table(self):
@@ -278,6 +322,36 @@ class Benchmark:
             config['epoch'] = nepochs
 
         return config
+
+
+class _LazySurrogate(XGBSurrogate):
+    """ A wrapper around the XGBSurrogate object that defers the actual read of the
+    surrogate model from the disk to the moment at which the model is actually used for a
+    prediction, thus reducing overall memory requirements at the expense of more disk
+    reads. """
+
+    def __init__(self, model_pth: Union[str, Path], **kwargs):
+        self._model_pth = Path(model_pth)
+
+    def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        model = XGBSurrogate.load(self._model_pth)
+        res = model.predict(features)
+        del model
+        return res
+
+    def fit(self, *args, **kwargs):
+        raise RuntimeError("Lazy loading of surrogates is enabled. This mode only "
+                           "supports the predict() functionality.")
+
+    def dump(self, *args, **kwargs):
+        raise RuntimeError("Lazy loading of surrogates is enabled. This mode only "
+                           "supports the predict() functionality.")
+
+    @classmethod
+    def load(cls, outdir: Path) -> None:
+        raise RuntimeError("Lazy loading of surrogates is enabled. This mode only "
+                           "supports the predict() functionality.")
+
 
 
 if __name__ == "__main__":
