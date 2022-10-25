@@ -15,7 +15,7 @@ Please see our [documentation here](https://automl.github.io/jahs_bench_201/).
 Using pip
 
 ```bash
-pip install git+https://github.com/automl/jahs_bench_201.git
+pip install jahs_bench
 ```
 
 Optionally, you can download the data required to use the surrogate benchmark ahead of time with
