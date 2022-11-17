@@ -102,6 +102,15 @@ class Benchmark:
                 raise ValueError(f"Invalid/Unknown value of parameter 'kind': '{kind}'. "
                                  f"Must be one of {valid}.") from e
 
+        # Validate the metrics passed in
+        if metrics is not None:
+            metrics = set(metrics)
+            unknown = set(self.__known_metrics) - metrics
+            if any(unknown):
+                raise ValueError(
+                    f"Unknown `metrics` {unknown}, must be in {self.__known_metrics}"
+                )
+
         self.kind = kind
         self.task = task
         self.metrics = tuple(metrics) if metrics is not None else self.__known_metrics
