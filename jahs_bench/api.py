@@ -8,7 +8,9 @@ import pandas as pd
 
 from jahs_bench.lib.core.configspace import joint_config_space
 from jahs_bench.surrogate.model import XGBSurrogate
-import jahs_bench.download
+from jahs_bench import download as downloader
+
+from functools import partial
 
 ## Requires installation of the optional "data_creation" components and dependencies
 try:
@@ -37,6 +39,12 @@ class BenchmarkTasks(Enum):
     CIFAR10 = "cifar10"
     ColorectalHistology = "colorectal_histology"
     FashionMNIST = "fashion_mnist"
+
+
+_default_training_config = dict(epochs=200, batch_size=256, use_grad_clipping=False,
+                                split=True, warmup_epochs=0, disable_checkpointing=True,
+                                checkpoint_interval_seconds=3600,
+                                checkpoint_interval_epochs=50)
 
 
 class Benchmark:
@@ -101,7 +109,6 @@ class Benchmark:
                 valid = [x.value for x in BenchmarkTypes]
                 raise ValueError(f"Invalid/Unknown value of parameter 'kind': '{kind}'. "
                                  f"Must be one of {valid}.") from e
-
         # Validate the metrics passed in
         if metrics is not None:
             metrics = set(metrics)
@@ -111,28 +118,32 @@ class Benchmark:
                     f"Unknown `metrics` {unknown}, must be in {self.__known_metrics}"
                 )
 
-        self.kind = kind
-        self.task = task
+        self.kind: BenchmarkTypes = kind
+        self.task: BenchmarkTasks = task
         self.metrics = tuple(metrics) if metrics is not None else self.__known_metrics
         self.save_dir = Path(save_dir)
         self.surrogate_dir = self.save_dir / "assembled_surrogates"
         self.table_dir = self.save_dir / "metric_data"
-        self.task_dir = self.save_dir / "tasks"
+        self.task_dir = self.save_dir / "datasets"
         self._lazy = lazy
 
-        if download and kind is BenchmarkTypes.Surrogate:
-            if not self.surrogate_dir.exists():
-                jahs_bench.download.download_surrogates(self.save_dir)
+        download_args = {
+            BenchmarkTypes.Surrogate: dict(target_dir=self.surrogate_dir,
+                                           filename=downloader.FileNames.surrogates),
+            BenchmarkTypes.Table: dict(target_dir=self.table_dir,
+                                       filename=downloader.FileNames.metrics),
+            BenchmarkTypes.Live: dict(target_dir=self.task_dir,
+                                      filename=downloader.FileNames.tasks)
+        }
 
-        if download and kind is BenchmarkTypes.Table:
-            if not self.table_dir.exists():
-                jahs_bench.download.download_metrics(self.save_dir)
-
-        if download and kind is BenchmarkTypes.Live:
-            # TODO: Implement
-            # if not self.table_dir.exists():
-            #     jahs_bench.download.download_tasks(self.save_dir)
-            pass
+        target_dir = download_args[kind]["target_dir"]
+        if download and not target_dir.exists():
+            downloader.download(filename=download_args[kind]["filename"],
+                                version=downloader.latest_version, save_dir=self.save_dir)
+        elif download:
+            # Flip the flag if it was True
+            _log.info(f"Skipping download since the relevant data already exists at "
+                      f"{target_dir}.")
 
         loaders = {
             BenchmarkTypes.Surrogate: self._load_surrogate,
@@ -252,41 +263,41 @@ class Benchmark:
     def _benchmark_live(self, config: dict, nepochs: Optional[int] = 200,
                         full_trajectory: bool = False, *,
                         train_config: Optional[dict] = None,
-                        worker_dir: Optional[Path] = None, clean_tmp_files : bool = True,
+                        worker_dir: Optional[Path] = None, clean_tmp_files: bool = True,
                         **kwargs) -> dict:
         """
         Simple wrapper around the base benchmark data generation capabilities offered by
-        tabular_sampling.distributed_nas_sampling.run_task(). Providing 'train_config'
-        and 'kwargs' dicts can be used to access the full range of customizations offered
-        by 'run_task()' - consults its documentation if needed. `worker_dir` can be used
-        to specify a custom directory where temporary files generated during model
-        training are stored. If it is not provided, a directory will be created at
-        '/tmp/jahs_bench'. Disable the flag `clean_tmp_files` to retain these
-        temporary files after the function call.
+        tabular.sampling.run_task(). Providing 'train_config' and 'kwargs' dicts can be
+        used to access the full range of customizations offered by 'run_task()' -
+        consults its documentation if needed. `worker_dir` can be used to specify a
+        custom directory where temporary files, such as checkpoints and learning curves,
+        generated during model training are stored. If it is not provided, a directory
+        will be created at '/tmp/jahs_bench'. Disable the flag `clean_tmp_files` to
+        retain these temporary files after the function call.
         """
 
         if not data_creation_available:
             raise RuntimeError(
                 f"Cannot train the given configuration since the required modules have "
                 f"not been installed. Optional component 'data_creation' of "
-                f"jahs_bench must be installed in order to perform a live training "
+                f"jahs_bench_201 must be installed in order to perform a live training "
                 f"of the given configuration. Alternatively, try to query on either the "
                 f"surrogate model or the performance dataset table.")
 
         if train_config is None:
-            train_config = dict(epochs=nepochs, batch_size=256, use_grad_clipping=False,
-                                split=True, warmup_epochs=0, disable_checkpointing=True,
-                                checkpoint_interval_seconds=3600,
-                                checkpoint_interval_epochs=50)
+            train_config = _default_training_config
 
+        train_config["epochs"] = nepochs
         basedir = (Path("/tmp") if worker_dir is None else worker_dir) / "jahs_bench"
         basedir.mkdir(exist_ok=True)
         task = _Tasks[self.task.value]
 
         args = {**dict(basedir=basedir, taskid=0, train_config=AttrDict(train_config),
-                       dataset=task, datadir=self.task_dir, local_seed=None, global_seed=None,
-                       debug=False, generate_sampling_profile=False, nsamples=1,
-                       portfolio_pth=None, cycle_portfolio=False, opts=config), **kwargs}
+                       dataset=task, datadir=self.task_dir, local_seed=None,
+                       global_seed=None, debug=False, generate_sampling_profile=False,
+                       nsamples=1, portfolio_pth=None, cycle_portfolio=False,
+                       opts=config),
+                **kwargs}
         run_task(**args)
 
         dtree = DirectoryTree(basedir=basedir, taskid=0, model_idx=1, read_only=True)
