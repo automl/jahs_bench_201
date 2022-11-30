@@ -2,8 +2,8 @@ import requests
 import tarfile
 from pathlib import Path
 
-surrogate_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/v1.0.0/assembled_surrogates.tar"
-metric_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/v1.0.0/metric_data.tar"
+surrogate_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/v1.1.0/assembled_surrogates.tar"
+metric_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/v1.1.0/metric_data.tar"
 
 
 def download_and_extract_url(url, save_dir, filename):
