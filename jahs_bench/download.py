@@ -6,7 +6,7 @@ surrogate_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_b
 metric_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/jahs_bench_201/v1.1.0/metric_data.tar"
 
 
-def download_and_extract_url(url, save_dir, filename):
+def download_and_extract_url(url, save_dir, filename, extract_dir):
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     save_tar_file = save_dir / filename
@@ -17,17 +17,19 @@ def download_and_extract_url(url, save_dir, filename):
             f.write(response.raw.read())
 
     print("Download finished, extracting now")
+    extract_dir = Path(save_dir, extract_dir)
+    extract_dir.mkdir(parents=True, exist_ok=True)
     with tarfile.open(save_tar_file, 'r') as f:
-        f.extractall(path=save_dir)
+        f.extractall(extract_dir)
     print("Done extracting")
 
 
 def download_surrogates(save_dir="jahs_bench_data"):
-    download_and_extract_url(surrogate_url, save_dir, "assembled_surrogates.tar")
+    download_and_extract_url(surrogate_url, save_dir, "assembled_surrogates.tar", extract_dir="assembled_surrogates")
 
 
 def download_metrics(save_dir="jahs_bench_data"):
-    download_and_extract_url(metric_url, save_dir, "metric_data.tar")
+    download_and_extract_url(metric_url, save_dir, "metric_data.tar", extract_dir="metric_data")
 
 
 if __name__ == "__main__":
