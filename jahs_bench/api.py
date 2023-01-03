@@ -105,7 +105,7 @@ class Benchmark:
         # Validate the metrics passed in
         if metrics is not None:
             metrics = set(metrics)
-            unknown = set(self.__known_metrics) - metrics
+            unknown =  metrics - set(self.__known_metrics)
             if any(unknown):
                 raise ValueError(
                     f"Unknown `metrics` {unknown}, must be in {self.__known_metrics}"
