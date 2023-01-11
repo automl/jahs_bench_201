@@ -160,13 +160,12 @@ class Benchmark:
         self._call_fn = self._benchmark_surrogate
 
     def _load_table(self):
-        assert self.save_dir.exists() and self.save_dir.is_dir()
+        assert self.table_dir.exists() and self.table_dir.is_dir()
 
-        table_path = self.save_dir / self.task.value
+        table_path = self.table_dir / self.task.value
         table_names = ["train_set.pkl.gz", "valid_set.pkl.gz", "test_set.pkl.gz"]
-        tables = [pd.read_pickle(table_path / n) for n in table_names]
+        tables = (pd.read_pickle(table_path / n) for n in table_names)
         table = pd.concat(tables, axis=0)
-        del tables
 
         # level_0_cols = ["features", "labels"]
         features: list = joint_config_space.get_hyperparameter_names() + ["epoch"]
