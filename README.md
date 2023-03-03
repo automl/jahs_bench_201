@@ -7,7 +7,7 @@ facilitate research on multi-objective, cost-aware and (multi) multi-fidelity op
 ![Python versions](https://img.shields.io/badge/python-3.7%20%7C%203.8%20%7C%203.9%20%7C%203.10-informational)
 [![License](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
 
-Please see our [documentation here](https://automl.github.io/jahs_bench_201/).
+Please see our [documentation here](https://automl.github.io/jahs_bench_201/). Precise details about the data collection and surrogate creation process, as well as our experiments, can be found in the assosciated [publication](https://openreview.net/forum?id=_HLcjaVlqJ).
 
 
 ## Installation
