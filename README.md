@@ -28,7 +28,7 @@ To test if the installation was successful, you can, e.g, run a minimal example 
 python -m jahs_bench_examples.minimal
 ```
 This should randomly sample a configuration, and display both the sampled configuration and the result of querying the
-surrogate for that configuration. Note: Some MacOS users experience issues with the XGBoost library we use, currently, we are investigating further.
+surrogate for that configuration. Note: We have recently discovered that XGBoost - the library used for our surrogate models - can suffer from some incompatibility issues with MacOS. Users who run into such an issue may consult [this](https://github.com/automl/jahs_bench_201/issues/6) discussion for details. 
 
 ## Using the Benchmark
 
