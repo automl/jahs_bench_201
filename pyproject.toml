@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "jahs_bench"
-version = "1.0.2"
+version = "v1.1.0"
 description = "The first collection of surrogate benchmarks for Joint Architecture and Hyperparameter Search."
 authors = [
     "Archit Bansal <bansala@cs.uni-freiburg.de>",
